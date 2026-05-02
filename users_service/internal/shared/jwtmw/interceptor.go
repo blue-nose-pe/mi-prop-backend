@@ -22,6 +22,14 @@ func FromContext(ctx context.Context) *Claims {
 	return c
 }
 
+// PutClaimsForTest inyecta claims en el contexto SIN pasar por el
+// interceptor JWT real. Pensado para tests de paquetes que dependen de
+// claims presentes (permmw, handlers gRPC). NO usar en código de
+// producción — el interceptor es la única vía válida ahí.
+func PutClaimsForTest(ctx context.Context, c *Claims) context.Context {
+	return context.WithValue(ctx, claimsKey, c)
+}
+
 // SkipFunc decide si una RPC concreta NO requiere autenticación
 // (ej: AuthService/Login). El interceptor la consulta antes de validar.
 type SkipFunc func(fullMethod string) bool

@@ -176,7 +176,63 @@ Cuando agregas algo nuevo, sigue **siempre** este orden:
 
 Cada capa declara contratos antes de que la siguiente los use.
 
-## 6. Escalabilidad — cómo se decide
+## 6. Autorización — `users-service` es la autoridad en cada request
+
+El JWT prueba **identidad** (firma + `sub` del user). NO se usa para
+**autorización** — los permisos del claim viajan solo como hint
+informativo (útil para que el front muestre/oculte UI, pero no se
+confía server-side).
+
+La autorización en cada microservicio funciona así:
+
+1. `jwtmw` valida la firma del access token y publica los claims en el
+   contexto.
+2. `permmw` (interceptor que viene después) toma el `sub` del contexto,
+   mapea el `FullMethod` gRPC al permission code requerido (tabla
+   `PermissionMap` de cada servicio) y llama a un `Resolver`.
+3. El `Resolver` consulta a **users-service** (autoridad única), con
+   cache Redis local de **TTL 30s**. Si users-service o Redis fallan
+   → **fail-closed** (HTTP 503), nunca autoriza a ciegas.
+
+Implicancias:
+
+- **Revocación efectiva en ≤ TTL del cache** (30s default), no 15 min
+  como sería con claims-based puro.
+- **Single source of truth** en `db_users.permission` /
+  `permission_group_permission`. Si un superadmin revoca un permiso o
+  desactiva un user, la próxima request del afectado falla en cuanto
+  expire el cache.
+- **users-service** se enchufa al mismo `permmw` con un Resolver
+  **local** (`LocalPermissionResolver` en `internal/adapters/inbound/grpc/`)
+  para evitar el self-loop gRPC consigo mismo.
+- **Otros servicios** usan `permsclient.Client` (paquete shared). Cada
+  uno tiene su copia (autonomía) + su propia BD Redis para cache.
+- **Superadmin bypass** sigue funcionando: `PermissionQueries.HasPermission`
+  en users-service devuelve `true` directo si `users.is_superadmin = 1`,
+  sin enumerar el catálogo. El caché también devuelve el sentinel `["*"]`.
+
+Cómo cablear un servicio nuevo (resumido):
+
+```go
+// main.go del consumidor (cualquiera menos users-service):
+conn, _ := grpc.NewClient(cfg.UsersServiceAddr, ...keepalive...)
+permResolver := permsclient.New(conn, redisClient, 30*time.Second)
+methodToCode := map[string]string{
+    "/exams.v1.ExamService/CreateExam": "db_exams.exam.write",
+    "/exams.v1.ExamService/SearchExams": "db_exams.exam.read",
+    // ...
+}
+grpc.NewServer(grpc.ChainUnaryInterceptor(
+    grpchandler.RecoveryInterceptor,
+    grpchandler.CorrelationIDInterceptor,
+    grpchandler.LoggingInterceptor,
+    jwtmw.UnaryServerInterceptor(verifier, jwtSkip),
+    permmw.UnaryServerInterceptor(permResolver, methodToCode),
+    auditmw.UnaryServerInterceptor(...),
+))
+```
+
+## 7. Escalabilidad — cómo se decide
 
 - **Stateless por defecto.** Ningún servicio guarda estado en memoria local que afecte correctness. Todo va a Azure SQL o Redis. Permite N réplicas detrás de un Service.
 - **HPA** (Horizontal Pod Autoscaler) en cada Helm chart con CPU/memoria como métrica base. Servicios I/O-heavy (hubspot-service worker) usan KEDA con métrica de longitud de cola.
@@ -185,7 +241,7 @@ Cada capa declara contratos antes de que la siguiente los use.
 - **Read-replicas Azure SQL** se contemplan a futuro (no fase inicial). Cuando lleguen, los queries leerán de réplica y los commands del primary; CQRS lo facilita.
 - **gRPC entre servicios** con keepalive y deadlines de cliente. NO HTTP entre microservicios.
 
-## 7. SOLID aplicado — checklist por commit
+## 8. SOLID aplicado — checklist por commit
 
 - **S — Single Responsibility**: ¿este struct/función hace UNA sola cosa? Si su nombre tiene "And" o el cuerpo cambia de contexto a media página, partir.
 - **O — Open/Closed**: ¿agregar una nueva regla requiere abrir varios archivos? Si sí, posiblemente falta una nueva interfaz outbound (extensión por composición, no por modificación).
@@ -193,7 +249,7 @@ Cada capa declara contratos antes de que la siguiente los use.
 - **I — Interface Segregation**: ¿el handler depende de una interfaz con 15 métodos donde usa 3? Partir la interfaz.
 - **D — Dependency Inversion**: ¿el core importa un paquete concreto (`mssql`, `redis`, `pgx`)? Mover detrás de un puerto.
 
-## 8. Clean code — convenciones
+## 9. Clean code — convenciones
 
 - **Idioma**: comentarios y docs en **español**. Nombres de tipos/funciones públicos en inglés (siguen convención Go). DTOs/comandos también en inglés (`CreateUserInput`, no `CrearUsuarioInput`).
 - **Comentarios**: solo cuando agregan información NO obvia (constraint del negocio, workaround, decisión histórica). NO repetir el código en prosa.
@@ -203,7 +259,7 @@ Cada capa declara contratos antes de que la siguiente los use.
 - **Tests**: cada command/query con un test unitario que use mocks de los outbound ports. Tests de integración con `testcontainers-go` levantando SQL Server.
 - **Sin imports innecesarios**: `goimports -w` antes de commit.
 
-## 9. Anti-patrones (qué NO hacer)
+## 10. Anti-patrones (qué NO hacer)
 
 - ❌ Mezclar Command y Query en el mismo struct/archivo.
 - ❌ Que un Query escriba en BD o invalide cache.
@@ -214,7 +270,7 @@ Cada capa declara contratos antes de que la siguiente los use.
 - ❌ Hacer wiring fuera de `cmd/server/main.go`.
 - ❌ Que el handler gRPC retorne `error` directo: SIEMPRE `apperr.ToGRPC(ctx, err)`.
 
-## 10. Cómo arrancar un nuevo servicio
+## 11. Cómo arrancar un nuevo servicio
 
 1. Copiar la estructura de carpetas de `users_service/` (sin código).
 2. Crear `go.mod` con módulo `<servicio>_service`.

@@ -25,6 +25,7 @@ import (
 	"users_service/internal/shared/auditmw"
 	"users_service/internal/shared/jwtmw"
 	"users_service/internal/shared/mssql"
+	"users_service/internal/shared/permmw"
 	pb "users_service/proto/gen"
 
 	"google.golang.org/protobuf/proto"
@@ -135,12 +136,19 @@ func main() {
 	// adapta la interfaz de auditmw a ports.AuditSink (mssql).
 	auditBridge := auditadapter.NewBridge(auditSink)
 
+	// PERMISSIONS interceptor: cada request consulta la BD de permisos
+	// EN VIVO (no los claims del JWT). users-service usa un resolver
+	// LOCAL para evitar el self-loop gRPC. Otros microservicios usan
+	// permsclient.Client (gRPC + cache Redis 30s).
+	localPerms := grpchandler.NewLocalPermissionResolver(permQrys)
+
 	s := grpc.NewServer(
 		grpc.ChainUnaryInterceptor(
 			grpchandler.RecoveryInterceptor,
 			grpchandler.CorrelationIDInterceptor,
 			grpchandler.LoggingInterceptor,
 			jwtmw.UnaryServerInterceptor(verifier, jwtSkip),
+			permmw.UnaryServerInterceptor(localPerms, grpchandler.PermissionMap),
 			auditmw.UnaryServerInterceptor(auditBridge, redactSensitiveFields),
 		),
 	)
