@@ -21,6 +21,17 @@ hubspot:
     asesorRoleId: "1223012"
   otpWebhook:
     triggerId: "9013951"
+  # Rate limit distribuido. El Secret hubspot-service-api-tokens contiene
+  # un CSV con todas las API keys; el engine las balancea entre TODAS las
+  # réplicas (server + worker) vía Redis con scripts Lua atómicos.
+  # Capacidad total = len(tokens) × rps coordinados GLOBALMENTE.
+  rateLimit:
+    rps: 10            # rps POR token (HubSpot = 10)
+    workers: 10        # goroutines internas del engine por proceso
+    queueSize: 100     # buffer del canal interno
+  redis:
+    dbAsynq: 0         # DB para asynq (cola de jobs)
+    dbRateLimit: 1     # DB separada para el contador de rate limit
 
 worker:
   enabled: true

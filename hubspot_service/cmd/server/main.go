@@ -28,6 +28,7 @@ import (
 	"hubspot_service/internal/core/query"
 	"hubspot_service/internal/shared/auditmw"
 	"hubspot_service/internal/shared/jwtmw"
+	"hubspot_service/internal/shared/requestsengine"
 	pb "hubspot_service/proto/gen"
 
 	"google.golang.org/grpc"
@@ -40,15 +41,35 @@ import (
 
 func main() {
 	cfg := config.Load()
-	if cfg.HubspotToken == "" || cfg.OTPWebhookToken == "" {
-		log.Fatalf("HUBSPOT_API_TOKEN and HUBSPOT_OTP_WEBHOOK_TOKEN are required")
+	tokens := cfg.EffectiveTokens()
+	if len(tokens) == 0 || cfg.OTPWebhookToken == "" {
+		log.Fatalf("HUBSPOT_API_TOKEN(S) and HUBSPOT_OTP_WEBHOOK_TOKEN are required")
 	}
 	if cfg.JWTSecret == "" {
 		log.Fatalf("JWT_SECRET is required")
 	}
 
 	// ---------- 1. Outbound deps ----------
-	hsClient := hubspotclient.New(cfg.HubspotToken)
+	// Engine: rate limit distribuido vía Redis. Coordina entre TODAS las
+	// réplicas de hubspot-service (server + worker) para no superar
+	// el RPS por API key (HubSpot = 10 rps/key) sin importar cuántas
+	// réplicas tenga el Deployment.
+	engine, err := requestsengine.New(requestsengine.Config{
+		Tokens:        tokens,
+		RPS:           cfg.HubspotRPS,
+		Workers:       cfg.HubspotWorkers,
+		QueueSize:     cfg.HubspotQueueSize,
+		RedisAddr:     cfg.RedisAddr,
+		RedisPassword: cfg.RedisPassword,
+		RedisDB:       cfg.RedisDBRateLimit,
+		KeyPrefix:     "hs_ratelimit",
+	})
+	if err != nil {
+		log.Fatalf("requestsengine: %v", err)
+	}
+	defer engine.Close()
+
+	hsClient := hubspotclient.New(engine)
 	otpWebhook := webhookadapter.NewOTP(cfg.OTPWebhookTriggerID, cfg.OTPWebhookToken)
 	enqueuer := asynqadapter.NewEnqueuer(cfg.RedisAddr, cfg.RedisPassword, cfg.RedisTLS)
 	defer enqueuer.Close()

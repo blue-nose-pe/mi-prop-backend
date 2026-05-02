@@ -1,7 +1,10 @@
 // Package hubspotclient implementa ports.HubspotClient contra el CRM v3
-// de HubSpot vía HTTP REST. No usamos un SDK de terceros — el subset de
-// operaciones que necesitamos es chico y un cliente propio nos da control
-// fino sobre timeouts, retries y formato de errores.
+// de HubSpot vía HTTP REST.
+//
+// Rate limiting: el cliente delega TODAS las requests HTTP al
+// requestsengine.Engine. El engine coordina entre N réplicas usando
+// Redis (un Lua atómico por slot por API key). Sin esto, cuando hubspot-
+// service tiene >1 réplica, todas atacan la misma key y reciben 429.
 //
 // Endpoints cubiertos:
 //   POST   /crm/v3/objects/contacts                                     (create)
@@ -11,40 +14,34 @@
 //   PATCH  /crm/v3/objects/{typeId}/{id}                                (custom update)
 //   POST   /crm/v3/objects/{typeId}/search                              (custom find)
 //
-// Auth: Authorization: Bearer <HUBSPOT_API_TOKEN>.
+// El token Bearer lo agrega el engine (rotando entre los tokens del pool).
 package hubspotclient
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
-	"time"
 
 	"hubspot_service/internal/core/domain"
 	"hubspot_service/internal/core/ports"
+	"hubspot_service/internal/shared/requestsengine"
 )
 
-const (
-	baseURL    = "https://api.hubapi.com"
-	defaultTO  = 30 * time.Second
-)
+const baseURL = "https://api.hubapi.com"
 
 type Client struct {
-	token string
-	http  *http.Client
+	engine *requestsengine.Engine
 }
 
 var _ ports.HubspotClient = (*Client)(nil)
 
-func New(token string) *Client {
-	return &Client{
-		token: token,
-		http: &http.Client{Timeout: defaultTO},
-	}
+// New construye el cliente sobre un engine ya inicializado.
+// El engine es responsabilidad del caller — típicamente main.go lo
+// crea una vez y lo cierra al shutdown.
+func New(engine *requestsengine.Engine) *Client {
+	return &Client{engine: engine}
 }
 
 // ---------- Contacts ----------
@@ -132,42 +129,42 @@ func (c *Client) searchByProperty(ctx context.Context, path, prop, value string)
 	return domain.RecordID(resp.Results[0].ID), nil
 }
 
-// do ejecuta el request y deserializa la respuesta. Maneja status >= 400
-// como ErrHubspotUpstream con cuerpo en el error message para diagnóstico.
+// do delega al engine — el engine maneja rate limit (5 keys × 10 rps =
+// 50 rps globales coordinados via Redis), reintentos con backoff
+// exponencial y respeto del header Retry-After de HubSpot.
+//
+// El error pattern se mantiene compatible con el código previo:
+// status >= 400 → ErrHubspotUpstream con detalle del status + body.
 func (c *Client) do(ctx context.Context, method, path string, body any, out any) error {
-	var rdr io.Reader
+	var raw []byte
 	if body != nil {
 		buf, err := json.Marshal(body)
 		if err != nil {
 			return err
 		}
-		rdr = bytes.NewReader(buf)
+		raw = buf
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, rdr)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := c.http.Do(req)
+	status, respBody, _, err := c.engine.Do(
+		ctx,
+		method+" "+path, // ID del task — útil para logs/audit
+		method,
+		baseURL+path,
+		raw,
+		nil, // engine ya setea Authorization, Content-Type y Accept
+	)
 	if err != nil {
 		return fmt.Errorf("%w: %v", domain.ErrHubspotUpstream, err)
 	}
-	defer resp.Body.Close()
 
-	if resp.StatusCode >= 400 {
-		raw, _ := io.ReadAll(resp.Body)
+	if status >= 400 {
 		return fmt.Errorf("%w: %s %s -> %d %s",
-			domain.ErrHubspotUpstream, method, path, resp.StatusCode, strings.TrimSpace(string(raw)))
+			domain.ErrHubspotUpstream, method, path, status, strings.TrimSpace(string(respBody)))
 	}
-	if out == nil || resp.StatusCode == http.StatusNoContent {
+	if out == nil || status == http.StatusNoContent || len(respBody) == 0 {
 		return nil
 	}
-	return json.NewDecoder(resp.Body).Decode(out)
+	return json.Unmarshal(respBody, out)
 }
 
 // ---------- DTOs internos ----------

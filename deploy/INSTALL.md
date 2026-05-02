@@ -114,7 +114,11 @@ az keyvault secret set --vault-name $kv --name keys-service-sql-password --value
 az keyvault secret set --vault-name $kv --name satisfaction-service-sql-password --value $sqlPwd
 
 # hubspot-service
-az keyvault secret set --vault-name $kv --name hubspot-service-api-token        --value "<HUBSPOT_PRIVATE_APP_TOKEN>"
+# IMPORTANTE: el secret es PLURAL (api-tokens). Acepta una lista CSV
+# de API keys de HubSpot — el engine las rota entre TODAS las réplicas
+# del servicio para no superar el rate limit (10 rps por key).
+# Si solo tenés una key, igual mandala como CSV de un elemento.
+az keyvault secret set --vault-name $kv --name hubspot-service-api-tokens       --value "<HUBSPOT_TOKEN_1>,<HUBSPOT_TOKEN_2>,<HUBSPOT_TOKEN_3>"
 az keyvault secret set --vault-name $kv --name hubspot-service-otp-webhook-token --value "<HUBSPOT_OTP_WEBHOOK_TOKEN>"
 az keyvault secret set --vault-name $kv --name hubspot-service-redis-password   --value (az redis list-keys -g rg-miproposito -n miproposito-redis --query primaryKey -o tsv)
 
