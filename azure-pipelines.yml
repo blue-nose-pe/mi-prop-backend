@@ -1,0 +1,154 @@
+# Azure DevOps Pipeline — Mi Propósito 2.0
+#
+# Construye TODOS los servicios y publica las imágenes a Azure Container
+# Registry. Detecta cambios por carpeta para evitar reconstruir todo en
+# cada commit (path filters en `trigger`).
+#
+# Stages:
+#   1. test       → go test ./... por cada microservicio Go
+#   2. build      → docker build (server + migrate/worker cuando aplica)
+#   3. push       → docker push a ACR
+#   4. deploy     → helm upgrade --install (solo en main, manual approval)
+#
+# Variables esperadas (Library / Variable Group "miproposito-cicd"):
+#   - acrName              (ej: "mipropacr")
+#   - aksResourceGroup     (ej: "rg-miproposito")
+#   - aksClusterName       (ej: "aks-miproposito")
+#   - serviceConnectionAcr (Azure DevOps service connection name)
+#   - serviceConnectionAks
+
+trigger:
+  branches:
+    include: [ main ]
+  paths:
+    include:
+      - users_service/**
+      - exams_service/**
+      - keys_service/**
+      - satisfaction_service/**
+      - hubspot_service/**
+      - analytics_service/**
+      - gateway/**
+      - deploy/**
+      - azure-pipelines.yml
+
+pr:
+  branches:
+    include: [ main ]
+
+variables:
+  - group: miproposito-cicd
+  - name: imageTag
+    value: $(Build.BuildId)
+  - name: goVersion
+    value: '1.24'
+
+pool:
+  vmImage: ubuntu-latest
+
+stages:
+# =========================================================
+# Stage 1 — Test
+# =========================================================
+- stage: Test
+  displayName: 'Build & test all Go services'
+  jobs:
+  - job: GoTest
+    displayName: 'go test'
+    steps:
+      - task: GoTool@0
+        inputs: { version: '$(goVersion)' }
+
+      - script: |
+          set -e
+          for s in users_service exams_service keys_service satisfaction_service hubspot_service analytics_service gateway; do
+            echo "=== $s ==="
+            (cd $s && go build ./... && go vet ./... && go test -count=1 -race -cover ./...)
+          done
+        displayName: 'Build + vet + test each service'
+
+# =========================================================
+# Stage 2 — Build & Push images
+# =========================================================
+- stage: Images
+  displayName: 'Docker build & push to ACR'
+  dependsOn: Test
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - job: BuildPush
+    displayName: 'Build & push'
+    steps:
+      - task: Docker@2
+        displayName: 'Login ACR'
+        inputs:
+          command: login
+          containerRegistry: $(serviceConnectionAcr)
+
+      - script: |
+          set -e
+          REG="$(acrName).azurecr.io"
+          TAG="$(imageTag)"
+          declare -A SERVICES=(
+            [users_service]="server migrate"
+            [exams_service]="server migrate"
+            [keys_service]="server migrate"
+            [satisfaction_service]="server migrate"
+            [hubspot_service]="server worker"
+            [analytics_service]="server"
+            [gateway]="server"
+          )
+          for svc in "${!SERVICES[@]}"; do
+            base=$(echo $svc | tr _ -)   # users_service → users-service
+            for target in ${SERVICES[$svc]}; do
+              if [ "$target" = "server" ]; then
+                tag="$REG/$base:$TAG"
+              else
+                tag="$REG/$base-$target:$TAG"
+              fi
+              echo "Building $tag (target=$target)"
+              docker build --target $target -t $tag $svc
+              docker push $tag
+            done
+          done
+        displayName: 'Build & push all images'
+
+# =========================================================
+# Stage 3 — Deploy to AKS (manual approval)
+# =========================================================
+- stage: Deploy
+  displayName: 'Helm upgrade en AKS'
+  dependsOn: Images
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: HelmUpgrade
+    environment: miproposito-prod   # crear en Environments → habilita gates manuales
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+            - task: HelmInstaller@0
+              inputs: { helmVersionToInstall: 'latest' }
+
+            - task: AzureCLI@2
+              displayName: 'kubectl context'
+              inputs:
+                azureSubscription: $(serviceConnectionAks)
+                scriptType: bash
+                scriptLocation: inlineScript
+                inlineScript: |
+                  az aks get-credentials -g $(aksResourceGroup) -n $(aksClusterName) --overwrite-existing
+
+            - script: |
+                set -e
+                cd deploy/helm/miproposito
+                helm dependency build
+                helm upgrade --install miproposito . \
+                  -n miproposito --create-namespace \
+                  -f values.production.yaml \
+                  --set global.imageTag=$(imageTag)
+              displayName: 'helm upgrade miproposito'
+
+            - script: |
+                bash deploy/smoke-test.sh https://api.miproposito.ucsp.edu.pe
+              displayName: 'Smoke tests'
+              continueOnError: false

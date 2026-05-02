@@ -1,0 +1,17 @@
+package domain
+
+import "satisfaction_service/internal/shared/apperr"
+
+var (
+	ErrSurveyNotFound   = apperr.NewNotFound("SURVEY_NOT_FOUND", "survey not found")
+	ErrQuestionNotFound = apperr.NewNotFound("QUESTION_NOT_FOUND", "survey question not found")
+	ErrResponseNotFound = apperr.NewNotFound("RESPONSE_NOT_FOUND", "response not found")
+
+	ErrSurveyCodeTaken = apperr.NewConflict("SURVEY_CODE_TAKEN", "survey code/version already exists", "code")
+
+	ErrInvalidQuestionKind = apperr.NewValidation("INVALID_QUESTION_KIND", "kind must be one of scale|nps|single|multi|open", "kind")
+	ErrInvalidTarget       = apperr.NewValidation("INVALID_TARGET_ROLE", "target_role must be one of admin|asesor|coordinador|estudiante", "target_role")
+	ErrInvalidTrigger      = apperr.NewValidation("INVALID_TRIGGER", "trigger must be one of post_test|on_demand|recurring", "trigger")
+	ErrSurveyNotPublished  = apperr.NewPermissionDenied("SURVEY_NOT_PUBLISHED", "cannot answer an unpublished survey")
+	ErrCannotEditPublished = apperr.NewPermissionDenied("SURVEY_LOCKED", "published surveys cannot be edited; clone for new version")
+)

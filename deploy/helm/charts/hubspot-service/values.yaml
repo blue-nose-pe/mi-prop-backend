@@ -1,0 +1,47 @@
+# hubspot-service — valores por defecto.
+
+image:
+  repository: hubspot-service
+  workerRepository: hubspot-service-worker
+
+service:
+  type: ClusterIP
+  grpcPort: 50054
+  webhookPort: 8080
+
+# Custom Object IDs (configurables por entorno).
+hubspot:
+  environment: prod  # prod | dev
+  customObjects:
+    keyId: "2-32450705"
+    asesorId: "2-32448565"
+    colegioId: "2-32450269"
+  team:
+    asesorTeamId: "45462027"
+    asesorRoleId: "1223012"
+  otpWebhook:
+    triggerId: "9013951"
+
+worker:
+  enabled: true
+  replicas: 2
+  # KEDA scaler: levanta más pods cuando crece la cola.
+  keda:
+    enabled: false
+    listLengthThreshold: 50
+
+server:
+  replicas: 2
+
+# Ingress externo opcional para el webhook inbound (HubSpot → nosotros).
+ingress:
+  webhook:
+    enabled: true
+    className: nginx
+    host: hubspot-webhook.miproposito.ucsp.edu.pe
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits:   { cpu: 500m, memory: 1Gi }

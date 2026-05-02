@@ -1,0 +1,127 @@
+syntax = "proto3";
+
+package users.v1;
+
+option go_package = "users_service/proto/gen;userspb";
+
+import "google/protobuf/timestamp.proto";
+import "common/search.proto";
+
+// --------- Service ---------
+service UserService {
+  // Single-item retrievals (not HubSpot-style; use SearchUsers for filtering).
+  rpc CreateUser      (CreateUserRequest)     returns (UserResponse);
+  rpc GetUser         (GetUserRequest)        returns (UserResponse);
+  rpc GetUserByEmail  (GetUserByEmailRequest) returns (UserResponse);
+  rpc UpdateUser      (UpdateUserRequest)     returns (UserResponse);
+  rpc DeactivateUser  (DeactivateUserRequest) returns (EmptyResponse);
+
+  // HubSpot-style search: filterGroups (AND within, OR across) + properties + limit.
+  rpc SearchUsers (common.v1.SearchRequest) returns (common.v1.SearchResponse);
+
+  rpc AssignPermissionGroup (AssignGroupRequest)   returns (EmptyResponse);
+  rpc RevokePermissionGroup (RevokeGroupRequest)   returns (EmptyResponse);
+  rpc ListUserPermissions   (ListPermsRequest)     returns (ListPermsResponse);
+  rpc HasPermission         (HasPermissionRequest) returns (HasPermissionResponse);
+}
+
+// AuthService — separado de UserService porque los endpoints de auth
+// suelen tener políticas distintas (ej. SkipFunc en el interceptor JWT,
+// rate-limits específicos, sin Authorization header en Login).
+service AuthService {
+  // Authenticate verifica credenciales sin emitir tokens. Útil para
+  // integraciones internas que validan permisos sin necesidad de JWT.
+  rpc Authenticate (AuthenticateRequest) returns (AuthenticateResponse);
+
+  // Login emite un par access+refresh JWT.
+  rpc Login (LoginRequest) returns (LoginResponse);
+
+  // Refresh rota el refresh token (revoca el viejo, emite uno nuevo).
+  rpc Refresh (RefreshRequest) returns (RefreshResponse);
+
+  // Logout revoca el refresh token. El access sigue siendo válido hasta
+  // su exp natural — el cliente debe descartarlo.
+  rpc Logout (LogoutRequest) returns (EmptyResponse);
+}
+
+// --------- Messages ---------
+// IDs:
+//   users.id y school.id   -> UUID (transportados como string)
+//   permission y permission_group -> INT identity (uint32)
+message User {
+  string id              = 1;
+  string email           = 2;
+  string first_name      = 3;
+  string last_name       = 4;
+  string document_number = 5;
+  string school_id       = 6;  // "" = sin colegio
+  bool   active          = 7;
+  google.protobuf.Timestamp last_access_at = 8;
+  google.protobuf.Timestamp created_at     = 9;
+  google.protobuf.Timestamp updated_at     = 10;
+}
+
+message CreateUserRequest {
+  string email           = 1;
+  string password        = 2;
+  string first_name      = 3;
+  string last_name       = 4;
+  string document_number = 5;
+  string school_id       = 6;  // opcional
+}
+
+message GetUserRequest        { string id = 1; }
+message GetUserByEmailRequest { string email = 1; }
+
+message UpdateUserRequest {
+  string id              = 1;
+  string first_name      = 2;
+  string last_name       = 3;
+  string document_number = 4;
+  string school_id       = 5;
+}
+
+message DeactivateUserRequest { string id = 1; }
+
+message AuthenticateRequest   { string email = 1; string password = 2; }
+message AuthenticateResponse  { User user = 1; repeated string permissions = 2; }
+
+// JWT Login flow.
+message LoginRequest {
+  string email      = 1;
+  string password   = 2;
+  string ip         = 3;  // opcional; si vacío, el server lo extrae del context
+  string user_agent = 4;
+}
+
+message LoginResponse {
+  User   user          = 1;
+  repeated string permissions = 2;
+  string access_token  = 3;
+  string refresh_token = 4;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+  string ip            = 2;
+  string user_agent    = 3;
+}
+
+message RefreshResponse {
+  string access_token  = 1;
+  string refresh_token = 2;  // rotado
+}
+
+message LogoutRequest { string refresh_token = 1; }
+
+message AssignGroupRequest { string user_id = 1; uint32 permission_group_id = 2; }
+message RevokeGroupRequest { string user_id = 1; uint32 permission_group_id = 2; }
+
+message ListPermsRequest  { string user_id = 1; }
+message ListPermsResponse { repeated string codes = 1; }
+
+message HasPermissionRequest  { string user_id = 1; string code = 2; }
+message HasPermissionResponse { bool allowed = 1; }
+
+message UserResponse  { User user = 1; }
+message EmptyResponse {}

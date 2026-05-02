@@ -1,0 +1,2411 @@
+openapi: 3.1.0
+
+# ====================================================================
+# Mi Propósito 2.0 — API REST pública (gateway)
+# ====================================================================
+# Este archivo es la fuente de verdad para el frontend Angular y para
+# cualquier integración externa. Toda ruta documentada acá corre en el
+# gateway (Go + REST→gRPC) y termina en uno de los 6 microservicios
+# internos (users, exams, keys, hubspot, satisfaction, analytics).
+#
+# Cómo se renderiza:
+#   - `index.html` carga este archivo con Stoplight Elements (3 columnas,
+#     "try it", search). Servir con cualquier servidor estático.
+#   - También compatible con Swagger UI, ReDoc y Postman (importar YAML).
+
+info:
+  title: Mi Propósito 2.0 API
+  version: 0.1.0
+  summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
+  description: |
+    # Bienvenido
+
+    Esta es la **API REST pública** del sistema Mi Propósito 2.0 — la plataforma
+    de orientación vocacional, simulacro de admisión y hábitos de estudio de la
+    UCSP (Arequipa).
+
+    Todo el tráfico HTTPS pasa por el **gateway**, que valida JWT, aplica CORS
+    y rate-limit, y traduce las requests REST a llamadas gRPC contra los
+    microservicios internos.
+
+    ## Arquitectura interna (resumen)
+
+    ```
+      Frontend (Angular) ──HTTPS REST──▶ gateway ──gRPC──▶ users-service
+                                                       ├──▶ exams-service
+                                                       ├──▶ keys-service
+                                                       ├──▶ hubspot-service
+                                                       ├──▶ satisfaction-service
+                                                       └──▶ analytics-service
+    ```
+
+    ## Autenticación
+
+    Todas las rutas excepto las marcadas como `públicas` requieren un
+    **access token JWT** en el header:
+
+    ```
+    Authorization: Bearer <access_token>
+    ```
+
+    El token se obtiene con `POST /api/auth/login`. Vence a los **15 minutos**.
+    Para renovarlo sin volver a pedir credenciales, usar `POST /api/auth/refresh`
+    con el `refresh_token` (vence a los **7 días**).
+
+    Los refresh tokens se rotan en cada uso: cada `Refresh` revoca el viejo y
+    devuelve uno nuevo. Si un atacante reusa un refresh token revocado, el
+    servidor lo detecta y rechaza.
+
+    ## Identificación
+
+    - **Usuarios internos** (admin, asesor, coordinador): login con email + password.
+    - **Estudiantes**: login con OTP (6 dígitos enviados al email vía HubSpot Automation).
+    - **Business key**: el **DNI** (`document_number`) es el identificador estable
+      cross-sistema (también es la clave de búsqueda en HubSpot).
+
+    ## Errores
+
+    Todos los errores siguen un envelope estándar **HubSpot-style**:
+
+    ```json
+    {
+      "status": "error",
+      "code": "EMAIL_TAKEN",
+      "message": "email already registered",
+      "errors": [
+        { "code": "EMAIL_TAKEN", "message": "email already registered",
+          "context": { "propertyName": ["email"] } }
+      ],
+      "category": "CONFLICT",
+      "correlation_id": "a3f9..."
+    }
+    ```
+
+    | HTTP | Categoría             | Cuándo                                      |
+    |-----:|-----------------------|---------------------------------------------|
+    | 400  | `VALIDATION_ERROR`    | Body inválido / campos faltantes            |
+    | 401  | `UNAUTHENTICATED`     | Sin token, token expirado o credenciales bad |
+    | 403  | `PERMISSION_DENIED`   | Autenticado pero sin permiso                 |
+    | 404  | `NOT_FOUND`           | Recurso no existe                            |
+    | 409  | `CONFLICT`            | Choque de unicidad (email ya tomado, etc.)   |
+    | 429  | `RATE_LIMIT`          | Demasiadas requests (default 600/IP/min)     |
+    | 500  | `INTERNAL_ERROR`      | Error inesperado del servidor                |
+
+    ## Búsqueda HubSpot-style
+
+    Los endpoints `*/search` (users, exams, questions, keys, surveys) aceptan
+    el mismo schema de búsqueda compuesta:
+
+    - `filterGroups[]`: lista de grupos. **Filtros dentro del mismo grupo se
+      combinan con AND**; **distintos grupos se combinan con OR**.
+    - `properties[]`: qué columnas devolver (whitelist por entidad — no se puede
+      pedir `password_hash`).
+    - `sorts[]`: ordenamiento (default: `created_at DESC, id DESC`).
+    - `limit`: 1-200 (default 50).
+    - `after`: offset para paginación.
+
+    ## Convenciones
+
+    - Todos los IDs UUID se transportan como `string` (formato canónico `36`
+      caracteres con guiones).
+    - Timestamps en formato ISO 8601 UTC (`2026-05-02T14:30:00Z`).
+    - Bodies JSON con `Content-Type: application/json`.
+    - Headers de respuesta: `X-Correlation-Id` para trazabilidad end-to-end.
+
+  contact:
+    name: Mi Propósito 2.0 — Blue Nose
+    email: pablo.perez@bluenose.pe
+
+  license:
+    name: Propietario UCSP
+    identifier: UNLICENSED
+
+# ====================================================================
+# Servers
+# ====================================================================
+servers:
+  - url: https://api.miproposito.ucsp.edu.pe
+    description: Producción
+  - url: https://api-staging.miproposito.ucsp.edu.pe
+    description: Staging (para QA)
+  - url: http://localhost:8080
+    description: Desarrollo local (gateway directo)
+
+# ====================================================================
+# Tags (orden = orden en el sidebar)
+# ====================================================================
+tags:
+  - name: Auth
+    description: |
+      Login, refresh y logout. Emite y rota JWT (access 15 min + refresh 7 días).
+      **Las 3 rutas son públicas** (no requieren token).
+
+  - name: Users
+    description: |
+      CRUD de usuarios + asignación de permission groups + búsqueda.
+      Un `User` modela cualquier persona del sistema (admin, asesor, coordinador,
+      estudiante). Los colegios también se representan como users — ver `Schools`.
+
+  - name: Schools
+    description: Colegios. Cada `school` está atado a un `user.id` (`schools_as_users`).
+
+  - name: Exams
+    description: |
+      Exámenes (vocacional / simulacro / hábitos) y su versionado por linaje.
+      Editar las preguntas de un exam publicado obliga a clonarlo (nueva versión
+      con `parent_exam_id` apuntando al original).
+
+  - name: Questions
+    description: Banco de preguntas reusable + sus opciones (multiple choice).
+
+  - name: ExamQuestions
+    description: Asociación N:M entre `exam` y `question` con puntaje y orden.
+
+  - name: Attempts
+    description: Intentos de un usuario contra un examen + sus respuestas.
+
+  - name: Keys
+    description: |
+      Códigos de acceso a tests. Modos: `school` (atado a un colegio) o `lan`
+      (sesión masiva sin colegio). Reemplaza al sistema de keys del P1.
+
+  - name: Surveys
+    description: |
+      Encuestas de satisfacción configurables (NPS, escala, abierta, single,
+      multi). Incluye cálculo de métricas agregadas (NPS, average, distribución).
+
+  - name: Analytics
+    description: |
+      Dashboards agregados (asesor, colegio, estudiante) + comparativos +
+      históricos + export Excel.
+
+  - name: HubSpot
+    description: |
+      Sincronización con HubSpot (contacts, custom objects Key/Asesor/Colegio,
+      OTP webhook). Mayoría de endpoints son **admin-only**.
+
+# ====================================================================
+# Security global
+# ====================================================================
+security:
+  - bearerAuth: []
+
+# ====================================================================
+# Paths
+# ====================================================================
+paths:
+  # ──────────────────────────────────────────────────────────────────
+  # AUTH
+  # ──────────────────────────────────────────────────────────────────
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login con email + password
+      description: |
+        Verifica credenciales contra `users-service` y emite un par
+        `access_token` + `refresh_token`. Si el user no existe o la password
+        es incorrecta, devuelve `401 INVALID_CREDENTIALS` **sin distinguir**
+        cuál falló (anti-enumeración).
+
+        El campo `permissions` retornado son los `code`s granulares
+        (`users.view`, `colegios.create`, etc.) que el frontend usa para
+        habilitar/ocultar UI.
+      security: []  # público
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+            examples:
+              admin:
+                summary: Login de admin UCSP
+                value: { email: "admin@ucsp.edu.pe", password: "Sup3rS3cr3t!" }
+              asesor:
+                summary: Login de asesor
+                value: { email: "asesor@ucsp.edu.pe", password: "Otr0Pass!" }
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+              example:
+                user:
+                  id: "9b24e0e3-3d22-4c14-bd8b-62a7b6a8d21f"
+                  email: "admin@ucsp.edu.pe"
+                  first_name: "Cinthia"
+                  last_name: "Ramirez"
+                  document_number: "70123456"
+                  school_id: ""
+                  active: true
+                permissions: ["users.view", "users.create", "colegios.view", "colegios.create"]
+                access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "INVALID_CREDENTIALS"
+                message: "email or password is incorrect"
+                category: "UNAUTHENTICATED"
+        '403':
+          description: Usuario desactivado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "USER_INACTIVE"
+                message: "user account is disabled"
+                category: "PERMISSION_DENIED"
+        '429': { $ref: '#/components/responses/RateLimit' }
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rotar refresh token y obtener nuevo access
+      description: |
+        Valida el `refresh_token` (firma + estado en BD), lo **revoca**, emite
+        un nuevo par y devuelve ambos. El cliente DEBE descartar el refresh
+        anterior — si lo reusa, el servidor lo detecta y rechaza con `401`.
+
+        Si el user fue desactivado entre el login y el refresh, el servidor
+        **revoca toda la familia de refresh tokens** del user y devuelve
+        `403 USER_INACTIVE`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string, description: "Refresh token entregado por /login o un /refresh anterior." }
+            example:
+              refresh_token: "eyJhbGciOiJIUzI1NiI..."
+      responses:
+        '200':
+          description: Tokens renovados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:  { type: string }
+                  refresh_token: { type: string, description: "NUEVO refresh — descartar el anterior" }
+              example:
+                access_token: "eyJhbGciOi..."
+                refresh_token: "eyJhbGciOi... (rotated)"
+        '401':
+          description: Refresh inválido / expirado / revocado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "INVALID_REFRESH_TOKEN"
+                message: "refresh token is invalid, expired or revoked"
+                category: "UNAUTHENTICATED"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revocar refresh token
+      description: |
+        Marca el refresh token como revocado. **Idempotente**: si ya estaba
+        revocado o no existe, devuelve 200 igual (no filtra info a un atacante).
+
+        El access token sigue siendo criptográficamente válido hasta su `exp`
+        natural (15 min). El cliente debe descartarlo.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token: { type: string }
+      responses:
+        '200':
+          description: Logout exitoso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+
+  # ──────────────────────────────────────────────────────────────────
+  # USERS
+  # ──────────────────────────────────────────────────────────────────
+  /api/users:
+    post:
+      tags: [Users]
+      summary: Crear usuario
+      description: |
+        Hashea la password con bcrypt y persiste el user. Falla con `409
+        EMAIL_TAKEN` o `409 DOCUMENT_TAKEN` si ya existe otro user con el
+        mismo email o DNI.
+
+        Permiso requerido: `users.create`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+            example:
+              email: "asesor.nuevo@ucsp.edu.pe"
+              password: "TempPass!123"
+              first_name: "María"
+              last_name: "Quispe"
+              document_number: "71234567"
+              school_id: ""
+      responses:
+        '200':
+          description: Usuario creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '409':
+          description: Email o DNI ya existen
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "EMAIL_TAKEN"
+                message: "email already registered"
+                errors:
+                  - code: "EMAIL_TAKEN"
+                    message: "email already registered"
+                    context: { propertyName: ["email"] }
+                category: "CONFLICT"
+
+  /api/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      tags: [Users]
+      summary: Obtener un usuario por ID
+      description: Cache-first (Redis). Permiso requerido `users.view`.
+      responses:
+        '200':
+          description: User encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Users]
+      summary: Actualizar usuario (parcial)
+      description: |
+        Actualiza solo los campos provistos no vacíos. Para limpiar un
+        campo, no lo mandes en el body (el server trata `""` como "no tocar").
+
+        Permiso: `users.edit`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                first_name:      { type: string }
+                last_name:       { type: string }
+                document_number: { type: string }
+                school_id:       { type: string, description: "UUID o '' (vacío = no tocar)" }
+            example:
+              first_name: "María Elena"
+              last_name: "Quispe Ramos"
+      responses:
+        '200':
+          description: User actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/users/{id}/deactivate:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    post:
+      tags: [Users]
+      summary: Desactivar usuario (soft delete)
+      description: |
+        Pone `active = false`. **No borra** ni asignaciones ni histórico —
+        Mi Propósito preserva todos los datos por requisito de UCSP.
+
+        Permiso: `users.delete`.
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/users/by-email:
+    get:
+      tags: [Users]
+      summary: Obtener un usuario por email
+      description: Para flujos OTP de estudiante / autocompletado. Permiso `users.view`.
+      parameters:
+        - in: query
+          name: email
+          required: true
+          schema: { type: string, format: email }
+      responses:
+        '200':
+          description: User encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/users/search:
+    post:
+      tags: [Users]
+      summary: Búsqueda HubSpot-style sobre users
+      description: |
+        Patrón `filterGroups` (AND dentro, OR entre grupos), `properties`,
+        `sorts`, paginación. Permiso `users.view`.
+
+        **Propiedades whitelist**: `email`, `first_name`, `last_name`,
+        `document_number`, `school_id`, `active`, `last_access_at`,
+        `created_at`, `updated_at`. `password_hash` no aparece — no es
+        seleccionable ni filtrable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SearchRequest' }
+            examples:
+              activos_de_un_colegio:
+                summary: Usuarios activos de un colegio
+                value:
+                  filter_groups:
+                    - filters:
+                        - { property_name: "school_id", operator: "EQ", values: ["3a8f..."] }
+                        - { property_name: "active",    operator: "EQ", values: ["true"] }
+                  properties: ["email","first_name","last_name","document_number"]
+                  sorts: [ { property_name: "last_name", direction: "ASC" } ]
+                  limit: 50
+              busqueda_por_dni:
+                summary: Buscar por DNI prefix
+                value:
+                  filter_groups:
+                    - filters:
+                        - { property_name: "document_number", operator: "STARTS_WITH", values: ["7012"] }
+                  limit: 10
+      responses:
+        '200':
+          description: Resultados paginados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+
+  /api/users/{id}/permissions/groups:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    post:
+      tags: [Users]
+      summary: Asignar un permission_group al user
+      description: |
+        Idempotente: si la asignación ya existe, no falla. Permiso `users.permissions`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permission_group_id]
+              properties:
+                permission_group_id:
+                  type: integer
+                  format: int32
+                  description: ID del catálogo `permission_group` (no UUID, INT identity)
+            example: { permission_group_id: 1 }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/users/{id}/permissions/groups/{group_id}:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+      - in: path
+        name: group_id
+        required: true
+        schema: { type: integer, format: int32 }
+    delete:
+      tags: [Users]
+      summary: Revocar permission_group
+      description: Permiso `users.permissions`.
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/users/{id}/permissions:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      tags: [Users]
+      summary: Listar permission codes efectivos del user
+      description: |
+        Devuelve los codes (`users.view`, etc.) calculados via
+        `user → user_permission_group → permission_group → permission`.
+      responses:
+        '200':
+          description: Lista de codes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  codes: { type: array, items: { type: string } }
+              example:
+                codes: ["users.view","users.create","colegios.view"]
+
+  /api/users/{id}/permissions/check:
+    parameters:
+      - $ref: '#/components/parameters/UserID'
+    get:
+      tags: [Users]
+      summary: ¿El user tiene este permiso?
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema: { type: string }
+          example: "users.create"
+      responses:
+        '200':
+          description: Sí/No
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed: { type: boolean }
+
+  # ──────────────────────────────────────────────────────────────────
+  # SCHOOLS (parte de users-service)
+  # ──────────────────────────────────────────────────────────────────
+  /api/schools/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SchoolID'
+    get:
+      tags: [Schools]
+      summary: Obtener un colegio por ID
+      description: Permiso `colegios.view`.
+      responses:
+        '200':
+          description: School encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  school: { $ref: '#/components/schemas/School' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──────────────────────────────────────────────────────────────────
+  # EXAMS
+  # ──────────────────────────────────────────────────────────────────
+  /api/exams:
+    post:
+      tags: [Exams]
+      summary: Crear un nuevo exam
+      description: |
+        El exam nace **NO publicado** (`published=false`). Hay que agregarle
+        preguntas (ver `/api/exams/{id}/questions`) y luego publicarlo.
+
+        Una vez publicado, el exam queda inmutable: para "editar" preguntas
+        hay que `Clone` (genera nueva versión con `parent_exam_id`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateExamRequest' }
+            example:
+              exam_type_code: "vocacional"
+              school_id: "3a8f..."
+              name: "Vocacional 2026 — Colegio San Pablo"
+              start_at: "2026-06-01T08:00:00Z"
+              end_at: "2026-06-30T23:59:59Z"
+              max_participants: 0
+      responses:
+        '200':
+          description: Exam creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exam: { $ref: '#/components/schemas/Exam' }
+
+  /api/exams/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+    get:
+      tags: [Exams]
+      summary: Obtener un exam por ID
+      responses:
+        '200':
+          description: Exam encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  exam: { $ref: '#/components/schemas/Exam' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Exams]
+      summary: Actualizar exam NO publicado
+      description: |
+        Solo aplicable a exams en draft (`published=false`). Para editar un
+        exam publicado, usar `POST /api/exams/{id}/clone`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                start_at: { type: string, format: date-time }
+                end_at:   { type: string, format: date-time }
+                max_participants: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: Exam actualizado
+          content:
+            application/json:
+              schema: { type: object, properties: { exam: { $ref: '#/components/schemas/Exam' } } }
+        '403':
+          description: Exam ya publicado — usar Clone
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "EXAM_PUBLISHED_LOCKED"
+                message: "published exams cannot be edited; clone for a new version instead"
+                category: "PERMISSION_DENIED"
+
+  /api/exams/{id}/publish:
+    parameters: [{ $ref: '#/components/parameters/ExamID' }]
+    post:
+      tags: [Exams]
+      summary: Publicar el exam
+      description: Requiere que el exam tenga al menos UNA pregunta asociada.
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/exams/{id}/deactivate:
+    parameters: [{ $ref: '#/components/parameters/ExamID' }]
+    post:
+      tags: [Exams]
+      summary: Desactivar exam (no borra)
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/exams/{id}/clone:
+    parameters: [{ $ref: '#/components/parameters/ExamID' }]
+    post:
+      tags: [Exams]
+      summary: Clonar exam para nueva versión
+      description: |
+        Crea un nuevo exam con `parent_exam_id` = id origen, `version` =
+        version_origen + 1, **en draft**, copiando todas sus `exam_question`.
+        Los `exam_attempt` antiguos siguen apuntando al exam original →
+        histórico preservado.
+      responses:
+        '200':
+          description: Nuevo exam creado
+          content:
+            application/json:
+              schema: { type: object, properties: { exam: { $ref: '#/components/schemas/Exam' } } }
+
+  /api/exams/search:
+    post:
+      tags: [Exams]
+      summary: Búsqueda HubSpot-style de exams
+      description: |
+        Propiedades whitelist: `exam_type_id`, `school_id`, `parent_exam_id`,
+        `version`, `name`, `start_at`, `end_at`, `max_participants`,
+        `published`, `active`, `created_at`, `updated_at`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SearchRequest' }
+            example:
+              filter_groups:
+                - filters:
+                    - { property_name: "exam_type_id", operator: "EQ",   values: ["1"] }
+                    - { property_name: "published",    operator: "EQ",   values: ["true"] }
+                    - { property_name: "end_at",       operator: "GTE",  values: ["2026-05-01T00:00:00Z"] }
+              limit: 20
+      responses:
+        '200':
+          description: Resultados
+          content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } }
+
+  # ──────────────────────────────────────────────────────────────────
+  # QUESTIONS (banco)
+  # ──────────────────────────────────────────────────────────────────
+  /api/questions:
+    post:
+      tags: [Questions]
+      summary: Crear pregunta en el banco
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:     { type: string, description: "Enunciado de la pregunta" }
+                category: { type: string, description: "Útil para vocacional (ej: 'matemática','lengua')" }
+            example:
+              text: "¿Cuánto es 7 × 8?"
+              category: "matemática"
+      responses:
+        '200':
+          description: Pregunta creada
+          content:
+            application/json:
+              schema: { type: object, properties: { question: { $ref: '#/components/schemas/Question' } } }
+
+  /api/questions/{id}:
+    parameters: [{ $ref: '#/components/parameters/QuestionID' }]
+    get:
+      tags: [Questions]
+      summary: Obtener pregunta por ID
+      responses:
+        '200':
+          description: Pregunta encontrada
+          content:
+            application/json:
+              schema: { type: object, properties: { question: { $ref: '#/components/schemas/Question' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Questions]
+      summary: Actualizar pregunta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:     { type: string }
+                category: { type: string }
+      responses:
+        '200':
+          description: Pregunta actualizada
+          content:
+            application/json:
+              schema: { type: object, properties: { question: { $ref: '#/components/schemas/Question' } } }
+
+  /api/questions/{id}/deactivate:
+    parameters: [{ $ref: '#/components/parameters/QuestionID' }]
+    post:
+      tags: [Questions]
+      summary: Desactivar pregunta
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/questions/{id}/options:
+    parameters: [{ $ref: '#/components/parameters/QuestionID' }]
+    get:
+      tags: [Questions]
+      summary: Listar opciones de una pregunta (multiple choice)
+      responses:
+        '200':
+          description: Opciones ordenadas por sort_order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  options:
+                    type: array
+                    items: { $ref: '#/components/schemas/QuestionOption' }
+    post:
+      tags: [Questions]
+      summary: Agregar opción a una pregunta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:       { type: string }
+                is_correct: { type: boolean }
+                sort_order: { type: integer, format: int32 }
+            example:
+              text: "56"
+              is_correct: true
+              sort_order: 1
+      responses:
+        '200':
+          description: Opción creada
+          content:
+            application/json:
+              schema: { type: object, properties: { option: { $ref: '#/components/schemas/QuestionOption' } } }
+
+  /api/options/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Questions]
+      summary: Actualizar opción
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:       { type: string }
+                is_correct: { type: boolean }
+                sort_order: { type: integer, format: int32 }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+    delete:
+      tags: [Questions]
+      summary: Eliminar opción
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/questions/search:
+    post:
+      tags: [Questions]
+      summary: Búsqueda HubSpot-style de preguntas
+      description: |
+        Propiedades whitelist: `text`, `category`, `active`, `created_at`,
+        `updated_at`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SearchRequest' }
+      responses:
+        '200':
+          description: Resultados
+          content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } }
+
+  # ──────────────────────────────────────────────────────────────────
+  # EXAM ↔ QUESTION
+  # ──────────────────────────────────────────────────────────────────
+  /api/exams/{id}/questions:
+    parameters: [{ $ref: '#/components/parameters/ExamID' }]
+    get:
+      tags: [ExamQuestions]
+      summary: Listar preguntas asignadas al exam
+      description: Ordenadas por `sort_order`.
+      responses:
+        '200':
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExamQuestion' }
+    post:
+      tags: [ExamQuestions]
+      summary: Asignar pregunta al exam
+      description: Falla si el exam ya está publicado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_id]
+              properties:
+                question_id: { type: string, format: uuid }
+                points:      { type: integer, format: int32, default: 1 }
+                sort_order:  { type: integer, format: int32, default: 0 }
+            example:
+              question_id: "9d3f..."
+              points: 2
+              sort_order: 1
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/exams/{id}/questions/{question_id}:
+    parameters:
+      - $ref: '#/components/parameters/ExamID'
+      - in: path
+        name: question_id
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      tags: [ExamQuestions]
+      summary: Quitar pregunta del exam
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/exams/{id}/questions/reorder:
+    parameters: [{ $ref: '#/components/parameters/ExamID' }]
+    post:
+      tags: [ExamQuestions]
+      summary: Reordenar preguntas del exam
+      description: Operación atómica (transacción). Falla si el exam está publicado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_ids]
+              properties:
+                question_ids:
+                  type: array
+                  items: { type: string, format: uuid }
+                  description: Orden deseado (índice = sort_order resultante)
+            example:
+              question_ids: ["9d3f...","af2c...","b88a..."]
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  # ──────────────────────────────────────────────────────────────────
+  # ATTEMPTS
+  # ──────────────────────────────────────────────────────────────────
+  /api/attempts:
+    post:
+      tags: [Attempts]
+      summary: Iniciar un intento
+      description: |
+        Verifica que el exam esté **abierto** (publicado, activo, ventana
+        temporal vigente, aforo no lleno) y crea el attempt. Si se provee
+        `key_code`, lo valida contra `keys-service` y registra el uso.
+
+        **Reglas de aforo**: `max_participants = 0` significa ilimitado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [exam_id, user_id]
+              properties:
+                exam_id:  { type: string, format: uuid }
+                user_id:  { type: string, format: uuid, description: "Usuario que rinde (puede ser distinto del autenticado si es admin)" }
+                key_code: { type: string, description: "Opcional. Si vacío, requiere permisos admin." }
+            example:
+              exam_id: "0ef2..."
+              user_id: "7c11..."
+              key_code: "S2026001"
+      responses:
+        '200':
+          description: Attempt iniciado
+          content:
+            application/json:
+              schema: { type: object, properties: { attempt: { $ref: '#/components/schemas/Attempt' } } }
+        '403':
+          description: Exam cerrado / aforo lleno / key inválida
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/attempts/{id}:
+    parameters: [{ $ref: '#/components/parameters/AttemptID' }]
+    get:
+      tags: [Attempts]
+      summary: Obtener attempt por ID
+      responses:
+        '200':
+          description: Attempt encontrado
+          content:
+            application/json:
+              schema: { type: object, properties: { attempt: { $ref: '#/components/schemas/Attempt' } } }
+
+  /api/attempts/{id}/answer:
+    parameters: [{ $ref: '#/components/parameters/AttemptID' }]
+    post:
+      tags: [Attempts]
+      summary: Responder una pregunta
+      description: |
+        **Idempotente** — un attempt elige UNA opción por pregunta. Si la
+        pregunta ya tenía respuesta, se sobreescribe. Falla con
+        `409 ATTEMPT_ALREADY_SUBMITTED` si el attempt ya fue finalizado.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_id, option_id]
+              properties:
+                question_id: { type: string, format: uuid }
+                option_id:   { type: string, format: uuid }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+        '409':
+          description: Attempt ya submitted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/attempts/{id}/finish:
+    parameters: [{ $ref: '#/components/parameters/AttemptID' }]
+    post:
+      tags: [Attempts]
+      summary: Finalizar attempt y calcular score
+      description: |
+        Calcula `score` sumando puntos de respuestas correctas.
+        **Idempotente**: si ya estaba finalizado, devuelve el attempt sin
+        recalcular. Después de finalizar, se dispara automáticamente el
+        sync a HubSpot (propiedades `score_<modulo>`, `ultima_evaluacion`).
+      responses:
+        '200':
+          description: Attempt finalizado
+          content:
+            application/json:
+              schema: { type: object, properties: { attempt: { $ref: '#/components/schemas/Attempt' } } }
+
+  /api/users/{id}/attempts:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Attempts]
+      summary: Listar attempts de un usuario
+      description: Ordenados por `started_at DESC`.
+      responses:
+        '200':
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attempt' }
+
+  /api/exams/{id}/attempts:
+    parameters: [{ $ref: '#/components/parameters/ExamID' }]
+    get:
+      tags: [Attempts]
+      summary: Listar attempts de un exam
+      responses:
+        '200':
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attempt' }
+
+  # ──────────────────────────────────────────────────────────────────
+  # KEYS
+  # ──────────────────────────────────────────────────────────────────
+  /api/keys:
+    post:
+      tags: [Keys]
+      summary: Generar una key
+      description: |
+        Si `code` viene vacío, el server genera uno aleatorio (8 chars
+        alfanuméricos en base32). `mode='school'` requiere `school_id`
+        no vacío.
+
+        Permiso: `keys.create` (asesores generan, admin valida).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GenerateKeyRequest' }
+            examples:
+              key_de_colegio:
+                summary: Key para sesión de un colegio
+                value:
+                  exam_type_id: 1
+                  school_id: "3a8f..."
+                  asesor_user_id: "7c11..."
+                  mode: "school"
+                  grade: "5to"
+                  section: "A"
+                  valid_from: "2026-06-01T00:00:00Z"
+                  valid_to:   "2026-06-30T23:59:59Z"
+                  max_uses: 30
+              key_lan:
+                summary: Key para sesión LAN masiva (sin colegio)
+                value:
+                  exam_type_id: 2
+                  asesor_user_id: "7c11..."
+                  mode: "lan"
+                  max_uses: 200
+      responses:
+        '200':
+          description: Key creada
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+        '400':
+          description: Validación
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              examples:
+                school_required:
+                  value: { status: "error", code: "SCHOOL_ID_REQUIRED", message: "school_id is required when mode='school'", category: "VALIDATION_ERROR" }
+                bad_dates:
+                  value: { status: "error", code: "INVALID_DATE_RANGE", message: "valid_from must be before valid_to", category: "VALIDATION_ERROR" }
+
+  /api/keys/{id}:
+    parameters: [{ $ref: '#/components/parameters/KeyID' }]
+    get:
+      tags: [Keys]
+      summary: Obtener key por ID
+      responses:
+        '200':
+          description: Key encontrada
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+    patch:
+      tags: [Keys]
+      summary: Actualizar key (solo metadatos editables)
+      description: |
+        Permite editar grade, section, valid_from/to, max_uses. NO permite
+        cambiar code, mode, school_id o asesor_user_id (esos definen la
+        identidad de la key — para cambiarlos, generar otra y desactivar).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                grade:      { type: string }
+                section:    { type: string }
+                valid_from: { type: string, format: date-time }
+                valid_to:   { type: string, format: date-time }
+                max_uses:   { type: integer, format: int32 }
+      responses:
+        '200':
+          description: Key actualizada
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+
+  /api/keys/by-code/{code}:
+    parameters:
+      - in: path
+        name: code
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Keys]
+      summary: Obtener key por código
+      responses:
+        '200':
+          description: Key encontrada
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/keys/{id}/deactivate:
+    parameters: [{ $ref: '#/components/parameters/KeyID' }]
+    post:
+      tags: [Keys]
+      summary: Desactivar key
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/keys/validate:
+    post:
+      tags: [Keys]
+      summary: Validar si una key es usable AHORA
+      description: |
+        **No incrementa el contador** — solo valida (activa, dentro de
+        ventana temporal, aforo no lleno). El contador se incrementa al
+        crear el `attempt`. Patrón "validate then commit".
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+            example: { code: "S2026001" }
+      responses:
+        '200':
+          description: Key válida y usable
+          content:
+            application/json:
+              schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+        '403':
+          description: Key inactiva, expirada o llena
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "KEY_NOT_USABLE"
+                message: "key is not usable"
+                category: "PERMISSION_DENIED"
+
+  /api/asesores/{id}/keys:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Keys]
+      summary: Listar keys generadas por un asesor
+      responses:
+        '200':
+          description: Lista (ordenada por created_at DESC)
+          content:
+            application/json:
+              schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Key' } } } }
+
+  /api/colegios/{id}/keys:
+    parameters: [{ $ref: '#/components/parameters/SchoolID' }]
+    get:
+      tags: [Keys]
+      summary: Listar keys atadas a un colegio
+      responses:
+        '200':
+          description: Lista
+          content:
+            application/json:
+              schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Key' } } } }
+
+  /api/keys/search:
+    post:
+      tags: [Keys]
+      summary: Búsqueda HubSpot-style de keys
+      description: |
+        Propiedades whitelist: `code`, `exam_type_id`, `school_id`,
+        `asesor_user_id`, `mode`, `grade`, `section`, `valid_from`,
+        `valid_to`, `max_uses`, `current_uses`, `active`, `created_at`,
+        `updated_at`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SearchRequest' }
+      responses:
+        '200':
+          description: Resultados
+          content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } }
+
+  # ──────────────────────────────────────────────────────────────────
+  # SURVEYS (satisfaction_service)
+  # ──────────────────────────────────────────────────────────────────
+  /api/surveys:
+    post:
+      tags: [Surveys]
+      summary: Crear encuesta (en draft)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code, title, target_role, trigger_kind]
+              properties:
+                code:         { type: string, description: "Identificador estable (slug). Único por version." }
+                title:        { type: string }
+                description:  { type: string }
+                target_role:  { type: string, enum: [admin, asesor, coordinador, estudiante] }
+                trigger_kind: { type: string, enum: [post_test, on_demand, recurring] }
+            example:
+              code: "post-vocacional-2026"
+              title: "Encuesta post Vocacional 2026"
+              description: "Tu opinión es importante"
+              target_role: "estudiante"
+              trigger_kind: "post_test"
+      responses:
+        '200':
+          description: Survey creada
+          content:
+            application/json:
+              schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+
+  /api/surveys/{id}:
+    parameters: [{ $ref: '#/components/parameters/SurveyID' }]
+    get:
+      tags: [Surveys]
+      summary: Obtener encuesta por ID
+      responses:
+        '200':
+          description: Survey encontrada
+          content:
+            application/json:
+              schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+    patch:
+      tags: [Surveys]
+      summary: Actualizar encuesta (solo si NO publicada)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:       { type: string }
+                description: { type: string }
+      responses:
+        '200':
+          description: Survey actualizada
+          content:
+            application/json:
+              schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+
+  /api/surveys/{id}/publish:
+    parameters: [{ $ref: '#/components/parameters/SurveyID' }]
+    post:
+      tags: [Surveys]
+      summary: Publicar encuesta
+      description: Requiere al menos una pregunta.
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/surveys/{id}/deactivate:
+    parameters: [{ $ref: '#/components/parameters/SurveyID' }]
+    post:
+      tags: [Surveys]
+      summary: Desactivar encuesta
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/surveys/by-code:
+    get:
+      tags: [Surveys]
+      summary: Obtener encuesta por code + version
+      parameters:
+        - in: query
+          name: code
+          required: true
+          schema: { type: string }
+        - in: query
+          name: version
+          required: true
+          schema: { type: integer, format: int32 }
+      responses:
+        '200':
+          description: Survey encontrada
+          content:
+            application/json:
+              schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+
+  /api/surveys/{id}/questions:
+    parameters: [{ $ref: '#/components/parameters/SurveyID' }]
+    get:
+      tags: [Surveys]
+      summary: Listar preguntas de la encuesta
+      responses:
+        '200':
+          description: Lista ordenada por sort_order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/SurveyQuestion' }
+    post:
+      tags: [Surveys]
+      summary: Agregar pregunta a la encuesta
+      description: |
+        El formato de `options_json` depende del `kind`:
+        - `scale`/`nps`: `{"min":1,"max":5,"min_label":"Mal","max_label":"Excelente"}`
+        - `single`/`multi`: `[{"value":"opt_1","label":"Sí"},{"value":"opt_2","label":"No"}]`
+        - `open`: vacío
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text, kind]
+              properties:
+                text:         { type: string }
+                kind:         { type: string, enum: [scale, nps, single, multi, open] }
+                sort_order:   { type: integer, format: int32 }
+                options_json: { type: string, description: "JSON serializado, formato según kind" }
+                required:     { type: boolean, default: true }
+            examples:
+              nps:
+                summary: Pregunta NPS
+                value:
+                  text: "¿Qué tan probable es que recomiendes Mi Propósito?"
+                  kind: "nps"
+                  sort_order: 1
+                  required: true
+              single:
+                summary: Pregunta single-choice
+                value:
+                  text: "¿La encuesta fue clara?"
+                  kind: "single"
+                  sort_order: 2
+                  options_json: "[{\"value\":\"si\",\"label\":\"Sí\"},{\"value\":\"no\",\"label\":\"No\"}]"
+                  required: true
+      responses:
+        '200':
+          description: Pregunta creada
+          content:
+            application/json:
+              schema: { type: object, properties: { question: { $ref: '#/components/schemas/SurveyQuestion' } } }
+
+  /api/survey-questions/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    patch:
+      tags: [Surveys]
+      summary: Actualizar pregunta de encuesta
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                text:         { type: string }
+                sort_order:   { type: integer, format: int32 }
+                options_json: { type: string }
+                required:     { type: boolean }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+    delete:
+      tags: [Surveys]
+      summary: Eliminar pregunta de encuesta
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/surveys/search:
+    post:
+      tags: [Surveys]
+      summary: Búsqueda HubSpot-style de encuestas
+      description: |
+        Propiedades: `code`, `title`, `target_role`, `trigger_kind`, `version`,
+        `published`, `active`, `created_at`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SearchRequest' }
+      responses:
+        '200':
+          description: Resultados
+          content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } }
+
+  /api/survey-responses:
+    post:
+      tags: [Surveys]
+      summary: Enviar respuesta a una encuesta
+      description: |
+        Persiste la respuesta + answers en una transacción. Falla si la
+        encuesta no está publicada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [survey_id, user_id, answers]
+              properties:
+                survey_id:       { type: string, format: uuid }
+                user_id:         { type: string, format: uuid }
+                exam_attempt_id: { type: string, format: uuid, description: "Opcional. Lo manda el front cuando trigger=post_test" }
+                answers:
+                  type: array
+                  items:
+                    type: object
+                    required: [question_id]
+                    properties:
+                      question_id:  { type: string, format: uuid }
+                      value_text:   { type: string, description: "Para open/single/multi" }
+                      value_number: { type: integer, format: int32, description: "Para scale/nps" }
+                      has_number:   { type: boolean, description: "true si value_number es válido (distingue 0 explícito de no-respuesta)" }
+            example:
+              survey_id: "0aa1..."
+              user_id: "7c11..."
+              exam_attempt_id: "f3b9..."
+              answers:
+                - { question_id: "abc1...", value_number: 9, has_number: true }
+                - { question_id: "abc2...", value_text: "si" }
+      responses:
+        '200':
+          description: Respuesta registrada
+          content:
+            application/json:
+              schema: { type: object, properties: { response: { $ref: '#/components/schemas/SurveyResponse' } } }
+
+  /api/survey-responses/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Surveys]
+      summary: Obtener respuesta por ID
+      responses:
+        '200':
+          description: Respuesta encontrada
+          content:
+            application/json:
+              schema: { type: object, properties: { response: { $ref: '#/components/schemas/SurveyResponse' } } }
+
+  /api/surveys/{id}/metrics:
+    parameters: [{ $ref: '#/components/parameters/SurveyID' }]
+    get:
+      tags: [Surveys]
+      summary: Métricas agregadas de la encuesta
+      description: |
+        Calcula NPS, average y distribuciones según el `kind` de cada pregunta.
+        Computado en runtime (no cacheado a nivel de encuesta).
+      responses:
+        '200':
+          description: Métricas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SurveyMetrics' }
+
+  # ──────────────────────────────────────────────────────────────────
+  # ANALYTICS
+  # ──────────────────────────────────────────────────────────────────
+  /api/analytics/asesor/{id}/dashboard:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Analytics]
+      summary: Dashboard de un asesor
+      description: |
+        Agrega: total colegios asignados, total keys generadas, total
+        attempts, métricas por tipo de examen.
+
+        Cacheado en Redis (TTL 5 min). Permiso `analytics.view` o ser el
+        propio asesor.
+      responses:
+        '200':
+          description: Dashboard
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AsesorDashboard' }
+
+  /api/analytics/colegio/{id}/dashboard:
+    parameters: [{ $ref: '#/components/parameters/SchoolID' }]
+    get:
+      tags: [Analytics]
+      summary: Dashboard de un colegio
+      responses:
+        '200':
+          description: Dashboard
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ColegioDashboard' }
+
+  /api/analytics/estudiante/{id}/dashboard:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Analytics]
+      summary: Dashboard del estudiante
+      description: Tests rendidos + scores. NO cacheado (datos personales sensibles).
+      responses:
+        '200':
+          description: Dashboard
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EstudianteDashboard' }
+
+  /api/analytics/comparativo:
+    get:
+      tags: [Analytics]
+      summary: Comparativo entre colegios
+      parameters:
+        - in: query
+          name: exam_type_code
+          required: true
+          schema: { type: string, enum: [vocacional, simulacro, habitos] }
+      responses:
+        '200':
+          description: Comparativo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ColegioComparativo' }
+
+  /api/analytics/estudiante/{id}/historico:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Analytics]
+      summary: Histórico completo de attempts del estudiante
+      description: |
+        Útil para que el estudiante (o sus padres) vean evolución temporal
+        de sus puntuaciones.
+      responses:
+        '200':
+          description: Histórico
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoricoEstudiante' }
+
+  /api/analytics/asesor/{id}/export.xlsx:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Analytics]
+      summary: Exportar dashboard de asesor a Excel
+      description: |
+        Devuelve `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+        binario. El frontend lo descarga directo (`window.location` o
+        `Blob`).
+      responses:
+        '200':
+          description: Archivo XLSX
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+
+  /api/analytics/colegio/{id}/export.xlsx:
+    parameters: [{ $ref: '#/components/parameters/SchoolID' }]
+    get:
+      tags: [Analytics]
+      summary: Exportar dashboard de colegio a Excel
+      responses:
+        '200':
+          description: Archivo XLSX
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+
+  /api/analytics/comparativo/export.xlsx:
+    get:
+      tags: [Analytics]
+      summary: Exportar comparativo a Excel
+      parameters:
+        - in: query
+          name: exam_type_code
+          required: true
+          schema: { type: string, enum: [vocacional, simulacro, habitos] }
+      responses:
+        '200':
+          description: Archivo XLSX
+          content:
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+
+  # ──────────────────────────────────────────────────────────────────
+  # HUBSPOT (mostly admin)
+  # ──────────────────────────────────────────────────────────────────
+  /api/hubspot/contacts:
+    post:
+      tags: [HubSpot]
+      summary: Upsert contact en HubSpot por DNI
+      description: |
+        **Síncrono** — el caller necesita el `record_id` devuelto. Si se
+        provee `user_id`, además persistimos el record_id en la tabla
+        `users.hubspot_record_id` (resuelve los TODOs sin terminar del P1).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dni]
+              properties:
+                dni:         { type: string }
+                email:       { type: string, format: email }
+                first_name:  { type: string }
+                last_name:   { type: string }
+                phone:       { type: string }
+                school_name: { type: string }
+                grade:       { type: string }
+                user_id:     { type: string, format: uuid }
+                extra:
+                  type: object
+                  additionalProperties: { type: string }
+                  description: "Propiedades extra (escapan el contrato base)"
+            example:
+              dni: "70123456"
+              email: "estudiante@gmail.com"
+              first_name: "Juan"
+              last_name: "Pérez"
+              phone: "+51987654321"
+              school_name: "Colegio San Pablo"
+              grade: "5to"
+              user_id: "7c11..."
+      responses:
+        '200':
+          description: Record ID
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  record_id: { type: string, description: "ID del Contact en HubSpot (no UUID)" }
+
+  /api/hubspot/contacts/by-dni/{dni}:
+    parameters:
+      - in: path
+        name: dni
+        required: true
+        schema: { type: string }
+    get:
+      tags: [HubSpot]
+      summary: Buscar contact por DNI
+      responses:
+        '200':
+          description: Record ID (vacío si no existe)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  record_id: { type: string }
+
+  /api/hubspot/otp:
+    post:
+      tags: [HubSpot]
+      summary: Disparar webhook OTP
+      description: |
+        Escribe la propiedad `otp_estudiante` en el contact (si existe) y
+        dispara el Automation Webhook de HubSpot que envía el email al alumno.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, otp]
+              properties:
+                email: { type: string, format: email }
+                otp:   { type: string, description: "6 dígitos, generado server-side" }
+            example: { email: "alumno@gmail.com", otp: "489201" }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/hubspot/results:
+    post:
+      tags: [HubSpot]
+      summary: Sync de resultado de examen al Contact
+      description: |
+        **Asíncrono** — encolado en BullMQ con backoff exponencial. La cola
+        deduplica por `attempt_id` (idempotente).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [dni, exam_type_code, score, max_score, attempt_id, submitted_at]
+              properties:
+                dni:                { type: string }
+                exam_type_code:     { type: string, enum: [vocacional, simulacro, habitos] }
+                score:              { type: integer, format: int32 }
+                max_score:          { type: integer, format: int32 }
+                attempt_id:         { type: string, format: uuid }
+                submitted_at:       { type: string, format: date-time }
+                contact_record_id:  { type: string, description: "Opcional. Si se provee, evita un search por DNI" }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/hubspot/schools:
+    post:
+      tags: [HubSpot]
+      summary: Sync school como Custom Object
+      description: Asíncrono. Idempotente por `school_id`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [school_id, email, nombre]
+              properties:
+                school_id:        { type: string, format: uuid }
+                email:            { type: string }
+                nombre:           { type: string }
+                personal_a_cargo: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/hubspot/asesores:
+    post:
+      tags: [HubSpot]
+      summary: Sync asesor como Custom Object
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asesor_user_id, email, nombre]
+              properties:
+                asesor_user_id: { type: string, format: uuid }
+                email:          { type: string }
+                nombre:         { type: string }
+                bio:            { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/hubspot/failed:
+    get:
+      tags: [HubSpot]
+      summary: Listar jobs fallidos (admin)
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, format: int32, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, format: int32, default: 0 }
+      responses:
+        '200':
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        queue:         { type: string, example: "hubspot:sync-result" }
+                        job_id:        { type: string }
+                        failed_reason: { type: string }
+                        payload:       { type: string, description: "JSON serializado del payload original" }
+                        failed_at:     { type: string, format: date-time }
+
+  /api/hubspot/retry:
+    post:
+      tags: [HubSpot]
+      summary: Reintentar un job fallido
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [queue, job_id]
+              properties:
+                queue:  { type: string }
+                job_id: { type: string }
+      responses:
+        '200':
+          description: Resultado del retry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+
+# ====================================================================
+# Components
+# ====================================================================
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Access token JWT obtenido via `POST /api/auth/login`.
+        Vence a los 15 minutos — renovar con `POST /api/auth/refresh`.
+
+  parameters:
+    UserID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: UUID del user
+    SchoolID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: UUID del colegio
+    ExamID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: UUID del exam
+    QuestionID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: UUID de la pregunta
+    AttemptID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: UUID del attempt
+    KeyID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: UUID de la key
+    SurveyID:
+      in: path
+      name: id
+      required: true
+      schema: { type: string, format: uuid }
+      description: UUID de la encuesta
+
+  responses:
+    Empty:
+      description: OK
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              status: { type: string, example: "ok" }
+    NotFound:
+      description: Recurso no existe
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            status: "error"
+            code: "NOT_FOUND"
+            message: "resource not found"
+            category: "NOT_FOUND"
+    ValidationError:
+      description: Error de validación
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            status: "error"
+            code: "INVALID_EMAIL"
+            message: "email format is invalid"
+            errors:
+              - { code: "INVALID_EMAIL", message: "email format is invalid", context: { propertyName: ["email"] } }
+            category: "VALIDATION_ERROR"
+    RateLimit:
+      description: Demasiadas requests
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Segundos a esperar
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+          example:
+            status: "error"
+            code: "RATE_LIMIT"
+            message: "too many requests"
+
+  schemas:
+    # ----- Error envelope -----
+    ErrorResponse:
+      type: object
+      required: [status, message]
+      properties:
+        status:         { type: string, enum: [error] }
+        code:           { type: string, description: "Código simbólico (ej: EMAIL_TAKEN)" }
+        message:        { type: string }
+        errors:
+          type: array
+          items: { $ref: '#/components/schemas/ErrorDetail' }
+        category:
+          type: string
+          enum: [VALIDATION_ERROR, NOT_FOUND, CONFLICT, UNAUTHENTICATED, PERMISSION_DENIED, INTERNAL_ERROR, RATE_LIMIT]
+        correlation_id: { type: string, description: "Reflejado también en el header X-Correlation-Id" }
+
+    ErrorDetail:
+      type: object
+      properties:
+        code:    { type: string }
+        message: { type: string }
+        context:
+          type: object
+          additionalProperties:
+            type: array
+            items: { type: string }
+          description: |
+            Contexto del error. Convención: `propertyName: ["email"]` para
+            indicar qué campo causó el problema.
+
+    # ----- Auth -----
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:    { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+
+    LoginResponse:
+      type: object
+      properties:
+        user:         { $ref: '#/components/schemas/User' }
+        permissions:  { type: array, items: { type: string }, description: "Codes de permisos efectivos" }
+        access_token: { type: string }
+        refresh_token: { type: string }
+
+    # ----- Common search -----
+    SearchRequest:
+      type: object
+      properties:
+        filter_groups:
+          type: array
+          items:
+            type: object
+            properties:
+              filters:
+                type: array
+                items:
+                  type: object
+                  required: [property_name, operator]
+                  properties:
+                    property_name: { type: string }
+                    operator:
+                      type: string
+                      enum: [EQ, NEQ, LT, LTE, GT, GTE, IN, NOT_IN, CONTAINS, STARTS_WITH, HAS_PROPERTY, NOT_HAS_PROPERTY, BETWEEN]
+                    values:
+                      type: array
+                      items: { type: string }
+        properties:
+          type: array
+          items: { type: string }
+          description: "Whitelist de propiedades a devolver. Vacío = default del schema."
+        sorts:
+          type: array
+          items:
+            type: object
+            properties:
+              property_name: { type: string }
+              direction:     { type: string, enum: [ASC, DESC], default: ASC }
+        limit: { type: integer, format: int32, default: 50, maximum: 200 }
+        after: { type: integer, format: int32, default: 0, description: "Offset para paginación" }
+
+    SearchResponse:
+      type: object
+      properties:
+        total: { type: integer, format: int64 }
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              id:         { type: string }
+              created_at: { type: string, format: date-time }
+              updated_at: { type: string, format: date-time, nullable: true }
+              archived:   { type: boolean }
+              properties:
+                type: object
+                additionalProperties: true
+        paging:
+          type: object
+          properties:
+            next_after: { type: integer, format: int32 }
+            has_more:   { type: boolean }
+
+    # ----- Domain entities -----
+    User:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        email:           { type: string, format: email }
+        first_name:      { type: string }
+        last_name:       { type: string }
+        document_number: { type: string }
+        school_id:       { type: string, format: uuid, description: "'' si no pertenece a un colegio" }
+        active:          { type: boolean }
+        last_access_at:  { type: string, format: date-time, nullable: true }
+        created_at:      { type: string, format: date-time }
+        updated_at:      { type: string, format: date-time, nullable: true }
+
+    CreateUserRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:           { type: string, format: email }
+        password:        { type: string, format: password, minLength: 8 }
+        first_name:      { type: string }
+        last_name:       { type: string }
+        document_number: { type: string }
+        school_id:       { type: string, format: uuid }
+
+    School:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        user_id:    { type: string, format: uuid, description: "Usuario que representa al colegio" }
+        name:       { type: string }
+        active:     { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    Exam:
+      type: object
+      properties:
+        id:               { type: string, format: uuid }
+        exam_type_id:     { type: integer, format: int32, description: "FK al catálogo exam_type" }
+        school_id:        { type: string, format: uuid, description: "'' si exam abierto" }
+        parent_exam_id:   { type: string, format: uuid, description: "'' si primera versión" }
+        version:          { type: integer, format: int32 }
+        name:             { type: string }
+        start_at:         { type: string, format: date-time }
+        end_at:           { type: string, format: date-time }
+        max_participants: { type: integer, format: int32, description: "0 = ilimitado" }
+        published:        { type: boolean }
+        active:           { type: boolean }
+        created_at:       { type: string, format: date-time }
+        updated_at:       { type: string, format: date-time, nullable: true }
+
+    CreateExamRequest:
+      type: object
+      required: [exam_type_code, name, start_at, end_at]
+      properties:
+        exam_type_code:    { type: string, enum: [vocacional, simulacro, habitos] }
+        school_id:         { type: string, format: uuid }
+        name:              { type: string }
+        start_at:          { type: string, format: date-time }
+        end_at:            { type: string, format: date-time }
+        max_participants:  { type: integer, format: int32 }
+
+    Question:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        text:       { type: string }
+        category:   { type: string }
+        active:     { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time, nullable: true }
+
+    QuestionOption:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        text:        { type: string }
+        is_correct:  { type: boolean }
+        sort_order:  { type: integer, format: int32 }
+
+    ExamQuestion:
+      type: object
+      properties:
+        exam_id:     { type: string, format: uuid }
+        question_id: { type: string, format: uuid }
+        points:      { type: integer, format: int32 }
+        sort_order:  { type: integer, format: int32 }
+
+    Attempt:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        exam_id:      { type: string, format: uuid }
+        user_id:      { type: string, format: uuid }
+        key_id:       { type: string, format: uuid, description: "'' si no se usó key" }
+        score:        { type: integer, format: int32 }
+        max_score:    { type: integer, format: int32 }
+        started_at:   { type: string, format: date-time }
+        submitted_at: { type: string, format: date-time, nullable: true }
+
+    Key:
+      type: object
+      properties:
+        id:             { type: string, format: uuid }
+        code:           { type: string, description: "Código alfanumérico" }
+        exam_type_id:   { type: integer, format: int32 }
+        school_id:      { type: string, format: uuid, description: "'' en mode='lan'" }
+        asesor_user_id: { type: string, format: uuid }
+        mode:           { type: string, enum: [school, lan] }
+        grade:          { type: string }
+        section:        { type: string }
+        valid_from:     { type: string, format: date-time, nullable: true }
+        valid_to:       { type: string, format: date-time, nullable: true }
+        max_uses:       { type: integer, format: int32, description: "0 = ilimitado" }
+        current_uses:   { type: integer, format: int32 }
+        active:         { type: boolean }
+        created_at:     { type: string, format: date-time }
+        updated_at:     { type: string, format: date-time, nullable: true }
+
+    GenerateKeyRequest:
+      type: object
+      required: [exam_type_id, asesor_user_id, mode]
+      properties:
+        code:           { type: string, description: "Opcional — si vacío, se genera random" }
+        exam_type_id:   { type: integer, format: int32 }
+        school_id:      { type: string, format: uuid, description: "Requerido si mode=school" }
+        asesor_user_id: { type: string, format: uuid }
+        mode:           { type: string, enum: [school, lan] }
+        grade:          { type: string }
+        section:        { type: string }
+        valid_from:     { type: string, format: date-time, nullable: true }
+        valid_to:       { type: string, format: date-time, nullable: true }
+        max_uses:       { type: integer, format: int32, default: 0 }
+
+    Survey:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        code:         { type: string }
+        title:        { type: string }
+        description:  { type: string }
+        target_role:  { type: string, enum: [admin, asesor, coordinador, estudiante] }
+        trigger_kind: { type: string, enum: [post_test, on_demand, recurring] }
+        version:      { type: integer, format: int32 }
+        published:    { type: boolean }
+        active:       { type: boolean }
+        created_at:   { type: string, format: date-time }
+        updated_at:   { type: string, format: date-time, nullable: true }
+
+    SurveyQuestion:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        survey_id:    { type: string, format: uuid }
+        text:         { type: string }
+        kind:         { type: string, enum: [scale, nps, single, multi, open] }
+        sort_order:   { type: integer, format: int32 }
+        options_json: { type: string, description: "JSON serializado, formato según kind" }
+        required:     { type: boolean }
+
+    SurveyResponse:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        survey_id:       { type: string, format: uuid }
+        user_id:         { type: string, format: uuid }
+        exam_attempt_id: { type: string, format: uuid }
+        submitted_at:    { type: string, format: date-time }
+
+    SurveyMetrics:
+      type: object
+      properties:
+        survey_id:       { type: string, format: uuid }
+        total_responses: { type: integer, format: int32 }
+        per_question:
+          type: array
+          items:
+            type: object
+            properties:
+              question_id:  { type: string, format: uuid }
+              kind:         { type: string }
+              count:        { type: integer, format: int32 }
+              average:      { type: number, format: double, nullable: true, description: "Para scale/nps" }
+              has_average:  { type: boolean }
+              nps:          { type: integer, format: int32, nullable: true, description: "-100..100, solo para kind=nps" }
+              has_nps:      { type: boolean }
+              distribution:
+                type: object
+                additionalProperties: { type: integer, format: int32 }
+                description: "Solo para single/multi: option_value → count"
+
+    # ----- Analytics dashboards -----
+    ExamTypeStats:
+      type: object
+      properties:
+        attempts:      { type: integer, format: int32 }
+        avg_score:     { type: number, format: double }
+        avg_max_score: { type: number, format: double }
+
+    AsesorDashboard:
+      type: object
+      properties:
+        asesor_id:      { type: string, format: uuid }
+        asesor_name:    { type: string }
+        total_colegios: { type: integer, format: int32 }
+        total_keys:     { type: integer, format: int32 }
+        total_attempts: { type: integer, format: int32 }
+        by_exam_type:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ExamTypeStats' }
+        generated_at:   { type: string, format: date-time }
+
+    ColegioDashboard:
+      type: object
+      properties:
+        school_id:      { type: string, format: uuid }
+        school_name:    { type: string }
+        total_students: { type: integer, format: int32 }
+        total_attempts: { type: integer, format: int32 }
+        by_exam_type:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/ExamTypeStats' }
+        generated_at:   { type: string, format: date-time }
+
+    EstudianteDashboard:
+      type: object
+      properties:
+        user_id:      { type: string, format: uuid }
+        student_name: { type: string }
+        tests:
+          type: array
+          items: { $ref: '#/components/schemas/TestResult' }
+        generated_at: { type: string, format: date-time }
+
+    TestResult:
+      type: object
+      properties:
+        exam_type_code: { type: string }
+        exam_id:        { type: string, format: uuid }
+        exam_name:      { type: string }
+        score:          { type: integer, format: int32 }
+        max_score:      { type: integer, format: int32 }
+        submitted_at:   { type: string, format: date-time }
+
+    ColegioComparativo:
+      type: object
+      properties:
+        exam_type_code: { type: string }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              school_id:   { type: string, format: uuid }
+              school_name: { type: string }
+              avg_score:   { type: number, format: double }
+              attempts:    { type: integer, format: int32 }
+        generated_at:   { type: string, format: date-time }
+
+    HistoricoEstudiante:
+      type: object
+      properties:
+        user_id:      { type: string, format: uuid }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/TestResult' }
+        generated_at: { type: string, format: date-time }

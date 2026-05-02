@@ -1,0 +1,11 @@
+go 1.24
+
+use (
+	./users_service
+	./exams_service
+	./keys_service
+	./satisfaction_service
+	./hubspot_service
+	./analytics_service
+	./gateway
+)

@@ -1,0 +1,92 @@
+syntax = "proto3";
+
+// Contrato de busqueda compartido (estilo HubSpot).
+// Este archivo DEBE tener la misma forma en todos los microservicios,
+// pensado para eventualmente moverse a un modulo de protos compartido.
+package common.v1;
+
+option go_package = "satisfaction_service/proto/gen/common;commonpb";
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+// ================== Request ==================
+message SearchRequest {
+  // Grupos de filtros. filters DENTRO de un mismo grupo => AND.
+  // Distintos grupos entre si => OR.
+  repeated FilterGroup filter_groups = 1;
+
+  // Propiedades a devolver. Vacio = todas las "selectable" del schema.
+  repeated string properties = 2;
+
+  // Max resultados. Default = 50, cap del schema (ej. 200).
+  uint32 limit = 3;
+
+  // Offset para paginacion (0 = primera pagina).
+  uint32 after = 4;
+
+  // Ordenamiento. Si vacio, default del schema (created_at DESC).
+  repeated SortOrder sorts = 5;
+}
+
+message FilterGroup {
+  repeated Filter filters = 1;
+}
+
+message Filter {
+  string property_name = 1;
+  FilterOperator operator = 2;
+  // Siempre arreglo de strings. El servidor hace cast segun el tipo
+  // declarado en el schema (ej: uuid, timestamptz, bigint).
+  // IN / NOT_IN => multiples values. BETWEEN => 2 values.
+  repeated string values = 3;
+}
+
+enum FilterOperator {
+  FILTER_OPERATOR_UNSPECIFIED = 0;
+  EQ = 1;                // property = value
+  NEQ = 2;               // property <> value
+  LT = 3;                // property < value
+  LTE = 4;               // property <= value
+  GT = 5;                // property > value
+  GTE = 6;               // property >= value
+  IN = 7;                // property IN (values...)
+  NOT_IN = 8;            // property NOT IN (values...)
+  CONTAINS = 9;          // property ILIKE '%value%'
+  STARTS_WITH = 10;      // property ILIKE 'value%'
+  HAS_PROPERTY = 11;     // property IS NOT NULL
+  NOT_HAS_PROPERTY = 12; // property IS NULL
+  BETWEEN = 13;          // property BETWEEN value0 AND value1
+}
+
+message SortOrder {
+  string property_name = 1;
+  SortDirection direction = 2;
+}
+
+enum SortDirection {
+  SORT_DIRECTION_UNSPECIFIED = 0;
+  ASC = 1;
+  DESC = 2;
+}
+
+// ================== Response ==================
+message SearchResponse {
+  uint32 total = 1;               // total de coincidencias (ignorando limit/after)
+  repeated SearchResult results = 2;
+  Paging paging = 3;
+}
+
+message SearchResult {
+  string id = 1;
+  // Bag dinamico de propiedades (solo las solicitadas por el request).
+  google.protobuf.Struct properties = 2;
+  google.protobuf.Timestamp created_at = 3;
+  google.protobuf.Timestamp updated_at = 4;
+  bool archived = 5;
+}
+
+message Paging {
+  uint32 next_after = 1; // offset a usar en la siguiente pagina
+  bool has_more = 2;
+}

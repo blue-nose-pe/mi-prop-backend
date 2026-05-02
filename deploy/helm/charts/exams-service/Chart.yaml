@@ -1,0 +1,6 @@
+apiVersion: v2
+name: exams-service
+description: Mi Propósito 2.0 — exam_type/exam/question/attempt. Sirve los 3 módulos (Vocacional/Simulacro/Hábitos).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

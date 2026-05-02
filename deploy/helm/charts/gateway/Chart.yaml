@@ -1,0 +1,6 @@
+apiVersion: v2
+name: gateway
+description: Mi Propósito 2.0 — API Gateway HTTP REST → gRPC (grpc-gateway). Punto de entrada del frontend.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

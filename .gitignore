@@ -1,0 +1,70 @@
+# ============================================================
+# Mi Propósito 2.0 — backend (Go monorepo)
+# ============================================================
+
+# ------ Frontend (vive en otro repo) ------
+ucsp-front/
+
+# ------ Documentación interna del cliente (no para repo público) ------
+# PDFs de TDR, actas, briefs, etc. Mantener fuera del repo por
+# confidencialidad — UCSP los entrega por canales internos.
+miprop_lore/
+
+# ------ Config con tokens / IDs internos ------
+# context.json tiene URLs de webhooks HubSpot con tokens y otros
+# datos de configuración interna. NO subir al repo.
+context.json
+
+# ------ Go ------
+# Binarios y artifacts
+bin/
+*.exe
+*.exe~
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Vendor (no usamos vendoring; usamos go modules + go.work)
+vendor/
+
+# Build outputs
+dist/
+build/
+out/
+
+# ------ Secretos ------
+.env
+.env.local
+.env.production
+*.pem
+*.key
+*.pfx
+secrets.yaml
+
+# ------ Helm artifacts ------
+deploy/helm/charts/*.tgz
+deploy/helm/miproposito/charts/
+
+# ------ Node (por si vuelve algo TS) ------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ------ IDE / editores ------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ------ Logs ------
+*.log
+logs/
+
+# ------ Temporales ------
+tmp/
+.tmp/

@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: users-service-config
+  namespace: backend
+data:
+  GRPC_PORT: ":50051"
+  REDIS_ADDR: "redis.backend.svc.cluster.local:6379"
+  REDIS_DB: "0"
+  CACHE_TTL: "15m"
+  BCRYPT_COST: "10"
+  SHUTDOWN_WAIT: "10s"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: users-service-secrets
+  namespace: backend
+type: Opaque
+stringData:
+  DATABASE_DSN: "postgres://app:app_password@postgres.backend.svc.cluster.local:5432/db_users?sslmode=disable"
+  REDIS_PASSWORD: ""

@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package keys.v1;
+
+option go_package = "keys_service/proto/gen;keyspb";
+
+import "google/protobuf/timestamp.proto";
+import "common/search.proto";
+
+service KeyService {
+  rpc GenerateKey   (GenerateKeyRequest)  returns (KeyResponse);
+  rpc UpdateKey     (UpdateKeyRequest)    returns (KeyResponse);
+  rpc DeactivateKey (DeactivateKeyRequest)returns (EmptyResponse);
+  rpc ValidateKey   (ValidateKeyRequest)  returns (KeyResponse);
+  rpc IncrementUsage(IncrementUsageRequest) returns (EmptyResponse);
+  rpc GetKey        (GetKeyRequest)       returns (KeyResponse);
+  rpc GetByCode     (GetByCodeRequest)    returns (KeyResponse);
+  rpc ListByAsesor  (ListByAsesorRequest) returns (ListKeysResponse);
+  rpc ListByColegio (ListByColegioRequest)returns (ListKeysResponse);
+  rpc SearchKeys    (common.v1.SearchRequest) returns (common.v1.SearchResponse);
+}
+
+message Key {
+  string id              = 1;
+  string code            = 2;
+  int32  exam_type_id    = 3;
+  string school_id       = 4;
+  string asesor_user_id  = 5;
+  string mode            = 6; // "school" | "lan"
+  string grade           = 7;
+  string section         = 8;
+  google.protobuf.Timestamp valid_from = 9;
+  google.protobuf.Timestamp valid_to   = 10;
+  int32  max_uses        = 11;
+  int32  current_uses    = 12;
+  bool   active          = 13;
+  google.protobuf.Timestamp created_at = 14;
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+message GenerateKeyRequest {
+  string code            = 1; // si vacío, server lo genera
+  int32  exam_type_id    = 2;
+  string school_id       = 3;
+  string asesor_user_id  = 4;
+  string mode            = 5;
+  string grade           = 6;
+  string section         = 7;
+  google.protobuf.Timestamp valid_from = 8;
+  google.protobuf.Timestamp valid_to   = 9;
+  int32  max_uses        = 10;
+}
+
+message UpdateKeyRequest {
+  string id        = 1;
+  string grade     = 2;
+  string section   = 3;
+  google.protobuf.Timestamp valid_from = 4;
+  google.protobuf.Timestamp valid_to   = 5;
+  int32  max_uses  = 6;
+}
+
+message DeactivateKeyRequest { string id = 1; }
+message ValidateKeyRequest   { string code = 1; }
+message GetKeyRequest        { string id = 1; }
+message GetByCodeRequest     { string code = 1; }
+message ListByAsesorRequest  { string asesor_user_id = 1; }
+message ListByColegioRequest { string school_id = 1; }
+message ListKeysResponse     { repeated Key items = 1; }
+message KeyResponse          { Key key = 1; }
+message EmptyResponse        {}
+
+message IncrementUsageRequest {
+  string key_id     = 1;
+  string user_id    = 2;
+  string attempt_id = 3;
+}

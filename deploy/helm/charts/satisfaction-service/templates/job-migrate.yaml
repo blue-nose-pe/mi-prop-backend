@@ -1,0 +1,57 @@
+{{- if .Values.migration.enabled -}}
+# Job que aplica las migraciones T-SQL a db_satisfaction antes de que arranquen
+# los pods de satisfaction-service. Idempotente: una migración ya aplicada se
+# salta. Si fallaba, helm install se aborta y los pods nunca arrancan.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "satisfactionService.fullname" . }}-migrate
+  labels:
+    {{- include "satisfactionService.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "satisfactionService.selectorLabels" . | nindent 8 }}
+        job-type: migrate
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "satisfactionService.migrateImage" . }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: SQL_SERVER
+              value: "{{ .Values.global.sqlServer }}"
+            - name: SQL_PORT
+              value: "{{ .Values.global.sqlPort }}"
+            - name: SQL_DATABASE
+              value: "{{ .Values.database.name }}"
+            - name: SQL_USER
+              value: "{{ .Values.database.user }}"
+            - name: SQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "satisfactionService.fullname" . }}-kv
+                  key: sql-password
+          volumeMounts:
+            - name: kv-secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "satisfactionService.fullname" . }}-spc
+{{- end }}

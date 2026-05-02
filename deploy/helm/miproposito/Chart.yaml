@@ -1,0 +1,42 @@
+apiVersion: v2
+name: miproposito
+description: Mi Propósito 2.0 — UCSP. Umbrella chart que despliega todos los microservicios.
+type: application
+version: 0.1.0
+appVersion: "2.0.0"
+
+dependencies:
+  - name: users-service
+    version: 0.1.0
+    repository: file://../charts/users-service
+    condition: usersService.enabled
+
+  - name: exams-service
+    version: 0.1.0
+    repository: file://../charts/exams-service
+    condition: examsService.enabled
+
+  - name: keys-service
+    version: 0.1.0
+    repository: file://../charts/keys-service
+    condition: keysService.enabled
+
+  - name: hubspot-service
+    version: 0.1.0
+    repository: file://../charts/hubspot-service
+    condition: hubspotService.enabled
+
+  - name: satisfaction-service
+    version: 0.1.0
+    repository: file://../charts/satisfaction-service
+    condition: satisfactionService.enabled
+
+  - name: analytics-service
+    version: 0.1.0
+    repository: file://../charts/analytics-service
+    condition: analyticsService.enabled
+
+  - name: gateway
+    version: 0.1.0
+    repository: file://../charts/gateway
+    condition: gateway.enabled

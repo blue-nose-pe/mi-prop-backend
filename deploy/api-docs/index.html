@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mi Propósito 2.0 — API REST</title>
+    <meta name="description" content="Documentación completa de la API REST de Mi Propósito 2.0 (UCSP / Blue Nose)." />
+
+    <!--
+      Set theme ANTES de pintar nada para evitar el "flash of light theme"
+      (FOUC) cuando el usuario tiene el modo oscuro activo. Si no hay
+      preferencia guardada, respetamos la del sistema operativo.
+    -->
+    <script>
+      (function () {
+        var saved = localStorage.getItem('miprop-theme');
+        var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var theme = saved || (prefersDark ? 'dark' : 'light');
+        document.documentElement.setAttribute('data-theme', theme);
+        if (theme === 'dark') document.documentElement.classList.add('sl-theme-dark');
+      })();
+    </script>
+
+    <!-- Stoplight Elements via CDN. No requiere build step. -->
+    <script src="https://unpkg.com/@stoplight/elements/web-components.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/@stoplight/elements/styles.min.css" />
+
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; }
+      body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+
+      /* ============== Variables del topbar por tema ==============
+         Stoplight Elements maneja sus propios colores internos via la
+         class `sl-theme-dark`. Acá solo controlamos los del topbar custom. */
+      html[data-theme="light"] {
+        --topbar-bg: linear-gradient(90deg, #1e40af 0%, #3b82f6 100%);
+        --topbar-fg: #ffffff;
+        --topbar-shadow: 0 2px 4px rgba(0,0,0,0.10);
+        --badge-bg: rgba(255,255,255,0.2);
+        --badge-prod-bg: rgba(34,197,94,0.4);
+        --toggle-bg: rgba(255,255,255,0.15);
+        --toggle-bg-hover: rgba(255,255,255,0.28);
+        --toggle-border: rgba(255,255,255,0.3);
+        --page-bg: #ffffff;
+      }
+      html[data-theme="dark"] {
+        --topbar-bg: linear-gradient(90deg, #0f172a 0%, #1e293b 100%);
+        --topbar-fg: #e2e8f0;
+        --topbar-shadow: 0 2px 4px rgba(0,0,0,0.40);
+        --badge-bg: rgba(148,163,184,0.20);
+        --badge-prod-bg: rgba(34,197,94,0.30);
+        --toggle-bg: rgba(148,163,184,0.18);
+        --toggle-bg-hover: rgba(148,163,184,0.32);
+        --toggle-border: rgba(148,163,184,0.30);
+        --page-bg: #0b1220;
+      }
+      body { background: var(--page-bg); }
+
+      /* ============== Topbar ============== */
+      .topbar {
+        background: var(--topbar-bg);
+        color: var(--topbar-fg);
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: var(--topbar-shadow);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        transition: background 0.25s ease;
+      }
+      .topbar h1 {
+        margin: 0;
+        font-size: 1.1rem;
+        font-weight: 600;
+      }
+      .topbar h1 small { opacity: 0.85; font-weight: 400; margin-left: 8px; }
+      .topbar .right { display: flex; gap: 12px; align-items: center; }
+      .topbar .badges { display: flex; gap: 8px; }
+      .badge {
+        font-size: 0.75rem;
+        padding: 2px 8px;
+        border-radius: 4px;
+        background: var(--badge-bg);
+        color: var(--topbar-fg);
+        font-weight: 500;
+      }
+      .badge.prod    { background: var(--badge-prod-bg); }
+
+      /* ============== Toggle de tema ============== */
+      .theme-toggle {
+        background: var(--toggle-bg);
+        border: 1px solid var(--toggle-border);
+        color: var(--topbar-fg);
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s ease, transform 0.2s ease;
+        padding: 0;
+      }
+      .theme-toggle:hover    { background: var(--toggle-bg-hover); }
+      .theme-toggle:active   { transform: scale(0.95); }
+      .theme-toggle svg      { width: 18px; height: 18px; }
+
+      /* Mostrar el ícono correcto según tema activo. */
+      html[data-theme="light"] .theme-toggle .icon-moon { display: block; }
+      html[data-theme="light"] .theme-toggle .icon-sun  { display: none; }
+      html[data-theme="dark"]  .theme-toggle .icon-moon { display: none; }
+      html[data-theme="dark"]  .theme-toggle .icon-sun  { display: block; }
+
+      /* El renderer ocupa el resto del viewport. */
+      #docs { height: calc(100vh - 49px); }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <h1>
+        Mi Propósito 2.0 <small>· API REST</small>
+      </h1>
+      <div class="right">
+        <div class="badges">
+          <span class="badge prod">v0.1.0</span>
+          <span class="badge">UCSP / Blue Nose</span>
+        </div>
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          type="button"
+          aria-label="Cambiar tema (claro/oscuro)"
+          title="Cambiar tema (claro/oscuro)"
+        >
+          <!-- Sun icon (visible en dark, hace switch a light) -->
+          <svg class="icon-sun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2"/><path d="M12 20v2"/>
+            <path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/>
+            <path d="M2 12h2"/><path d="M20 12h2"/>
+            <path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>
+          </svg>
+          <!-- Moon icon (visible en light, hace switch a dark) -->
+          <svg class="icon-moon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <elements-api
+      id="docs"
+      apiDescriptionUrl="openapi.yaml"
+      router="hash"
+      layout="sidebar"
+      tryItCredentialsPolicy="omit"
+      hideSchemas="false"
+      hideInternal="false"
+      logo=""
+    ></elements-api>
+
+    <script>
+      // ============== Toggle de tema ==============
+      // Stoplight Elements lee la class `sl-theme-dark` en algún ancestor.
+      // Nosotros además guardamos en localStorage para persistir entre
+      // recargas y exponemos `data-theme` en <html> para los estilos del
+      // topbar (variables CSS arriba).
+      (function () {
+        var btn = document.getElementById('theme-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', function () {
+          var isDark = document.documentElement.classList.toggle('sl-theme-dark');
+          var next   = isDark ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', next);
+          localStorage.setItem('miprop-theme', next);
+        });
+
+        // Si el usuario NO eligió manualmente, seguir los cambios del SO
+        // en vivo (cuando OS cambia entre claro/oscuro automáticamente).
+        var media = window.matchMedia('(prefers-color-scheme: dark)');
+        media.addEventListener('change', function (e) {
+          if (localStorage.getItem('miprop-theme')) return; // ya eligió
+          var next = e.matches ? 'dark' : 'light';
+          document.documentElement.setAttribute('data-theme', next);
+          document.documentElement.classList.toggle('sl-theme-dark', e.matches);
+        });
+      })();
+    </script>
+  </body>
+</html>

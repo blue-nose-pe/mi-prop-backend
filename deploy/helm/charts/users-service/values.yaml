@@ -1,0 +1,44 @@
+# users-service — valores específicos. Heredan global.* y defaults.* del umbrella chart.
+
+image:
+  repository: users-service
+  # global.imageRegistry y global.imageTag se aplican.
+
+service:
+  type: ClusterIP
+  grpcPort: 50051
+
+# Base de datos (db_users). Login y password vienen de Key Vault (ver csiSecretProviderClass).
+database:
+  name: db_users
+  user: miprop_admin   # SQL admin login (override en values.production.yaml)
+
+# JWT
+jwt:
+  issuer: miproposito.users
+  accessTTL: "15m"
+  refreshTTL: "168h"   # 7 días
+
+# Redis (cache de user lookup)
+redis:
+  enabled: true
+  database: 0
+  cacheTTL: "5m"
+
+# Bcrypt cost (10 default — incrementar en prod a 12).
+bcryptCost: 12
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Job de migraciones T-SQL — corre como helm pre-install/pre-upgrade hook.
+migration:
+  enabled: true
+  image:
+    repository: users-service-migrate
+  backoffLimit: 3

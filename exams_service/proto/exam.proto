@@ -1,0 +1,178 @@
+syntax = "proto3";
+
+package exams.v1;
+
+option go_package = "exams_service/proto/gen;examspb";
+
+import "google/protobuf/timestamp.proto";
+import "common/search.proto";
+
+// =============== Services ===============
+
+service ExamService {
+  rpc CreateExam     (CreateExamRequest)    returns (ExamResponse);
+  rpc UpdateExam     (UpdateExamRequest)    returns (ExamResponse);
+  rpc GetExam        (GetExamRequest)       returns (ExamResponse);
+  rpc PublishExam    (PublishExamRequest)   returns (EmptyResponse);
+  rpc DeactivateExam (DeactivateExamRequest)returns (EmptyResponse);
+  rpc CloneExam      (CloneExamRequest)     returns (ExamResponse);
+  rpc SearchExams    (common.v1.SearchRequest) returns (common.v1.SearchResponse);
+}
+
+service QuestionService {
+  rpc CreateQuestion       (CreateQuestionRequest)     returns (QuestionResponse);
+  rpc UpdateQuestion       (UpdateQuestionRequest)     returns (QuestionResponse);
+  rpc DeactivateQuestion   (DeactivateQuestionRequest) returns (EmptyResponse);
+  rpc GetQuestion          (GetQuestionRequest)        returns (QuestionResponse);
+  rpc ListOptions          (ListOptionsRequest)        returns (ListOptionsResponse);
+  rpc AddOption            (AddOptionRequest)          returns (OptionResponse);
+  rpc UpdateOption         (UpdateOptionRequest)       returns (EmptyResponse);
+  rpc RemoveOption         (RemoveOptionRequest)       returns (EmptyResponse);
+  rpc SearchQuestions      (common.v1.SearchRequest)   returns (common.v1.SearchResponse);
+}
+
+service ExamQuestionService {
+  rpc AddQuestion     (AddExamQuestionRequest)    returns (EmptyResponse);
+  rpc RemoveQuestion  (RemoveExamQuestionRequest) returns (EmptyResponse);
+  rpc Reorder         (ReorderRequest)            returns (EmptyResponse);
+  rpc ListByExam      (ListByExamRequest)         returns (ListByExamResponse);
+}
+
+service AttemptService {
+  rpc StartAttempt   (StartAttemptRequest)  returns (AttemptResponse);
+  rpc Answer         (AnswerRequest)        returns (EmptyResponse);
+  rpc FinishAttempt  (FinishAttemptRequest) returns (AttemptResponse);
+  rpc GetAttempt     (GetAttemptRequest)    returns (AttemptResponse);
+  rpc ListByUser     (ListAttemptsByUserRequest) returns (ListAttemptsResponse);
+  rpc ListByExam     (ListAttemptsByExamRequest) returns (ListAttemptsResponse);
+}
+
+// =============== Messages ===============
+
+message Exam {
+  string id                = 1;
+  int32  exam_type_id      = 2;
+  string school_id         = 3;
+  string parent_exam_id    = 4;
+  int32  version           = 5;
+  string name              = 6;
+  google.protobuf.Timestamp start_at = 7;
+  google.protobuf.Timestamp end_at   = 8;
+  int32  max_participants  = 9;
+  bool   published         = 10;
+  bool   active            = 11;
+  google.protobuf.Timestamp created_at = 12;
+  google.protobuf.Timestamp updated_at = 13;
+}
+
+message Question {
+  string id        = 1;
+  string text      = 2;
+  string category  = 3;
+  bool   active    = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+}
+
+message QuestionOption {
+  string id          = 1;
+  string question_id = 2;
+  string text        = 3;
+  bool   is_correct  = 4;
+  int32  sort_order  = 5;
+}
+
+message ExamQuestion {
+  string exam_id     = 1;
+  string question_id = 2;
+  int32  points      = 3;
+  int32  sort_order  = 4;
+}
+
+message Attempt {
+  string id           = 1;
+  string exam_id      = 2;
+  string user_id      = 3;
+  string key_id       = 4;
+  int32  score        = 5;
+  int32  max_score    = 6;
+  google.protobuf.Timestamp started_at   = 7;
+  google.protobuf.Timestamp submitted_at = 8;
+}
+
+// ----- Exam requests -----
+message CreateExamRequest {
+  string exam_type_code    = 1; // "vocacional" | "simulacro" | "habitos"
+  string school_id         = 2;
+  string name              = 3;
+  google.protobuf.Timestamp start_at = 4;
+  google.protobuf.Timestamp end_at   = 5;
+  int32  max_participants  = 6;
+}
+message UpdateExamRequest {
+  string id              = 1;
+  string name            = 2;
+  google.protobuf.Timestamp start_at = 3;
+  google.protobuf.Timestamp end_at   = 4;
+  int32  max_participants = 5;
+}
+message GetExamRequest        { string id = 1; }
+message PublishExamRequest    { string id = 1; }
+message DeactivateExamRequest { string id = 1; }
+message CloneExamRequest      { string id = 1; }
+message ExamResponse          { Exam exam = 1; }
+
+// ----- Question requests -----
+message CreateQuestionRequest    { string text = 1; string category = 2; }
+message UpdateQuestionRequest    { string id = 1; string text = 2; string category = 3; }
+message DeactivateQuestionRequest{ string id = 1; }
+message GetQuestionRequest       { string id = 1; }
+message QuestionResponse         { Question question = 1; }
+message ListOptionsRequest       { string question_id = 1; }
+message ListOptionsResponse      { repeated QuestionOption options = 1; }
+message AddOptionRequest {
+  string question_id = 1;
+  string text        = 2;
+  bool   is_correct  = 3;
+  int32  sort_order  = 4;
+}
+message UpdateOptionRequest {
+  string id         = 1;
+  string text       = 2;
+  bool   is_correct = 3;
+  int32  sort_order = 4;
+}
+message RemoveOptionRequest { string id = 1; }
+message OptionResponse      { QuestionOption option = 1; }
+
+// ----- ExamQuestion requests -----
+message AddExamQuestionRequest {
+  string exam_id     = 1;
+  string question_id = 2;
+  int32  points      = 3;
+  int32  sort_order  = 4;
+}
+message RemoveExamQuestionRequest { string exam_id = 1; string question_id = 2; }
+message ReorderRequest            { string exam_id = 1; repeated string question_ids = 2; }
+message ListByExamRequest         { string exam_id = 1; }
+message ListByExamResponse        { repeated ExamQuestion items = 1; }
+
+// ----- Attempt requests -----
+message StartAttemptRequest {
+  string exam_id  = 1;
+  string user_id  = 2;
+  string key_code = 3; // si vacío, valida sin key (admin)
+}
+message AnswerRequest {
+  string attempt_id  = 1;
+  string question_id = 2;
+  string option_id   = 3;
+}
+message FinishAttemptRequest      { string attempt_id = 1; }
+message GetAttemptRequest         { string attempt_id = 1; }
+message ListAttemptsByUserRequest { string user_id = 1; }
+message ListAttemptsByExamRequest { string exam_id = 1; }
+message ListAttemptsResponse      { repeated Attempt items = 1; }
+message AttemptResponse           { Attempt attempt = 1; }
+
+message EmptyResponse {}

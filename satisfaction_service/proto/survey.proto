@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package satisfaction.v1;
+
+option go_package = "satisfaction_service/proto/gen;satisfactionpb";
+
+import "google/protobuf/timestamp.proto";
+import "common/search.proto";
+
+service SurveyService {
+  rpc CreateSurvey     (CreateSurveyRequest)     returns (SurveyResponse);
+  rpc UpdateSurvey     (UpdateSurveyRequest)     returns (SurveyResponse);
+  rpc PublishSurvey    (PublishSurveyRequest)    returns (EmptyResponse);
+  rpc DeactivateSurvey (DeactivateSurveyRequest) returns (EmptyResponse);
+  rpc GetSurvey        (GetSurveyRequest)        returns (SurveyResponse);
+  rpc GetByCode        (GetByCodeRequest)        returns (SurveyResponse);
+  rpc ListQuestions    (ListQuestionsRequest)    returns (ListQuestionsResponse);
+  rpc AddQuestion      (AddQuestionRequest)      returns (QuestionResponse);
+  rpc UpdateQuestion   (UpdateQuestionRequest)   returns (EmptyResponse);
+  rpc RemoveQuestion   (RemoveQuestionRequest)   returns (EmptyResponse);
+  rpc Search           (common.v1.SearchRequest) returns (common.v1.SearchResponse);
+}
+
+service ResponseService {
+  rpc Submit       (SubmitResponseRequest) returns (ResponseObjectResponse);
+  rpc GetResponse  (GetResponseRequest)    returns (ResponseObjectResponse);
+  rpc GetMetrics   (GetMetricsRequest)     returns (MetricsResponse);
+}
+
+message Survey {
+  string id            = 1;
+  string code          = 2;
+  string title         = 3;
+  string description   = 4;
+  string target_role   = 5;
+  string trigger_kind  = 6;
+  int32  version       = 7;
+  bool   published     = 8;
+  bool   active        = 9;
+  google.protobuf.Timestamp created_at = 10;
+  google.protobuf.Timestamp updated_at = 11;
+}
+
+message Question {
+  string id           = 1;
+  string survey_id    = 2;
+  string text         = 3;
+  string kind         = 4; // scale | nps | single | multi | open
+  int32  sort_order   = 5;
+  string options_json = 6;
+  bool   required     = 7;
+}
+
+message Response {
+  string id              = 1;
+  string survey_id       = 2;
+  string user_id         = 3;
+  string exam_attempt_id = 4;
+  google.protobuf.Timestamp submitted_at = 5;
+}
+
+message Answer {
+  string question_id  = 1;
+  string value_text   = 2;
+  int32  value_number = 3;
+  bool   has_number   = 4; // distingue 0 explícito de "no respondió"
+}
+
+message CreateSurveyRequest {
+  string code         = 1;
+  string title        = 2;
+  string description  = 3;
+  string target_role  = 4;
+  string trigger_kind = 5;
+}
+
+message UpdateSurveyRequest {
+  string id          = 1;
+  string title       = 2;
+  string description = 3;
+}
+
+message PublishSurveyRequest    { string id = 1; }
+message DeactivateSurveyRequest { string id = 1; }
+message GetSurveyRequest        { string id = 1; }
+message GetByCodeRequest        { string code = 1; int32 version = 2; }
+message ListQuestionsRequest    { string survey_id = 1; }
+message ListQuestionsResponse   { repeated Question items = 1; }
+
+message AddQuestionRequest {
+  string survey_id    = 1;
+  string text         = 2;
+  string kind         = 3;
+  int32  sort_order   = 4;
+  string options_json = 5;
+  bool   required     = 6;
+}
+message UpdateQuestionRequest {
+  string id           = 1;
+  string text         = 2;
+  int32  sort_order   = 3;
+  string options_json = 4;
+  bool   required     = 5;
+}
+message RemoveQuestionRequest { string id = 1; }
+message QuestionResponse      { Question question = 1; }
+
+message SurveyResponse        { Survey survey = 1; }
+message EmptyResponse         {}
+
+message SubmitResponseRequest {
+  string survey_id       = 1;
+  string user_id         = 2;
+  string exam_attempt_id = 3;
+  repeated Answer answers = 4;
+}
+
+message GetResponseRequest      { string id = 1; }
+message ResponseObjectResponse  { Response response = 1; }
+
+message GetMetricsRequest { string survey_id = 1; }
+message QuestionMetrics {
+  string question_id = 1;
+  string kind        = 2;
+  int32  count       = 3;
+  double average     = 4;
+  bool   has_average = 5;
+  int32  nps         = 6;
+  bool   has_nps     = 7;
+  map<string, int32> distribution = 8;
+}
+message MetricsResponse {
+  string survey_id        = 1;
+  int32  total_responses  = 2;
+  repeated QuestionMetrics per_question = 3;
+}

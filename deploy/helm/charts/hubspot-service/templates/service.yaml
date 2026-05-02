@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "hubspotService.fullname" . }}
+  labels:
+    {{- include "hubspotService.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+    - name: webhook
+      port: {{ .Values.service.webhookPort }}
+      targetPort: webhook
+  selector:
+    {{- include "hubspotService.selectorLabels" . | nindent 4 }}
+    component: server

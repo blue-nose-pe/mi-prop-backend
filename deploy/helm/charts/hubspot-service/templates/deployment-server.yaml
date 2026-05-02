@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hubspotService.fullname" . }}
+  labels:
+    {{- include "hubspotService.labels" . | nindent 4 }}
+    component: server
+spec:
+  replicas: {{ .Values.server.replicas }}
+  selector:
+    matchLabels:
+      {{- include "hubspotService.selectorLabels" . | nindent 6 }}
+      component: server
+  template:
+    metadata:
+      labels:
+        {{- include "hubspotService.selectorLabels" . | nindent 8 }}
+        component: server
+    spec:
+      containers:
+        - name: server
+          image: {{ include "hubspotService.serverImage" . }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+            - name: webhook
+              containerPort: {{ .Values.service.webhookPort }}
+          env:
+            {{- include "hubspotService.commonEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: webhook
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: webhook
+            initialDelaySeconds: 15
+          volumeMounts:
+            - name: kv-secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "hubspotService.fullname" . }}-spc

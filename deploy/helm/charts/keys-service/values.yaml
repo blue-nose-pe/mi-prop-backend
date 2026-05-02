@@ -1,0 +1,22 @@
+# keys-service — valores por defecto. Templates pendientes (Fase 3).
+
+image:
+  repository: keys-service
+
+service:
+  type: ClusterIP
+  grpcPort: 50053
+
+database:
+  name: db_keys
+  user: miprop_admin
+
+migration:
+  enabled: true
+  image:
+    repository: keys-service-migrate
+  backoffLimit: 3
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { cpu: 250m, memory: 256Mi }

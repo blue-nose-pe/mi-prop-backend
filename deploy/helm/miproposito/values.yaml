@@ -1,0 +1,60 @@
+# values.yaml — defaults aplicables a TODOS los subcharts.
+# Override en values.production.yaml o via --set en helm install.
+
+global:
+  # Container Registry donde están las imágenes (output del Bicep: ${namePrefix}acr.azurecr.io).
+  imageRegistry: miprepositoacr.azurecr.io
+  imageTag: "0.1.0"
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+  # Servidor Azure SQL (output del Bicep: ${namePrefix}-sql.database.windows.net).
+  sqlServer: miproposito-sql.database.windows.net
+  sqlPort: 1433
+
+  # Redis (output del Bicep: ${namePrefix}-redis.redis.cache.windows.net).
+  redisHost: miproposito-redis.redis.cache.windows.net
+  redisSslPort: 6380
+
+  # Key Vault para Secrets Store CSI (output del Bicep).
+  keyVault:
+    name: miproposito-kv
+    tenantId: ""             # set en values.production.yaml
+    userAssignedIdentityID: "" # workload identity, set en values.production.yaml
+
+  # Dominio base. El Ingress de cada chart usa ${global.domain}.
+  domain: miproposito.ucsp.edu.pe
+
+# ----- Microservicios: enable/disable individualmente -----
+usersService:
+  enabled: true
+exams-service:
+  enabled: true
+keys-service:
+  enabled: true
+hubspot-service:
+  enabled: true
+satisfaction-service:
+  enabled: true
+analytics-service:
+  enabled: true
+gateway:
+  enabled: true
+
+# ----- Defaults compartidos por subcharts (override en cada uno si necesario) -----
+defaults:
+  replicaCount: 2
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75

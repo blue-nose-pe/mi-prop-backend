@@ -1,0 +1,22 @@
+# analytics-service — valores por defecto. Sin DB propia.
+
+image:
+  repository: analytics-service
+
+service:
+  type: ClusterIP
+  grpcPort: 50056
+
+upstreams:
+  usersService:        "users-service:50051"
+  examsService:        "exams-service:50052"
+  keysService:         "keys-service:50053"
+  satisfactionService: "satisfaction-service:50055"
+
+cache:
+  enabled: true
+  redisDB: 1
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits:   { cpu: 500m, memory: 512Mi }

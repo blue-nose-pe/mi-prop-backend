@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "analyticsService.fullname" . }}
+  labels:
+    {{- include "analyticsService.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.global.defaults.replicaCount | default 2 }}
+  selector:
+    matchLabels:
+      {{- include "analyticsService.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "analyticsService.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: analytics-service
+          image: {{ include "analyticsService.image" . }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+          env:
+            - name: GRPC_PORT
+              value: ":{{ .Values.service.grpcPort }}"
+            - name: JWT_ISSUER
+              value: "{{ .Values.global.jwtIssuer | default "miproposito.users" }}"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "analyticsService.fullname" . }}-kv
+                  key: jwt-secret
+            - name: USERS_SERVICE_ADDR
+              value: "{{ .Values.upstreams.usersService }}"
+            - name: EXAMS_SERVICE_ADDR
+              value: "{{ .Values.upstreams.examsService }}"
+            - name: KEYS_SERVICE_ADDR
+              value: "{{ .Values.upstreams.keysService }}"
+            - name: SATISFACTION_SERVICE_ADDR
+              value: "{{ .Values.upstreams.satisfactionService }}"
+            - name: REDIS_ADDR
+              value: "{{ .Values.global.redisHost }}:{{ .Values.global.redisSslPort }}"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "analyticsService.fullname" . }}-kv
+                  key: redis-password
+            - name: REDIS_DB
+              value: "{{ .Values.cache.redisDB }}"
+            - name: CACHE_ENABLED
+              value: "{{ .Values.cache.enabled }}"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            grpc: { port: {{ .Values.service.grpcPort }} }
+            initialDelaySeconds: 5
+          livenessProbe:
+            grpc: { port: {{ .Values.service.grpcPort }} }
+            initialDelaySeconds: 15
+          volumeMounts:
+            - name: kv-secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "analyticsService.fullname" . }}-spc

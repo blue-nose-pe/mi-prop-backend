@@ -1,0 +1,22 @@
+# satisfaction-service — valores por defecto.
+
+image:
+  repository: satisfaction-service
+
+service:
+  type: ClusterIP
+  grpcPort: 50055
+
+database:
+  name: db_satisfaction
+  user: miprop_admin
+
+migration:
+  enabled: true
+  image:
+    repository: satisfaction-service-migrate
+  backoffLimit: 3
+
+resources:
+  requests: { cpu: 50m, memory: 64Mi }
+  limits:   { cpu: 250m, memory: 256Mi }

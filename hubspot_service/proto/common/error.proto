@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+// Envelope de error compartido (estilo HubSpot).
+// Viaja como detail attachment en google.rpc.Status.
+// Un gateway REST simplemente extrae este mensaje de st.Details() y lo
+// devuelve tal cual como body JSON.
+package common.v1;
+
+option go_package = "hubspot_service/proto/gen/common;commonpb";
+
+message ErrorResponse {
+  string status = 1;                         // siempre "error"
+  string message = 2;                        // mensaje humano, alto nivel
+  repeated ErrorDetail errors = 3;           // 1+ errores individuales
+  ErrorCategory category = 4;
+  string correlation_id = 5;                 // para trazar la request en logs
+}
+
+message ErrorDetail {
+  string message = 1;
+  string code = 2;                           // ej: "EMAIL_TAKEN"
+  map<string, StringList> context = 3;       // ej: {"propertyName": ["email"]}
+}
+
+// Wrapper necesario porque proto3 map no permite repeated como valor.
+message StringList {
+  repeated string values = 1;
+}
+
+enum ErrorCategory {
+  ERROR_CATEGORY_UNSPECIFIED = 0;
+  VALIDATION_ERROR = 1;  // datos de entrada invalidos
+  NOT_FOUND = 2;         // recurso no existe
+  CONFLICT = 3;          // choque con estado actual (ej: email duplicado)
+  UNAUTHENTICATED = 4;   // credenciales faltantes o invalidas
+  PERMISSION_DENIED = 5; // autenticado pero sin permiso
+  INTERNAL_ERROR = 6;    // fallo inesperado
+}

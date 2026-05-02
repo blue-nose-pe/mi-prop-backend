@@ -1,0 +1,43 @@
+# gateway — único servicio expuesto vía Ingress (HTTPS).
+
+image:
+  repository: gateway
+
+service:
+  type: ClusterIP
+  httpPort: 8080
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: api.miproposito.ucsp.edu.pe
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: gateway-tls
+      hosts:
+        - api.miproposito.ucsp.edu.pe
+
+upstreams:
+  usersService:        "users-service:50051"
+  examsService:        "exams-service:50052"
+  keysService:         "keys-service:50053"
+  hubspotService:      "hubspot-service:50054"
+  satisfactionService: "satisfaction-service:50055"
+  analyticsService:    "analytics-service:50056"
+
+cors:
+  allowedOrigins:
+    - https://miproposito.ucsp.edu.pe
+
+rateLimit:
+  enabled: true
+  perIpPerMinute: 600
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits:   { cpu: 500m, memory: 512Mi }

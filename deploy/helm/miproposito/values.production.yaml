@@ -1,0 +1,41 @@
+# Override de PRODUCCIÓN sobre values.yaml.
+# Solo contiene lo que cambia entre dev y prod. NO commitear secretos
+# (los secretos se inyectan vía Azure Key Vault / Secret Provider Class).
+
+global:
+  imageRegistry: miprepositoacr.azurecr.io   # output del Bicep
+  imageTag: "latest"                          # CI/CD lo overridea con el build id
+  imagePullPolicy: IfNotPresent
+
+  # Output de Bicep:
+  sqlServer: miproposito-sql.database.windows.net
+  sqlPort:   1433
+  redisHost: miproposito-redis.redis.cache.windows.net
+  redisSslPort: 6380
+
+  # Workload Identity para Secret Provider Class. Reemplazar con los
+  # valores reales del tenant + UAMI (lo emite la creación del cluster).
+  keyVault:
+    name: miproposito-kv
+    tenantId: "<TENANT-ID>"
+    userAssignedIdentityID: "<UAMI-CLIENT-ID>"
+
+  domain: miproposito.ucsp.edu.pe
+  jwtIssuer: miproposito.users
+
+  defaults:
+    replicaCount: 2
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 10
+      targetCPUUtilizationPercentage: 70
+
+# Habilitar TODO el catálogo de servicios para producción.
+usersService:        { enabled: true }
+exams-service:       { enabled: true }
+keys-service:        { enabled: true }
+hubspot-service:     { enabled: true }
+satisfaction-service: { enabled: true }
+analytics-service:   { enabled: true }
+gateway:             { enabled: true }

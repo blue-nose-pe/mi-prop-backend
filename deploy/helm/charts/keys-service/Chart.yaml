@@ -1,0 +1,6 @@
+apiVersion: v2
+name: keys-service
+description: Mi Propósito 2.0 — keys/códigos de acceso a tests (modos colegio/LAN, aforos, fechas).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

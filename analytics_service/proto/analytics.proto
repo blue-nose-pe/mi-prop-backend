@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package analytics.v1;
+
+option go_package = "analytics_service/proto/gen;analyticspb";
+
+import "google/protobuf/timestamp.proto";
+
+service AnalyticsService {
+  rpc GetAsesorDashboard      (GetAsesorDashboardRequest)      returns (AsesorDashboardResponse);
+  rpc GetColegioDashboard     (GetColegioDashboardRequest)     returns (ColegioDashboardResponse);
+  rpc GetEstudianteDashboard  (GetEstudianteDashboardRequest)  returns (EstudianteDashboardResponse);
+  rpc GetColegioComparativo   (GetColegioComparativoRequest)   returns (ColegioComparativoResponse);
+  rpc GetHistoricoEstudiante  (GetHistoricoEstudianteRequest)  returns (HistoricoEstudianteResponse);
+  rpc ExportAsesorXLSX        (ExportAsesorXLSXRequest)        returns (ExportXLSXResponse);
+  rpc ExportColegioXLSX       (ExportColegioXLSXRequest)       returns (ExportXLSXResponse);
+  rpc ExportComparativoXLSX   (ExportComparativoXLSXRequest)   returns (ExportXLSXResponse);
+}
+
+message ExamTypeStats {
+  int32  attempts       = 1;
+  double avg_score      = 2;
+  double avg_max_score  = 3;
+}
+
+// ----- Asesor -----
+message GetAsesorDashboardRequest { string asesor_id = 1; }
+message AsesorDashboardResponse {
+  string asesor_id      = 1;
+  string asesor_name    = 2;
+  int32  total_colegios = 3;
+  int32  total_keys     = 4;
+  int32  total_attempts = 5;
+  map<string, ExamTypeStats> by_exam_type = 6;
+  google.protobuf.Timestamp generated_at = 7;
+}
+
+// ----- Colegio -----
+message GetColegioDashboardRequest { string school_id = 1; }
+message ColegioDashboardResponse {
+  string school_id       = 1;
+  string school_name     = 2;
+  int32  total_students  = 3;
+  int32  total_attempts  = 4;
+  map<string, ExamTypeStats> by_exam_type = 5;
+  google.protobuf.Timestamp generated_at = 6;
+}
+
+// ----- Estudiante -----
+message GetEstudianteDashboardRequest { string user_id = 1; }
+message TestResult {
+  string exam_type_code = 1;
+  string exam_id        = 2;
+  string exam_name      = 3;
+  int32  score          = 4;
+  int32  max_score      = 5;
+  google.protobuf.Timestamp submitted_at = 6;
+}
+message EstudianteDashboardResponse {
+  string user_id      = 1;
+  string student_name = 2;
+  repeated TestResult tests = 3;
+  google.protobuf.Timestamp generated_at = 4;
+}
+
+// ----- Comparativo -----
+message GetColegioComparativoRequest { string exam_type_code = 1; }
+message ColegioComparativoItem {
+  string school_id   = 1;
+  string school_name = 2;
+  double avg_score   = 3;
+  int32  attempts    = 4;
+}
+message ColegioComparativoResponse {
+  string exam_type_code = 1;
+  repeated ColegioComparativoItem items = 2;
+  google.protobuf.Timestamp generated_at = 3;
+}
+
+// ----- Histórico -----
+message GetHistoricoEstudianteRequest { string user_id = 1; }
+message HistoricoEstudianteResponse {
+  string user_id = 1;
+  repeated TestResult items = 2;
+  google.protobuf.Timestamp generated_at = 3;
+}
+
+// ----- Exports -----
+message ExportAsesorXLSXRequest      { string asesor_id = 1; }
+message ExportColegioXLSXRequest     { string school_id = 1; }
+message ExportComparativoXLSXRequest { string exam_type_code = 1; }
+message ExportXLSXResponse {
+  bytes  content   = 1;
+  string filename  = 2;
+}

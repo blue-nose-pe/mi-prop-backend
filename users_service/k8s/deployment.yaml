@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: users-service
+  namespace: backend
+  labels:
+    app: users-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: users-service
+  template:
+    metadata:
+      labels:
+        app: users-service
+    spec:
+      containers:
+        - name: users-service
+          image: your-registry/users-service:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: grpc
+              containerPort: 50051
+          envFrom:
+            - configMapRef: { name: users-service-config }
+            - secretRef:    { name: users-service-secrets }
+          resources:
+            requests: { cpu: "100m", memory: "64Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            grpc: { port: 50051 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            grpc: { port: 50051 }
+            initialDelaySeconds: 15
+            periodSeconds: 20

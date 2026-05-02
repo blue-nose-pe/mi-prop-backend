@@ -1,0 +1,77 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gateway.fullname" . }}
+  labels:
+    {{- include "gateway.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.global.defaults.replicaCount | default 2 }}
+  selector:
+    matchLabels:
+      {{- include "gateway.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "gateway.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: gateway
+          image: {{ include "gateway.image" . }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+          env:
+            - name: HTTP_PORT
+              value: ":{{ .Values.service.httpPort }}"
+            - name: JWT_ISSUER
+              value: "{{ .Values.global.jwtIssuer | default "miproposito.users" }}"
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gateway.fullname" . }}-kv
+                  key: jwt-secret
+            - name: USERS_SERVICE_ADDR
+              value: "{{ .Values.upstreams.usersService }}"
+            - name: EXAMS_SERVICE_ADDR
+              value: "{{ .Values.upstreams.examsService }}"
+            - name: KEYS_SERVICE_ADDR
+              value: "{{ .Values.upstreams.keysService }}"
+            - name: HUBSPOT_SERVICE_ADDR
+              value: "{{ .Values.upstreams.hubspotService }}"
+            - name: SATISFACTION_SERVICE_ADDR
+              value: "{{ .Values.upstreams.satisfactionService }}"
+            - name: ANALYTICS_SERVICE_ADDR
+              value: "{{ .Values.upstreams.analyticsService }}"
+            - name: CORS_ALLOWED_ORIGINS
+              value: "{{ join "," .Values.cors.allowedOrigins }}"
+            - name: RATELIMIT_ENABLED
+              value: "{{ .Values.rateLimit.enabled }}"
+            - name: RATELIMIT_PER_IP_PER_MIN
+              value: "{{ .Values.rateLimit.perIpPerMinute }}"
+            - name: REDIS_ADDR
+              value: "{{ .Values.global.redisHost }}:{{ .Values.global.redisSslPort }}"
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gateway.fullname" . }}-kv
+                  key: redis-password
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 15
+          volumeMounts:
+            - name: kv-secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "gateway.fullname" . }}-spc

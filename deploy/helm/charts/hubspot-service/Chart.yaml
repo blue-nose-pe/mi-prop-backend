@@ -1,0 +1,6 @@
+apiVersion: v2
+name: hubspot-service
+description: Mi Propósito 2.0 — sync bidireccional HubSpot, webhook OTP, BullMQ workers (Node.js).
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

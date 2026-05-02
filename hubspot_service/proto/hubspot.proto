@@ -1,0 +1,80 @@
+syntax = "proto3";
+
+package hubspot.v1;
+
+option go_package = "hubspot_service/proto/gen;hubspotpb";
+
+// HubspotService — el contrato que CONSUMEN los demás microservicios.
+// Toda la lógica de SDK / colas / retry vive del lado del adapter Go.
+service HubspotService {
+  // Síncrono: el caller (users_service) necesita el record_id devuelto.
+  rpc UpsertContact (UpsertContactRequest) returns (UpsertContactResponse);
+
+  rpc GetContactByDNI (GetContactByDNIRequest) returns (UpsertContactResponse);
+
+  // Síncrono: el alumno está esperando recibir el email.
+  rpc SendOTP (SendOTPRequest) returns (EmptyResponse);
+
+  // Asíncrono (encola para retry con backoff exponencial).
+  rpc SyncExamResult (SyncExamResultRequest) returns (EmptyResponse);
+  rpc UpsertSchool   (UpsertSchoolRequest)   returns (EmptyResponse);
+  rpc UpsertAsesor   (UpsertAsesorRequest)   returns (EmptyResponse);
+
+  // Admin.
+  rpc GetFailedSyncs (GetFailedSyncsRequest) returns (GetFailedSyncsResponse);
+  rpc RetryFailed    (RetryFailedRequest)    returns (RetryFailedResponse);
+}
+
+message UpsertContactRequest {
+  string dni          = 1;
+  string email        = 2;
+  string first_name   = 3;
+  string last_name    = 4;
+  string phone        = 5;
+  string school_name  = 6;
+  string grade        = 7;
+  string user_id      = 8; // si se provee, persistimos record_id en users_service
+  map<string, string> extra = 9;
+}
+message UpsertContactResponse { string record_id = 1; }
+message GetContactByDNIRequest { string dni = 1; }
+
+message SendOTPRequest { string email = 1; string otp = 2; }
+
+message SyncExamResultRequest {
+  string dni                = 1;
+  string exam_type_code     = 2; // vocacional | simulacro | habitos
+  int32  score              = 3;
+  int32  max_score          = 4;
+  string attempt_id         = 5;
+  string submitted_at       = 6; // RFC 3339
+  string contact_record_id  = 7; // opcional: evita un search por DNI
+}
+
+message UpsertSchoolRequest {
+  string school_id        = 1;
+  string email            = 2;
+  string nombre           = 3;
+  string personal_a_cargo = 4;
+}
+
+message UpsertAsesorRequest {
+  string asesor_user_id = 1;
+  string email          = 2;
+  string nombre         = 3;
+  string bio            = 4;
+}
+
+message GetFailedSyncsRequest { uint32 limit = 1; uint32 offset = 2; }
+message FailedSync {
+  string queue          = 1;
+  string job_id         = 2;
+  string failed_reason  = 3;
+  string payload        = 4;
+  string failed_at      = 5; // RFC 3339
+}
+message GetFailedSyncsResponse { repeated FailedSync items = 1; }
+message RetryFailedRequest  { string queue = 1; string job_id = 2; }
+message RetryFailedResponse { bool ok = 1; }
+
+message EmptyResponse {}
