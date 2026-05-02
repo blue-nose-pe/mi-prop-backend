@@ -42,3 +42,16 @@ migration:
   image:
     repository: users-service-migrate
   backoffLimit: 3
+
+# Bootstrap del primer superadmin — corre como helm post-install hook.
+# Idempotente: si ya existe un superadmin, no hace nada.
+#
+# Cómo lee el cliente la password generada:
+#   kubectl get secret <release>-users-service-superadmin -n <ns> \
+#     -o jsonpath='{.data.password}' | base64 -d
+bootstrap:
+  enabled: true
+  email: "admin@ucsp.edu.pe"   # override en values.production.yaml
+  image:
+    repository: users-service-bootstrap
+  backoffLimit: 3

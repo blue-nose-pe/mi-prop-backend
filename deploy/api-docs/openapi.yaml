@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.1.0
+  version: 0.2.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -103,6 +103,74 @@ info:
     - `sorts[]`: ordenamiento (default: `created_at DESC, id DESC`).
     - `limit`: 1-200 (default 50).
     - `after`: offset para paginación.
+
+    ## Sistema de permisos
+
+    El sistema usa el formato **`<service>.<table>.<action>`** para los códigos
+    de permiso. Eso da granularidad por (microservicio, tabla, acción) y
+    escala sin ambigüedad cuando aparecen tablas nuevas.
+
+    - **service**: `db_users`, `db_exams`, `db_keys`, `db_satisfaction`,
+      `hubspot`, `analytics`.
+    - **table**: nombre de la tabla destino (o `dashboard`/`export` para
+      servicios sin BD propia como analytics).
+    - **action**: `read` o `write` (granularidad puede crecer sin romper
+      compatibilidad).
+
+    Ejemplos:
+
+    ```
+    db_users.users.read              → listar y ver detalle de users
+    db_users.users.write             → crear/editar/desactivar users
+    db_users.permission.write        → editar el catálogo de permisos
+    db_exams.exam.write              → crear/publicar/clonar exams
+    db_keys.key.write                → generar y deactivar keys
+    hubspot.contact.write            → upsert de contacts en HS
+    analytics.dashboard.read         → leer cualquier dashboard agregado
+    ```
+
+    Los permisos se asignan a los users **a través de `permission_group`**
+    (no directamente). Hay 3 grupos canónicos seedeados:
+
+    - `admin_permissions`: CRUD completo sobre todas las tablas operacionales.
+      No incluye `db_users.permission.write` (eso es exclusivo del superadmin).
+    - `asesor_permissions`: lectura amplia + write en sus colegios y keys.
+    - `coordinador_permissions`: lectura del colegio asignado + sus
+      estudiantes y resultados.
+
+    ## Superadmin
+
+    Hay un flag `is_superadmin` en `users` que **bypassa el chequeo de
+    permisos**: cualquier llamada autorizada con un token de superadmin
+    pasa el check sin importar el `permission_group` asignado. El JWT del
+    superadmin trae el rol `superadmin` en el claim `roles[]`.
+
+    El **primer superadmin** se crea automáticamente al instalar el chart
+    Helm:
+
+    1. El chart crea un Secret `<release>-users-service-superadmin` con una
+       password aleatoria de 24 chars (preservada entre `helm upgrade` —
+       no se regenera).
+    2. Un k8s Job (`post-install`/`post-upgrade` hook) corre el binario
+       `bootstrap` que verifica si ya hay algún user con `is_superadmin=1`.
+       Si no, crea uno con el email + password del Secret y `must_change_password=1`.
+    3. El admin lee la password una sola vez con:
+
+       ```powershell
+       kubectl get secret <release>-users-service-superadmin -n miproposito `
+         -o jsonpath='{.data.password}' | base64 -d
+       ```
+
+    4. En el primer login, el sistema fuerza al superadmin a cambiar la
+       password vía `POST /api/users/me/change-password`. Hasta que no la
+       cambie, todas las rutas (excepto `Me` y `ChangeMyPassword`) devuelven
+       `403 PASSWORD_CHANGE_REQUIRED`.
+
+    El superadmin puede crear otros superadmins via `PATCH /api/users/{id}`
+    (próximamente — el contrato existe; el handler está pendiente).
+    También puede **resetear** la password de cualquier user con
+    `POST /api/users/{id}/reset-password` (devuelve la password temporal
+    una sola vez para entregársela al user).
 
     ## Convenciones
 
@@ -457,6 +525,152 @@ paths:
         Permiso: `users.delete`.
       responses:
         '200': { $ref: '#/components/responses/Empty' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/users/me:
+    get:
+      tags: [Users]
+      summary: User logueado + permisos efectivos
+      description: |
+        Devuelve el user que corresponde al `sub` del access token + sus
+        permisos efectivos (lista de codes en formato `<service>.<table>.<action>`).
+
+        Para superadmins, `permissions` viene como `["*"]` (sentinel — el
+        front interpreta como "todo permitido" sin enumerar).
+
+        Esta ruta NO está bloqueada por `must_change_password=true`. El
+        front la usa después del login para detectar si necesita
+        redireccionar a la pantalla de cambio de password.
+      responses:
+        '200':
+          description: User + permisos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:        { $ref: '#/components/schemas/User' }
+                  permissions: { type: array, items: { type: string } }
+              examples:
+                superadmin:
+                  summary: Superadmin (post-bootstrap, debe cambiar password)
+                  value:
+                    user:
+                      id: "9b24..."
+                      email: "admin@ucsp.edu.pe"
+                      first_name: ""
+                      last_name: ""
+                      active: true
+                      is_superadmin: true
+                      must_change_password: true
+                    permissions: ["*"]
+                asesor:
+                  summary: Asesor con grupo asesor_permissions
+                  value:
+                    user:
+                      id: "7c11..."
+                      email: "asesor@ucsp.edu.pe"
+                      first_name: "María"
+                      last_name: "Quispe"
+                      active: true
+                      is_superadmin: false
+                      must_change_password: false
+                    permissions:
+                      - "db_users.users.read"
+                      - "db_users.school.read"
+                      - "db_users.school.write"
+                      - "db_keys.key.read"
+                      - "db_keys.key.write"
+                      - "analytics.dashboard.read"
+
+  /api/users/me/change-password:
+    post:
+      tags: [Users]
+      summary: Cambiar la propia password
+      description: |
+        Verifica `old_password` contra el hash actual y aplica `new_password`
+        si pasa los requisitos de fortaleza (mínimo 8 chars). Limpia el flag
+        `must_change_password` automáticamente.
+
+        **Esta ruta es la ÚNICA junto con `/api/users/me` que sigue
+        funcionando si `must_change_password=true`.** Cualquier otra ruta
+        responde `403 PASSWORD_CHANGE_REQUIRED` hasta que el user complete
+        este flujo.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [old_password, new_password]
+              properties:
+                old_password: { type: string, format: password }
+                new_password: { type: string, format: password, minLength: 8 }
+            example:
+              old_password: "TempBootstrap-K8s-XYZ1"
+              new_password: "M1Pr0p0s1t0Adm1n!"
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+        '400':
+          description: Password nueva no cumple requisitos
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "WEAK_PASSWORD"
+                message: "password must have at least 8 characters"
+                category: "VALIDATION_ERROR"
+        '401':
+          description: old_password no coincide
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "INVALID_CREDENTIALS"
+                message: "email or password is incorrect"
+                category: "UNAUTHENTICATED"
+
+  /api/users/{id}/reset-password:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    post:
+      tags: [Users]
+      summary: (Superadmin) Resetear password de cualquier user
+      description: |
+        Genera una password aleatoria server-side de 16 chars URL-safe,
+        persiste su hash con `must_change_password=1` y devuelve la temporal
+        en CLARO en la respuesta. **Viaja UNA SOLA VEZ** — el admin debe
+        entregársela al user; el server no la guarda en claro ni en logs.
+
+        El user, en su próximo login, será forzado a cambiarla via
+        `/api/users/me/change-password`.
+
+        **Restringido a superadmins** (`role: "superadmin"` en el JWT).
+        Cualquier otro caller recibe `403 SUPERADMIN_REQUIRED`.
+      responses:
+        '200':
+          description: Password temporal (una sola vez)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  temp_password:
+                    type: string
+                    description: Password temporal en claro. Entregar al user inmediatamente.
+              example:
+                temp_password: "Wf5aQ_pZxKL7_Mn3"
+        '403':
+          description: El caller no es superadmin
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "SUPERADMIN_REQUIRED"
+                message: "this action is restricted to superadmins"
+                category: "PERMISSION_DENIED"
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/users/by-email:
@@ -2143,16 +2357,22 @@ components:
     User:
       type: object
       properties:
-        id:              { type: string, format: uuid }
-        email:           { type: string, format: email }
-        first_name:      { type: string }
-        last_name:       { type: string }
-        document_number: { type: string }
-        school_id:       { type: string, format: uuid, description: "'' si no pertenece a un colegio" }
-        active:          { type: boolean }
-        last_access_at:  { type: string, format: date-time, nullable: true }
-        created_at:      { type: string, format: date-time }
-        updated_at:      { type: string, format: date-time, nullable: true }
+        id:                   { type: string, format: uuid }
+        email:                { type: string, format: email }
+        first_name:           { type: string }
+        last_name:            { type: string }
+        document_number:      { type: string }
+        school_id:            { type: string, format: uuid, description: "'' si no pertenece a un colegio" }
+        active:               { type: boolean }
+        last_access_at:       { type: string, format: date-time, nullable: true }
+        created_at:           { type: string, format: date-time }
+        updated_at:           { type: string, format: date-time, nullable: true }
+        is_superadmin:
+          type: boolean
+          description: "Si true, el user bypassa el chequeo de permisos. Solo otro superadmin puede setear este flag."
+        must_change_password:
+          type: boolean
+          description: "Si true, todas las rutas excepto Me y ChangeMyPassword devuelven 403 PASSWORD_CHANGE_REQUIRED."
 
     CreateUserRequest:
       type: object

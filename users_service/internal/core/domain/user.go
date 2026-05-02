@@ -27,6 +27,18 @@ type User struct {
 	CreatedAt       time.Time
 	UpdatedAt       *time.Time
 	HubspotRecordID string // "" = aún no sincronizado con HubSpot
+
+	// IsSuperadmin BYPASSA el chequeo de permisos. Solo para los users
+	// que el bootstrap k8s Job o un superadmin ya existente promueven
+	// explícitamente. Por convención: solo un superadmin puede editar
+	// el catálogo `permission` y crear otros superadmins.
+	IsSuperadmin bool
+
+	// MustChangePassword fuerza al user a cambiar la password en su
+	// primer login (true después del bootstrap o cuando un admin reseta
+	// la password). Mientras esté true, todas las rutas excepto
+	// /api/users/me y /api/users/me/change-password devuelven 403.
+	MustChangePassword bool
 }
 
 var emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)

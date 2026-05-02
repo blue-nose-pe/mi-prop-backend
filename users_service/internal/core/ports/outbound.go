@@ -38,6 +38,16 @@ type UserWriter interface {
 	SetActive(ctx context.Context, id domain.UserID, active bool) error
 	TouchLastAccess(ctx context.Context, id domain.UserID) error
 	SetHubspotRecordID(ctx context.Context, id domain.UserID, recordID string) error
+
+	// SetPassword: el dueño cambia su password (limpia must_change_password).
+	SetPassword(ctx context.Context, id domain.UserID, newHash string) error
+	// ResetPassword: un superadmin reset la password (mantiene must_change_password=1).
+	ResetPassword(ctx context.Context, id domain.UserID, newHash string) error
+	// SaveSuperadmin: insertar un user con is_superadmin=1 y must_change_password=1.
+	// Lo usa el binario cmd/bootstrap.
+	SaveSuperadmin(ctx context.Context, email, passwordHash string) (domain.UserID, error)
+	// ExistsAnySuperadmin: para el bootstrap idempotente.
+	ExistsAnySuperadmin(ctx context.Context) (bool, error)
 }
 
 type UserSearcher interface {

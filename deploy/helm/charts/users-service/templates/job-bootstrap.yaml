@@ -1,0 +1,82 @@
+{{- /*
+  Job que crea el primer superadmin tras la instalación.
+
+  Idempotente: si ya hay un superadmin (re-instalación o upgrade), el
+  binario detecta `is_superadmin = 1` en alguna fila de `users` y sale sin
+  hacer nada.
+
+  Corre como helm post-install hook → DESPUÉS de las migraciones T-SQL
+  (que son pre-install hook). Eso garantiza que la tabla `users` y la
+  columna `is_superadmin` existen al ejecutarse este Job.
+*/ -}}
+
+{{- if .Values.bootstrap.enabled -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "usersService.fullname" . }}-bootstrap
+  labels:
+    {{- include "usersService.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.bootstrap.backoffLimit | default 3 }}
+  template:
+    metadata:
+      labels:
+        {{- include "usersService.selectorLabels" . | nindent 8 }}
+        job-type: bootstrap
+    spec:
+      restartPolicy: OnFailure
+      {{- with .Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: bootstrap
+          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.bootstrap.image.repository .Values.global.imageTag }}
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: SQL_SERVER
+              value: "{{ .Values.global.sqlServer }}"
+            - name: SQL_PORT
+              value: "{{ .Values.global.sqlPort }}"
+            - name: SQL_DATABASE
+              value: "{{ .Values.database.name }}"
+            - name: SQL_USER
+              value: "{{ .Values.database.user }}"
+            - name: SQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "usersService.fullname" . }}-kv
+                  key: sql-password
+            - name: SQL_ENCRYPT
+              value: "true"
+            - name: SQL_TRUST_SERVER_CERT
+              value: "false"
+            - name: BCRYPT_COST
+              value: "{{ .Values.bcryptCost }}"
+            - name: SUPERADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "usersService.fullname" . }}-superadmin
+                  key: email
+            - name: SUPERADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "usersService.fullname" . }}-superadmin
+                  key: password
+          volumeMounts:
+            - name: kv-secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "usersService.fullname" . }}-spc
+{{- end }}

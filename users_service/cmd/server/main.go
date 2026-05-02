@@ -102,8 +102,8 @@ func main() {
 	permCmds := command.NewPermissionHandler(userRepo, permRepo)
 	assignmentCmds := command.NewAssignmentHandler(userRepo, assignmentRepo)
 	hubspotSyncCmds := command.NewHubspotSyncHandler(userRepo, schoolRepo)
-	userQrys := query.NewUserHandler(userRepo, cache)
-	permQrys := query.NewPermissionHandler(permRepo)
+	userQrys := query.NewUserHandler(userRepo, cache, permRepo)
+	permQrys := query.NewPermissionHandler(userRepo, permRepo)
 	assignmentQrys := query.NewAssignmentHandler(assignmentRepo)
 
 	// Estos handlers todavía no se exponen por gRPC; quedan listos para

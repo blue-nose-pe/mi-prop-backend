@@ -5,6 +5,8 @@ package command
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"strings"
 	"time"
@@ -121,4 +123,75 @@ func (h *UserHandler) Deactivate(ctx context.Context, id domain.UserID) error {
 	}
 	_ = h.cache.Delete(ctx, id)
 	return nil
+}
+
+// ChangePassword: el dueño cambia su propia password.
+// Reglas:
+//   - Verifica que OldPassword coincida con el hash actual (anti hijack).
+//   - Aplica los mismos requisitos de fortaleza que CreateUser.
+//   - Limpia must_change_password (lo hace el repo en el mismo UPDATE).
+//   - Invalida la cache para no servir el user con el hash viejo.
+func (h *UserHandler) ChangePassword(ctx context.Context, in ports.ChangePasswordInput) error {
+	u, err := h.users.FindByID(ctx, in.UserID)
+	if err != nil {
+		return err
+	}
+	if err := h.hasher.Compare(u.PasswordHash, in.OldPassword); err != nil {
+		return domain.ErrInvalidPassword
+	}
+	if err := domain.ValidatePasswordStrength(in.NewPassword); err != nil {
+		return err
+	}
+	newHash, err := h.hasher.Hash(in.NewPassword)
+	if err != nil {
+		return err
+	}
+	if err := h.users.SetPassword(ctx, in.UserID, newHash); err != nil {
+		return err
+	}
+	_ = h.cache.Delete(ctx, in.UserID)
+	return nil
+}
+
+// ResetPassword: SOLO superadmin. Genera password aleatoria de 16 chars
+// server-side (no permite que el admin la elija — evita patrones débiles
+// repetidos al resetear muchos users), persiste el hash con
+// must_change_password=true y devuelve la temporal en el output.
+//
+// La temp viaja UNA SOLA VEZ en la respuesta — el admin se la entrega
+// al user, que la cambiará en su próximo login.
+func (h *UserHandler) ResetPassword(ctx context.Context, in ports.ResetPasswordInput) (*ports.ResetPasswordOutput, error) {
+	if !in.ActorIsSuperadmin {
+		return nil, domain.ErrSuperadminRequired
+	}
+	temp, err := generateRandomPassword(16)
+	if err != nil {
+		return nil, err
+	}
+	hash, err := h.hasher.Hash(temp)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.users.ResetPassword(ctx, in.TargetUserID, hash); err != nil {
+		return nil, err
+	}
+	_ = h.cache.Delete(ctx, in.TargetUserID)
+	return &ports.ResetPasswordOutput{TempPassword: temp}, nil
+}
+
+// generateRandomPassword devuelve una password de longitud `n` formada
+// por caracteres URL-safe base64 (alfanumérico + `-` y `_`). Lee de
+// crypto/rand → criptográficamente segura.
+//
+// 16 chars de base64 ≈ 96 bits de entropía. Más que suficiente para
+// password temporal de un solo uso.
+func generateRandomPassword(n int) (string, error) {
+	if n < 8 {
+		n = 8
+	}
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(b)[:n], nil
 }

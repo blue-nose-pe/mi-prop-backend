@@ -6,6 +6,7 @@ import (
 	"users_service/internal/core/domain"
 	"users_service/internal/core/ports"
 	"users_service/internal/shared/apperr"
+	"users_service/internal/shared/jwtmw"
 	"users_service/internal/shared/search"
 	pb "users_service/proto/gen"
 	commonpb "users_service/proto/gen/common"
@@ -138,4 +139,72 @@ func (h *UserHandler) HasPermission(ctx context.Context, req *pb.HasPermissionRe
 		return nil, apperr.ToGRPC(ctx, err)
 	}
 	return &pb.HasPermissionResponse{Allowed: ok}, nil
+}
+
+// ---------- Self-service endpoints (caller resuelto por JWT) ----------
+
+// callerID extrae el user_id del access token. Devuelve "" si la request
+// llegó sin auth (no debería pasar — el interceptor JWT ya rechaza, pero
+// nos protegemos por si alguien wirea mal el skip-list).
+func callerID(ctx context.Context) domain.UserID {
+	c := jwtmw.FromContext(ctx)
+	if c == nil {
+		return ""
+	}
+	return domain.UserID(c.Subject)
+}
+
+// Me devuelve el user logueado + sus permission codes. El front lo
+// llama después del login para saber qué UI habilitar.
+func (h *UserHandler) Me(ctx context.Context, _ *pb.EmptyRequest) (*pb.MeResponse, error) {
+	id := callerID(ctx)
+	if id == "" {
+		return nil, apperr.ToGRPC(ctx, domain.ErrInvalidPassword) // genérico, no filtrar
+	}
+	out, err := h.userQrys.Me(ctx, id)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.MeResponse{User: toProtoUser(out.User), Permissions: out.Permissions}, nil
+}
+
+// ChangeMyPassword: el caller cambia SU PROPIA password. Limpia el
+// flag must_change_password.
+func (h *UserHandler) ChangeMyPassword(ctx context.Context, req *pb.ChangeMyPasswordRequest) (*pb.EmptyResponse, error) {
+	id := callerID(ctx)
+	if id == "" {
+		return nil, apperr.ToGRPC(ctx, domain.ErrInvalidPassword)
+	}
+	if err := h.userCmds.ChangePassword(ctx, ports.ChangePasswordInput{
+		UserID:      id,
+		OldPassword: req.GetOldPassword(),
+		NewPassword: req.GetNewPassword(),
+	}); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
+// ResetPassword: solo superadmin. El handler chequea el flag desde claims
+// JWT (settable por el bootstrap o por otro superadmin) ANTES de delegar
+// al core. El core también re-valida (defense in depth).
+func (h *UserHandler) ResetPassword(ctx context.Context, req *pb.ResetPasswordRequest) (*pb.ResetPasswordResponse, error) {
+	c := jwtmw.FromContext(ctx)
+	isSuper := false
+	if c != nil {
+		for _, r := range c.Roles {
+			if r == "superadmin" {
+				isSuper = true
+				break
+			}
+		}
+	}
+	out, err := h.userCmds.ResetPassword(ctx, ports.ResetPasswordInput{
+		ActorIsSuperadmin: isSuper,
+		TargetUserID:      domain.UserID(req.GetTargetUserId()),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.ResetPasswordResponse{TempPassword: out.TempPassword}, nil
 }

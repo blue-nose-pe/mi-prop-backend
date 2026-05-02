@@ -12,10 +12,11 @@ import (
 func TestUserQuery_Get_CacheHit(t *testing.T) {
 	users := testutil.NewUserRepoMock()
 	cache := testutil.NewUserCacheMock()
+	perms := testutil.NewPermissionRepoMock()
 	cached := &domain.User{ID: "u1", Email: "cached@example.com", Active: true}
 	_ = cache.Set(context.Background(), cached)
 
-	h := NewUserHandler(users, cache)
+	h := NewUserHandler(users, cache, perms)
 
 	out, err := h.Get(context.Background(), "u1")
 	if err != nil {
@@ -29,9 +30,10 @@ func TestUserQuery_Get_CacheHit(t *testing.T) {
 func TestUserQuery_Get_CacheMissReadsRepoAndCaches(t *testing.T) {
 	users := testutil.NewUserRepoMock()
 	cache := testutil.NewUserCacheMock()
+	perms := testutil.NewPermissionRepoMock()
 	users.Seed(&domain.User{ID: "u1", Email: "a@example.com", Active: true})
 
-	h := NewUserHandler(users, cache)
+	h := NewUserHandler(users, cache, perms)
 
 	out, err := h.Get(context.Background(), "u1")
 	if err != nil {
@@ -49,7 +51,8 @@ func TestUserQuery_Get_CacheMissReadsRepoAndCaches(t *testing.T) {
 func TestUserQuery_Get_NotFound(t *testing.T) {
 	users := testutil.NewUserRepoMock()
 	cache := testutil.NewUserCacheMock()
-	h := NewUserHandler(users, cache)
+	perms := testutil.NewPermissionRepoMock()
+	h := NewUserHandler(users, cache, perms)
 
 	_, err := h.Get(context.Background(), "missing")
 	if !errors.Is(err, domain.ErrUserNotFound) {
@@ -60,9 +63,10 @@ func TestUserQuery_Get_NotFound(t *testing.T) {
 func TestUserQuery_GetByEmail_NormalizesAndValidates(t *testing.T) {
 	users := testutil.NewUserRepoMock()
 	cache := testutil.NewUserCacheMock()
+	perms := testutil.NewPermissionRepoMock()
 	users.Seed(&domain.User{ID: "u1", Email: "foo@example.com", Active: true})
 
-	h := NewUserHandler(users, cache)
+	h := NewUserHandler(users, cache, perms)
 
 	out, err := h.GetByEmail(context.Background(), "  FoO@Example.COM ")
 	if err != nil {

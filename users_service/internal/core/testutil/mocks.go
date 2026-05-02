@@ -173,6 +173,65 @@ func (m *UserRepoMock) Search(_ context.Context, _ search.Request) (*search.Resp
 	return &search.Response{}, nil
 }
 
+// ----- nuevos métodos: superadmin + password change -----
+
+func (m *UserRepoMock) SetPassword(_ context.Context, id domain.UserID, newHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.byID[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.PasswordHash = newHash
+	u.MustChangePassword = false
+	return nil
+}
+
+func (m *UserRepoMock) ResetPassword(_ context.Context, id domain.UserID, newHash string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	u, ok := m.byID[id]
+	if !ok {
+		return domain.ErrUserNotFound
+	}
+	u.PasswordHash = newHash
+	u.MustChangePassword = true
+	return nil
+}
+
+func (m *UserRepoMock) SaveSuperadmin(_ context.Context, email, passwordHash string) (domain.UserID, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	em := domain.Email(email).Normalize()
+	if _, exists := m.byEmail[em]; exists {
+		return "", domain.ErrEmailTaken
+	}
+	id := domain.UserID("super-" + email)
+	u := &domain.User{
+		ID:                 id,
+		Email:              em,
+		PasswordHash:       passwordHash,
+		Active:             true,
+		IsSuperadmin:       true,
+		MustChangePassword: true,
+		CreatedAt:          time.Now(),
+	}
+	m.byID[id] = u
+	m.byEmail[em] = u
+	return id, nil
+}
+
+func (m *UserRepoMock) ExistsAnySuperadmin(_ context.Context) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, u := range m.byID {
+		if u.IsSuperadmin {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 // =============== PermissionRepository mock ===============
 
 type PermissionRepoMock struct {

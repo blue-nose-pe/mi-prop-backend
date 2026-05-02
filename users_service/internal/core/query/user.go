@@ -14,12 +14,13 @@ import (
 type UserHandler struct {
 	users ports.UserRepository
 	cache ports.UserCache
+	perms ports.PermissionRepository
 }
 
 var _ ports.UserQueries = (*UserHandler)(nil)
 
-func NewUserHandler(users ports.UserRepository, cache ports.UserCache) *UserHandler {
-	return &UserHandler{users: users, cache: cache}
+func NewUserHandler(users ports.UserRepository, cache ports.UserCache, perms ports.PermissionRepository) *UserHandler {
+	return &UserHandler{users: users, cache: cache, perms: perms}
 }
 
 // Get retorna un user por ID. Cache-first.
@@ -49,4 +50,23 @@ func (h *UserHandler) GetByEmail(ctx context.Context, email domain.Email) (*doma
 // llamar al repo (forzar un grupo AND con school_id = <caller school>).
 func (h *UserHandler) Search(ctx context.Context, req search.Request) (*search.Response, error) {
 	return h.users.Search(ctx, req)
+}
+
+// Me devuelve el user + sus permission codes. Lo consume /api/users/me
+// para que el front habilite UI según permisos. Si el user es superadmin
+// devolvemos un único code "*" — el front interpreta como "todo permitido"
+// sin tener que enumerar los permisos del catálogo.
+func (h *UserHandler) Me(ctx context.Context, id domain.UserID) (*ports.MeOutput, error) {
+	u, err := h.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if u.IsSuperadmin {
+		return &ports.MeOutput{User: u, Permissions: []string{"*"}}, nil
+	}
+	codes, err := h.perms.FindCodesByUserID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return &ports.MeOutput{User: u, Permissions: codes}, nil
 }

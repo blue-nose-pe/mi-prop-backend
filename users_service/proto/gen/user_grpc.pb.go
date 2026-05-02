@@ -25,6 +25,9 @@ const (
 	UserService_GetUserByEmail_FullMethodName        = "/users.v1.UserService/GetUserByEmail"
 	UserService_UpdateUser_FullMethodName            = "/users.v1.UserService/UpdateUser"
 	UserService_DeactivateUser_FullMethodName        = "/users.v1.UserService/DeactivateUser"
+	UserService_Me_FullMethodName                    = "/users.v1.UserService/Me"
+	UserService_ChangeMyPassword_FullMethodName      = "/users.v1.UserService/ChangeMyPassword"
+	UserService_ResetPassword_FullMethodName         = "/users.v1.UserService/ResetPassword"
 	UserService_SearchUsers_FullMethodName           = "/users.v1.UserService/SearchUsers"
 	UserService_AssignPermissionGroup_FullMethodName = "/users.v1.UserService/AssignPermissionGroup"
 	UserService_RevokePermissionGroup_FullMethodName = "/users.v1.UserService/RevokePermissionGroup"
@@ -44,6 +47,11 @@ type UserServiceClient interface {
 	GetUserByEmail(ctx context.Context, in *GetUserByEmailRequest, opts ...grpc.CallOption) (*UserResponse, error)
 	UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*UserResponse, error)
 	DeactivateUser(ctx context.Context, in *DeactivateUserRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// Sobre el caller autenticado.
+	Me(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*MeResponse, error)
+	ChangeMyPassword(ctx context.Context, in *ChangeMyPasswordRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// Solo superadmins.
+	ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*ResetPasswordResponse, error)
 	// HubSpot-style search: filterGroups (AND within, OR across) + properties + limit.
 	SearchUsers(ctx context.Context, in *common.SearchRequest, opts ...grpc.CallOption) (*common.SearchResponse, error)
 	AssignPermissionGroup(ctx context.Context, in *AssignGroupRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
@@ -104,6 +112,36 @@ func (c *userServiceClient) DeactivateUser(ctx context.Context, in *DeactivateUs
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EmptyResponse)
 	err := c.cc.Invoke(ctx, UserService_DeactivateUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) Me(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*MeResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(MeResponse)
+	err := c.cc.Invoke(ctx, UserService_Me_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ChangeMyPassword(ctx context.Context, in *ChangeMyPasswordRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, UserService_ChangeMyPassword_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*ResetPasswordResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResetPasswordResponse)
+	err := c.cc.Invoke(ctx, UserService_ResetPassword_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -172,6 +210,11 @@ type UserServiceServer interface {
 	GetUserByEmail(context.Context, *GetUserByEmailRequest) (*UserResponse, error)
 	UpdateUser(context.Context, *UpdateUserRequest) (*UserResponse, error)
 	DeactivateUser(context.Context, *DeactivateUserRequest) (*EmptyResponse, error)
+	// Sobre el caller autenticado.
+	Me(context.Context, *EmptyRequest) (*MeResponse, error)
+	ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*EmptyResponse, error)
+	// Solo superadmins.
+	ResetPassword(context.Context, *ResetPasswordRequest) (*ResetPasswordResponse, error)
 	// HubSpot-style search: filterGroups (AND within, OR across) + properties + limit.
 	SearchUsers(context.Context, *common.SearchRequest) (*common.SearchResponse, error)
 	AssignPermissionGroup(context.Context, *AssignGroupRequest) (*EmptyResponse, error)
@@ -202,6 +245,15 @@ func (UnimplementedUserServiceServer) UpdateUser(context.Context, *UpdateUserReq
 }
 func (UnimplementedUserServiceServer) DeactivateUser(context.Context, *DeactivateUserRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateUser not implemented")
+}
+func (UnimplementedUserServiceServer) Me(context.Context, *EmptyRequest) (*MeResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method Me not implemented")
+}
+func (UnimplementedUserServiceServer) ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ChangeMyPassword not implemented")
+}
+func (UnimplementedUserServiceServer) ResetPassword(context.Context, *ResetPasswordRequest) (*ResetPasswordResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResetPassword not implemented")
 }
 func (UnimplementedUserServiceServer) SearchUsers(context.Context, *common.SearchRequest) (*common.SearchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchUsers not implemented")
@@ -329,6 +381,60 @@ func _UserService_DeactivateUser_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_Me_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(EmptyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).Me(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_Me_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).Me(ctx, req.(*EmptyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ChangeMyPassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ChangeMyPasswordRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ChangeMyPassword(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ChangeMyPassword_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ChangeMyPassword(ctx, req.(*ChangeMyPasswordRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ResetPassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResetPasswordRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ResetPassword(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ResetPassword_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ResetPassword(ctx, req.(*ResetPasswordRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _UserService_SearchUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(common.SearchRequest)
 	if err := dec(in); err != nil {
@@ -445,6 +551,18 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateUser",
 			Handler:    _UserService_DeactivateUser_Handler,
+		},
+		{
+			MethodName: "Me",
+			Handler:    _UserService_Me_Handler,
+		},
+		{
+			MethodName: "ChangeMyPassword",
+			Handler:    _UserService_ChangeMyPassword_Handler,
+		},
+		{
+			MethodName: "ResetPassword",
+			Handler:    _UserService_ResetPassword_Handler,
 		},
 		{
 			MethodName: "SearchUsers",

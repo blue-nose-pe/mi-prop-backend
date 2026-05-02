@@ -93,13 +93,16 @@ func (h *AuthHandler) Login(ctx context.Context, in ports.LoginInput) (*ports.Lo
 		return nil, err
 	}
 
+	roles := []string{}
+	if u.IsSuperadmin {
+		roles = append(roles, "superadmin")
+	}
 	pair, err := h.tokens.IssuePair(ports.TokenIssueParams{
 		UserID:      u.ID,
 		Email:       string(u.Email),
+		Roles:       roles,
 		Permissions: codes,
 		SchoolID:    string(u.SchoolID),
-		// Roles se derivarán cuando se modelen explícitamente; por ahora
-		// los permisos granulares cubren la autorización.
 	})
 	if err != nil {
 		return nil, err
@@ -157,7 +160,12 @@ func (h *AuthHandler) Refresh(ctx context.Context, in ports.RefreshInput) (*port
 		return nil, err
 	}
 
+	roles := []string{}
+	if u.IsSuperadmin {
+		roles = append(roles, "superadmin")
+	}
 	pair, err := h.tokens.IssuePair(ports.TokenIssueParams{
+		Roles:       roles,
 		UserID:      u.ID,
 		Email:       string(u.Email),
 		Permissions: codes,

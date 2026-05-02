@@ -17,16 +17,18 @@ func toProtoUser(u *domain.User) *pb.User {
 		return nil
 	}
 	return &pb.User{
-		Id:             string(u.ID),
-		Email:          string(u.Email),
-		FirstName:      u.FirstName,
-		LastName:       u.LastName,
-		DocumentNumber: u.DocumentNumber,
-		SchoolId:       string(u.SchoolID),
-		Active:         u.Active,
-		LastAccessAt:   tsOrNil(u.LastAccessAt),
-		CreatedAt:      timestamppb.New(u.CreatedAt),
-		UpdatedAt:      tsOrNil(u.UpdatedAt),
+		Id:                 string(u.ID),
+		Email:              string(u.Email),
+		FirstName:          u.FirstName,
+		LastName:           u.LastName,
+		DocumentNumber:     u.DocumentNumber,
+		SchoolId:           string(u.SchoolID),
+		Active:             u.Active,
+		LastAccessAt:       tsOrNil(u.LastAccessAt),
+		CreatedAt:          timestamppb.New(u.CreatedAt),
+		UpdatedAt:          tsOrNil(u.UpdatedAt),
+		IsSuperadmin:       u.IsSuperadmin,
+		MustChangePassword: u.MustChangePassword,
 	}
 }
 

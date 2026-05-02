@@ -27,4 +27,18 @@ var (
 	ErrForbidden           = apperr.NewPermissionDenied("FORBIDDEN", "you do not have permission to perform this action")
 	ErrInvalidRefreshToken = apperr.NewUnauthenticated("INVALID_REFRESH_TOKEN", "refresh token is invalid, expired or revoked")
 	ErrAssignmentNotFound  = apperr.NewNotFound("ASSIGNMENT_NOT_FOUND", "no current assignment for the given target")
+
+	// PasswordChangeRequired: el user tiene must_change_password=true.
+	// Todas las rutas (excepto /api/users/me y /change-password) devuelven
+	// este error hasta que cambie su password.
+	ErrPasswordChangeRequired = apperr.NewPermissionDenied(
+		"PASSWORD_CHANGE_REQUIRED",
+		"you must change your temporary password before continuing",
+	)
+	// SuperadminRequired: el caller no es superadmin y la ruta lo exige.
+	// Aplica a operaciones críticas tipo edición del catálogo permission.
+	ErrSuperadminRequired = apperr.NewPermissionDenied(
+		"SUPERADMIN_REQUIRED",
+		"this action is restricted to superadmins",
+	)
 )

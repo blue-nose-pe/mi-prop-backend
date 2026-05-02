@@ -16,6 +16,13 @@ service UserService {
   rpc UpdateUser      (UpdateUserRequest)     returns (UserResponse);
   rpc DeactivateUser  (DeactivateUserRequest) returns (EmptyResponse);
 
+  // Sobre el caller autenticado.
+  rpc Me               (EmptyRequest)        returns (MeResponse);
+  rpc ChangeMyPassword (ChangeMyPasswordRequest) returns (EmptyResponse);
+
+  // Solo superadmins.
+  rpc ResetPassword    (ResetPasswordRequest)    returns (ResetPasswordResponse);
+
   // HubSpot-style search: filterGroups (AND within, OR across) + properties + limit.
   rpc SearchUsers (common.v1.SearchRequest) returns (common.v1.SearchResponse);
 
@@ -59,6 +66,8 @@ message User {
   google.protobuf.Timestamp last_access_at = 8;
   google.protobuf.Timestamp created_at     = 9;
   google.protobuf.Timestamp updated_at     = 10;
+  bool   is_superadmin         = 11;
+  bool   must_change_password  = 12;
 }
 
 message CreateUserRequest {
@@ -125,3 +134,28 @@ message HasPermissionResponse { bool allowed = 1; }
 
 message UserResponse  { User user = 1; }
 message EmptyResponse {}
+message EmptyRequest  {}
+
+// Me / ChangePassword / ResetPassword
+message MeResponse {
+  User   user        = 1;
+  // Para superadmins: ["*"] (sentinel — el front asume todo permitido).
+  // Para otros: lista de codes en formato `<service>.<table>.<action>`.
+  repeated string permissions = 2;
+}
+
+message ChangeMyPasswordRequest {
+  string old_password = 1;
+  string new_password = 2;
+}
+
+message ResetPasswordRequest {
+  string target_user_id = 1;
+}
+
+message ResetPasswordResponse {
+  // Password temporal en CLARO. Viaja UNA SOLA VEZ. El admin la entrega
+  // al user. El user verá must_change_password=true y será forzado a
+  // cambiarla en su primer login.
+  string temp_password = 1;
+}

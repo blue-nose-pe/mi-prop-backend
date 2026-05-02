@@ -28,12 +28,28 @@ type UserCommands interface {
 	Create(ctx context.Context, in CreateUserInput) (*domain.User, error)
 	Update(ctx context.Context, in UpdateUserInput) (*domain.User, error)
 	Deactivate(ctx context.Context, id domain.UserID) error
+	// ChangePassword: el dueño cambia su propia password verificando la
+	// vieja. Limpia el flag must_change_password.
+	ChangePassword(ctx context.Context, in ChangePasswordInput) error
+	// ResetPassword: solo superadmin. Genera password aleatoria server-side,
+	// la persiste hasheada con must_change_password=true, y devuelve la
+	// temporal en claro (UNA SOLA VEZ — el admin la entrega al user).
+	ResetPassword(ctx context.Context, in ResetPasswordInput) (*ResetPasswordOutput, error)
 }
 
 type UserQueries interface {
 	Get(ctx context.Context, id domain.UserID) (*domain.User, error)
 	GetByEmail(ctx context.Context, email domain.Email) (*domain.User, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
+	// Me: equivalente a Get pero también carga las permissions efectivas.
+	// Lo consume /api/users/me para que el front sepa qué UI habilitar.
+	Me(ctx context.Context, id domain.UserID) (*MeOutput, error)
+}
+
+// MeOutput agrega user + permissions + flags útiles para el front.
+type MeOutput struct {
+	User        *domain.User
+	Permissions []string // codes en formato `<service>.<table>.<action>`
 }
 
 // =============== AUTH ===============
@@ -124,6 +140,32 @@ type UpdateUserInput struct {
 	LastName       string
 	DocumentNumber string
 	SchoolID       string // "" = no tocar
+}
+
+// ChangePasswordInput: el dueño cambia su propia password.
+// El handler valida OldPassword contra el hash actual antes de aplicar
+// el cambio (anti tomar-cuenta-de-otro-en-misma-PC).
+type ChangePasswordInput struct {
+	UserID      domain.UserID
+	OldPassword string
+	NewPassword string
+}
+
+// ResetPasswordInput: SOLO superadmin. Reset desde panel admin.
+// Genera password aleatoria server-side (no la elige el caller) y
+// devuelve la temporal en el output para que el admin se la entregue
+// al user. Marca must_change_password=true.
+type ResetPasswordInput struct {
+	ActorIsSuperadmin bool          // setea el handler gRPC desde claims JWT
+	TargetUserID      domain.UserID
+}
+
+// ResetPasswordOutput: la password temporal viaja UNA SOLA VEZ por la
+// respuesta gRPC; el server NO la persiste en claro y el admin debe
+// entregársela al user inmediatamente. El user verá must_change_password=true
+// en su próximo login y será forzado a cambiarla.
+type ResetPasswordOutput struct {
+	TempPassword string
 }
 
 type AuthenticateInput struct {

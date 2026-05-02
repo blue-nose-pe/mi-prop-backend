@@ -52,7 +52,9 @@ const userCols = `CONVERT(NVARCHAR(36), id),
 		last_access_at,
 		created_at,
 		updated_at,
-		ISNULL(hubspot_record_id, '')`
+		ISNULL(hubspot_record_id, ''),
+		is_superadmin,
+		must_change_password`
 
 func (r *UserRepo) Save(ctx context.Context, u *domain.User) (domain.UserID, error) {
 	// La BD genera el UNIQUEIDENTIFIER vía DEFAULT NEWID(); lo recuperamos
@@ -165,21 +167,24 @@ type rowScanner interface {
 
 func scanUser(row rowScanner) (*domain.User, error) {
 	var (
-		u          domain.User
-		idStr      string
-		emailStr   string
-		firstName  string
-		lastName   string
-		doc        string
-		schoolID   string
-		active     bool
-		lastAccess sql.NullTime
-		updatedAt  sql.NullTime
-		hubspotID  string
+		u                  domain.User
+		idStr              string
+		emailStr           string
+		firstName          string
+		lastName           string
+		doc                string
+		schoolID           string
+		active             bool
+		lastAccess         sql.NullTime
+		updatedAt          sql.NullTime
+		hubspotID          string
+		isSuperadmin       bool
+		mustChangePassword bool
 	)
 
 	err := row.Scan(&idStr, &emailStr, &u.PasswordHash, &firstName, &lastName,
-		&doc, &schoolID, &active, &lastAccess, &u.CreatedAt, &updatedAt, &hubspotID)
+		&doc, &schoolID, &active, &lastAccess, &u.CreatedAt, &updatedAt, &hubspotID,
+		&isSuperadmin, &mustChangePassword)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrUserNotFound
 	}
@@ -195,6 +200,8 @@ func scanUser(row rowScanner) (*domain.User, error) {
 	u.SchoolID = domain.SchoolID(schoolID)
 	u.Active = active
 	u.HubspotRecordID = hubspotID
+	u.IsSuperadmin = isSuperadmin
+	u.MustChangePassword = mustChangePassword
 	if lastAccess.Valid {
 		t := lastAccess.Time
 		u.LastAccessAt = &t
@@ -204,6 +211,68 @@ func scanUser(row rowScanner) (*domain.User, error) {
 		u.UpdatedAt = &t
 	}
 	return &u, nil
+}
+
+// SetPassword actualiza el password_hash y, en el mismo statement, limpia
+// el flag `must_change_password`. Lo invoca el caso de uso ChangePassword
+// cuando el user (no admin) cambia su propia password.
+func (r *UserRepo) SetPassword(ctx context.Context, id domain.UserID, newHash string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users
+		    SET password_hash = @p1, must_change_password = 0
+		  WHERE id = CONVERT(UNIQUEIDENTIFIER, @p2)`,
+		newHash, string(id))
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// ResetPassword: lo usa un superadmin para resetear la password de un
+// user. Setea el nuevo hash Y `must_change_password = 1` para forzar al
+// dueño a cambiarla en su próximo login.
+func (r *UserRepo) ResetPassword(ctx context.Context, id domain.UserID, newHash string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE users
+		    SET password_hash = @p1, must_change_password = 1
+		  WHERE id = CONVERT(UNIQUEIDENTIFIER, @p2)`,
+		newHash, string(id))
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return domain.ErrUserNotFound
+	}
+	return nil
+}
+
+// ExistsAnySuperadmin: lo consulta el bootstrap para no duplicar.
+func (r *UserRepo) ExistsAnySuperadmin(ctx context.Context) (bool, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT CASE WHEN EXISTS (SELECT 1 FROM users WHERE is_superadmin = 1) THEN 1 ELSE 0 END`,
+	).Scan(&n)
+	return n == 1, err
+}
+
+// SaveSuperadmin inserta un user con is_superadmin=1 y
+// must_change_password=1. Idempotente: si el email ya existe, devuelve
+// ErrEmailTaken (el bootstrap lo trata como "no hay que crear nada").
+func (r *UserRepo) SaveSuperadmin(ctx context.Context, email, passwordHash string) (domain.UserID, error) {
+	const q = `
+		INSERT INTO users (email, password_hash, is_superadmin, must_change_password, active)
+		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
+		VALUES (@p1, @p2, 1, 1, 1)`
+	var id string
+	if err := r.db.QueryRowContext(ctx, q, email, passwordHash).Scan(&id); err != nil {
+		return "", mapDuplicate(err)
+	}
+	return domain.UserID(id), nil
 }
 
 // mapDuplicate traduce errores de SQL Server a errores de dominio.
