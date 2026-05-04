@@ -56,6 +56,9 @@ func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest)
 }
 
 func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest) (*pb.UserResponse, error) {
+	if req.GetId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
+	}
 	u, err := h.userCmds.Update(ctx, ports.UpdateUserInput{
 		ID:             domain.UserID(req.GetId()),
 		FirstName:      req.GetFirstName(),

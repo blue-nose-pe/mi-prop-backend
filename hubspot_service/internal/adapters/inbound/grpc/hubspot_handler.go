@@ -119,6 +119,12 @@ func (h *HubspotHandler) GetFailedSyncs(ctx context.Context, req *pb.GetFailedSy
 }
 
 func (h *HubspotHandler) RetryFailed(ctx context.Context, req *pb.RetryFailedRequest) (*pb.RetryFailedResponse, error) {
+	if req.GetQueue() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_QUEUE", "queue is required", "queue"))
+	}
+	if req.GetJobId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_JOB_ID", "job_id is required", "job_id"))
+	}
 	if err := h.admin.RetryFailed(ctx, req.GetQueue(), req.GetJobId()); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}

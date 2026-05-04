@@ -38,6 +38,9 @@ func (h *SurveyHandler) CreateSurvey(ctx context.Context, req *pb.CreateSurveyRe
 }
 
 func (h *SurveyHandler) UpdateSurvey(ctx context.Context, req *pb.UpdateSurveyRequest) (*pb.SurveyResponse, error) {
+	if req.GetId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
+	}
 	s, err := h.cmds.Update(ctx, ports.UpdateSurveyInput{
 		ID:          domain.SurveyID(req.GetId()),
 		Title:       req.GetTitle(),
@@ -64,6 +67,9 @@ func (h *SurveyHandler) DeactivateSurvey(ctx context.Context, req *pb.Deactivate
 }
 
 func (h *SurveyHandler) GetSurvey(ctx context.Context, req *pb.GetSurveyRequest) (*pb.SurveyResponse, error) {
+	if req.GetId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
+	}
 	s, err := h.qrys.Get(ctx, domain.SurveyID(req.GetId()))
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
