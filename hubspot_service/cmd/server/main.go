@@ -1,6 +1,7 @@
 // Composition Root del SERVER de hubspot_service:
 //   - gRPC server (lo consumen users_service y exams_service).
 //   - HTTP webhook server (lo invoca HubSpot ante cambios en su lado).
+// rebuild marker 2026-05-04
 // El procesamiento de jobs encolados vive en cmd/worker/main.go (proceso
 // distinto, escalable independiente).
 package main

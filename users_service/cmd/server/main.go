@@ -1,6 +1,7 @@
 // Composition Root. ÚNICO lugar donde las piezas concretas se conectan.
 // Si mañana cambiamos Azure SQL por otra DB, Redis por Memcached o bcrypt
 // por argon2, solo se toca este archivo.
+// rebuild marker 2026-05-04
 package main
 
 import (
