@@ -3,10 +3,18 @@ package proxy
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
+	"time"
+
+	"gateway/internal/middleware"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/structpb"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // readJSON deserializa el body en `dst`. Reusa los errores comunes
@@ -73,4 +81,104 @@ func mapCode(c codes.Code) (int, string) {
 	default:
 		return http.StatusInternalServerError, "INTERNAL_ERROR"
 	}
+}
+
+// userIDFromContext recupera el subject del JWT (= user_id) desde el
+// context inyectado por el middleware JWT. Devuelve "" si no hay claims
+// (ruta pública o token no presente).
+func userIDFromContext(r *http.Request) string {
+	c := middleware.ClaimsFromContext(r.Context())
+	if c == nil {
+		return ""
+	}
+	return c.Subject
+}
+
+// decodeSearchRequest deserializa el body JSON estilo HubSpot
+// (filter_groups / properties / sorts / limit / after) directamente al
+// `commonpb.SearchRequest` de cualquier servicio. Los seis servicios
+// generan el mismo schema en sus respectivos paquetes `commonpb`, así
+// que con protojson + proto.Message logramos mapear genéricamente.
+//
+// Nota: protojson respeta los nombres `snake_case` del .proto, que es
+// lo que el openapi expone, así que no hace falta traducción extra.
+func decodeSearchRequest(r *http.Request, dst proto.Message) error {
+	if r.Body == nil {
+		return errors.New("empty body")
+	}
+	defer r.Body.Close()
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	if len(body) == 0 {
+		// SearchRequest con valores default es válido (devuelve los primeros 50).
+		return nil
+	}
+	opts := protojson.UnmarshalOptions{DiscardUnknown: true}
+	return opts.Unmarshal(body, dst)
+}
+
+// searchResultLike y searchPagingLike son interfaces que cumplen las
+// versiones por servicio de `*commonpb.SearchResult` y `*commonpb.Paging`.
+// Permiten un único helper para serializar SearchResponses sin importar
+// el paquete exacto.
+type searchResultLike interface {
+	GetId() string
+	GetProperties() *structpb.Struct
+	GetCreatedAt() *timestamppb.Timestamp
+	GetUpdatedAt() *timestamppb.Timestamp
+	GetArchived() bool
+}
+
+type searchPagingLike interface {
+	GetNextAfter() uint32
+	GetHasMore() bool
+}
+
+// searchResponseToJSON construye el JSON envelope estándar
+// `{ total, results, paging }` a partir de cualquier SearchResponse
+// gRPC. Resuelve la conversión `structpb.Struct → map[string]any` para
+// que el front lo reciba como objeto JSON normal.
+func searchResponseToJSON[R searchResultLike, P searchPagingLike](
+	total uint32, results []R, paging P,
+) map[string]any {
+	out := make([]map[string]any, 0, len(results))
+	for _, r := range results {
+		var props map[string]any
+		if r.GetProperties() != nil {
+			props = r.GetProperties().AsMap()
+		} else {
+			props = map[string]any{}
+		}
+		out = append(out, map[string]any{
+			"id":         r.GetId(),
+			"created_at": optionalTimestamp(r.GetCreatedAt()),
+			"updated_at": optionalTimestamp(r.GetUpdatedAt()),
+			"archived":   r.GetArchived(),
+			"properties": props,
+		})
+	}
+	pagingObj := map[string]any{
+		"next_after": paging.GetNextAfter(),
+		"has_more":   paging.GetHasMore(),
+	}
+	return map[string]any{
+		"total":   total,
+		"results": out,
+		"paging":  pagingObj,
+	}
+}
+
+// parseRFC3339 convierte un string ISO 8601 a *timestamppb.Timestamp.
+// Vacío → nil. Inválido → nil + err para que el handler responda 400.
+func parseRFC3339(s string) (*timestamppb.Timestamp, error) {
+	if s == "" {
+		return nil, nil
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return nil, err
+	}
+	return timestamppb.New(t), nil
 }
