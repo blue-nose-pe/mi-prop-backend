@@ -31,6 +31,10 @@ type ResponseRepository interface {
 	FindByID(ctx context.Context, id domain.ResponseID) (*domain.Response, error)
 	// CountAndAnswers retorna respuestas agregadas para calcular métricas.
 	GetMetricsRaw(ctx context.Context, surveyID domain.SurveyID) (*RawMetrics, error)
+	// ExistsByUserAttempt: ¿este user ya envió response para este survey + attempt?
+	ExistsByUserAttempt(ctx context.Context, userID domain.UserID, surveyID domain.SurveyID, attemptID domain.AttemptID) (bool, error)
+	// ExistsByUserSurvey: ¿este user ya envió cualquier response para este survey?
+	ExistsByUserSurvey(ctx context.Context, userID domain.UserID, surveyID domain.SurveyID) (bool, error)
 }
 
 // RawMetrics es la cosecha cruda que el adapter devuelve; el handler

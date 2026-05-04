@@ -7,7 +7,10 @@ var (
 	ErrQuestionNotFound = apperr.NewNotFound("QUESTION_NOT_FOUND", "survey question not found")
 	ErrResponseNotFound = apperr.NewNotFound("RESPONSE_NOT_FOUND", "response not found")
 
-	ErrSurveyCodeTaken = apperr.NewConflict("SURVEY_CODE_TAKEN", "survey code/version already exists", "code")
+	ErrSurveyCodeTaken             = apperr.NewConflict("SURVEY_CODE_TAKEN", "survey code/version already exists", "code")
+	ErrAlreadySubmittedThisAttempt = apperr.NewConflict("RESPONSE_ALREADY_SUBMITTED_FOR_ATTEMPT", "this user already submitted a response for this exam_attempt", "exam_attempt_id")
+	ErrAlreadySubmittedThisSurvey  = apperr.NewConflict("RESPONSE_ALREADY_SUBMITTED_FOR_SURVEY", "this user already submitted a response for this survey", "survey_id")
+	ErrMissingRequiredAnswer       = apperr.NewValidation("MISSING_REQUIRED_ANSWER", "missing answer for a required question", "answers")
 
 	ErrInvalidQuestionKind = apperr.NewValidation("INVALID_QUESTION_KIND", "kind must be one of scale|nps|single|multi|open", "kind")
 	ErrInvalidTarget       = apperr.NewValidation("INVALID_TARGET_ROLE", "target_role must be one of admin|asesor|coordinador|estudiante", "target_role")

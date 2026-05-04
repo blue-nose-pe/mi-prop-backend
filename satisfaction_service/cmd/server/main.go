@@ -58,7 +58,7 @@ func main() {
 	auditSink := mssqladapter.NewAuditSink(db)
 
 	surveyCmds := command.NewSurveyHandler(surveys, questions)
-	responseCmds := command.NewResponseHandler(surveys, responses)
+	responseCmds := command.NewResponseHandler(surveys, questions, responses)
 	surveyQrys := query.NewSurveyHandler(surveys, questions)
 	responseQrys := query.NewResponseHandler(responses)
 

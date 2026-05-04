@@ -89,6 +89,42 @@ func (r *ResponseRepo) FindByID(ctx context.Context, id domain.ResponseID) (*dom
 	return &resp, nil
 }
 
+func (r *ResponseRepo) ExistsByUserAttempt(ctx context.Context, userID domain.UserID, surveyID domain.SurveyID, attemptID domain.AttemptID) (bool, error) {
+	if attemptID == "" {
+		return false, nil
+	}
+	const q = `
+		SELECT 1 FROM survey_response
+		 WHERE survey_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		   AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		   AND exam_attempt_id = CONVERT(UNIQUEIDENTIFIER, @p3)`
+	var x int
+	err := r.db.QueryRowContext(ctx, q, string(surveyID), string(userID), string(attemptID)).Scan(&x)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *ResponseRepo) ExistsByUserSurvey(ctx context.Context, userID domain.UserID, surveyID domain.SurveyID) (bool, error) {
+	const q = `
+		SELECT 1 FROM survey_response
+		 WHERE survey_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		   AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)`
+	var x int
+	err := r.db.QueryRowContext(ctx, q, string(surveyID), string(userID)).Scan(&x)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // GetMetricsRaw: cosecha las respuestas, las preguntas y total para que
 // el query handler haga los cálculos. Más caro que un agregado SQL puro,
 // pero la lógica de NPS / averages vive en el core (testeable).
