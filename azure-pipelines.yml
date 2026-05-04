@@ -89,7 +89,7 @@ stages:
           REG="$(acrName).azurecr.io"
           TAG="$(imageTag)"
           declare -A SERVICES=(
-            [users_service]="server migrate"
+            [users_service]="server migrate bootstrap"
             [exams_service]="server migrate"
             [keys_service]="server migrate"
             [satisfaction_service]="server migrate"
@@ -130,6 +130,23 @@ stages:
               inputs: { helmVersionToInstall: 'latest' }
 
             - task: AzureCLI@2
+              displayName: 'Instalar NGINX Ingress controller (idempotente)'
+              inputs:
+                azureSubscription: $(serviceConnectionArm)
+                scriptType: bash
+                scriptLocation: inlineScript
+                inlineScript: |
+                  set -e
+                  az aks get-credentials -g $(aksResourceGroup) -n $(aksClusterName) --overwrite-existing
+                  helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx >/dev/null 2>&1 || true
+                  helm repo update >/dev/null
+                  helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx \
+                    --namespace ingress-nginx --create-namespace \
+                    --set controller.service.type=LoadBalancer \
+                    --set controller.publishService.enabled=true \
+                    --wait --timeout 5m
+
+            - task: AzureCLI@2
               displayName: 'helm upgrade miproposito'
               inputs:
                 azureSubscription: $(serviceConnectionArm)
@@ -149,7 +166,8 @@ stages:
                     --set global.imageRegistry=$(acrLoginServer) \
                     --set global.keyVault.name=$(keyVaultName) \
                     --set global.keyVault.tenantId=$(tenantId) \
-                    --set global.keyVault.userAssignedIdentityID=$(secretsProviderClientId)
+                    --set global.keyVault.userAssignedIdentityID=$(secretsProviderClientId) \
+                    --timeout 10m
 
             - script: |
                 if [ -n "$(smokeTestUrl)" ]; then

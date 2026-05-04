@@ -1,0 +1,30 @@
+dependencies:
+- name: mssql-server
+  repository: file://../charts/mssql-server
+  version: 0.1.0
+- name: redis-server
+  repository: file://../charts/redis-server
+  version: 0.1.0
+- name: users-service
+  repository: file://../charts/users-service
+  version: 0.1.0
+- name: exams-service
+  repository: file://../charts/exams-service
+  version: 0.1.0
+- name: keys-service
+  repository: file://../charts/keys-service
+  version: 0.1.0
+- name: hubspot-service
+  repository: file://../charts/hubspot-service
+  version: 0.1.0
+- name: satisfaction-service
+  repository: file://../charts/satisfaction-service
+  version: 0.1.0
+- name: analytics-service
+  repository: file://../charts/analytics-service
+  version: 0.1.0
+- name: gateway
+  repository: file://../charts/gateway
+  version: 0.1.0
+digest: sha256:9e75248859909019bcc940bb62116c570afde153fa90de43d80b1809dece2e49
+generated: "2026-05-03T22:53:06.9031518-04:00"
