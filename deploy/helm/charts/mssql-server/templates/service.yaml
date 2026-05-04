@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "mssqlServer.fullname" . }}
+  labels:
+    {{- include "mssqlServer.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: mssql
+      port: {{ .Values.service.port }}
+      targetPort: 1433
+      protocol: TCP
+  selector:
+    {{- include "mssqlServer.selectorLabels" . | nindent 4 }}

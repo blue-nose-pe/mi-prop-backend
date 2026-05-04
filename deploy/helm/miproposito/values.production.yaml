@@ -1,24 +1,45 @@
 # Override de PRODUCCIÓN sobre values.yaml.
 # Solo contiene lo que cambia entre dev y prod. NO commitear secretos
 # (los secretos se inyectan vía Azure Key Vault / Secret Provider Class).
+#
+# Default de prod:
+#   - Azure SQL Server gestionado (con Private Endpoint)
+#   - Redis in-cluster (Pod) — ahorra ~$15/mes al cliente, suficiente para cache no crítico.
+#
+# Si el cliente quiere Azure Cache for Redis gestionado (con SLA 99.9%):
+#   1. Re-correr install.ps1 -EnableAzureRedis (aprovisiona el recurso Azure Redis)
+#   2. Cambiar este archivo:
+#        inClusterRedis: false
+#        redisHost: <output del Bicep>.redis.cache.windows.net
+#        redisSslPort: 6380
+#        redisTls: "true"
+#        redisServer: { enabled: false }
 
 global:
-  imageRegistry: miprepositoacr.azurecr.io   # output del Bicep
+  imageRegistry: miprepositoacr.azurecr.io   # output del Bicep, override desde el pipeline
   imageTag: "latest"                          # CI/CD lo overridea con el build id
   imagePullPolicy: IfNotPresent
 
-  # Output de Bicep:
-  sqlServer: miproposito-sql.database.windows.net
+  # SQL: Azure SQL gestionado en producción
+  inClusterSql: false
+  sqlServer: miproposito-sql.privatelink.database.windows.net
   sqlPort:   1433
-  redisHost: miproposito-redis.redis.cache.windows.net
-  redisSslPort: 6380
+  sqlEncrypt: "true"
+  sqlTrustServerCert: "false"
 
-  # Workload Identity para Secret Provider Class. Reemplazar con los
-  # valores reales del tenant + UAMI (lo emite la creación del cluster).
+  # Redis: in-cluster por default en producción (ahorra ~$15/mes).
+  # Para activar Azure Cache for Redis gestionado, ver header de este archivo.
+  inClusterRedis: true
+  redisHost: redis-server.miproposito.svc.cluster.local
+  redisSslPort: 6379
+  redisTls: "false"
+
+  # Workload Identity para Secret Provider Class. Lo overridea el pipeline desde
+  # las variables del Variable Group (keyVaultName, tenantId, secretsProviderClientId).
   keyVault:
-    name: miproposito-kv
-    tenantId: "<TENANT-ID>"
-    userAssignedIdentityID: "<UAMI-CLIENT-ID>"
+    name: ""
+    tenantId: ""
+    userAssignedIdentityID: ""
 
   domain: miproposito.ucsp.edu.pe
   jwtIssuer: miproposito.users
@@ -30,6 +51,12 @@ global:
       minReplicas: 2
       maxReplicas: 10
       targetCPUUtilizationPercentage: 70
+
+# Charts in-cluster
+mssqlServer:
+  enabled: false   # NO en prod, Azure SQL gestionado lo reemplaza
+redisServer:
+  enabled: true    # SÍ en prod (default barato). Cambiar a false si activan Azure Redis.
 
 # Habilitar TODO el catálogo de servicios para producción.
 usersService:        { enabled: true }

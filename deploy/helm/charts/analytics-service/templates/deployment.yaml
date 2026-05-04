@@ -50,6 +50,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "analyticsService.fullname" . }}-kv
                   key: redis-password
+            - name: REDIS_TLS
+              value: "{{ .Values.global.redisTls | default "true" }}"
             - name: REDIS_DB
               value: "{{ .Values.cache.redisDB }}"
             - name: CACHE_ENABLED

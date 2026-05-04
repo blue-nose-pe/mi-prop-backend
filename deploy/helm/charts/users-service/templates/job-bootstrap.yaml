@@ -53,9 +53,9 @@ spec:
                   name: {{ include "usersService.fullname" . }}-kv
                   key: sql-password
             - name: SQL_ENCRYPT
-              value: "true"
+              value: "{{ .Values.global.sqlEncrypt | default "true" }}"
             - name: SQL_TRUST_SERVER_CERT
-              value: "false"
+              value: "{{ .Values.global.sqlTrustServerCert | default "false" }}"
             - name: BCRYPT_COST
               value: "{{ .Values.bcryptCost }}"
             - name: SUPERADMIN_EMAIL

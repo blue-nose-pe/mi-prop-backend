@@ -8,13 +8,22 @@ global:
   imagePullPolicy: IfNotPresent
   imagePullSecrets: []
 
+  # Switches: en staging (in-cluster) los cambia values.staging.yaml o el pipeline.
+  inClusterSql: false
+  inClusterRedis: false
+
   # Servidor Azure SQL (output del Bicep: ${namePrefix}-sql.database.windows.net).
+  # Cuando inClusterSql=true, el Helm los reemplaza por mssql-server.miproposito.svc.cluster.local
   sqlServer: miproposito-sql.database.windows.net
   sqlPort: 1433
+  sqlEncrypt: "true"        # Azure SQL exige TLS — mantener true para producción
+  sqlTrustServerCert: "false"
 
   # Redis (output del Bicep: ${namePrefix}-redis.redis.cache.windows.net).
+  # Cuando inClusterRedis=true, el Helm los reemplaza por redis-server.miproposito.svc.cluster.local:6379 sin TLS
   redisHost: miproposito-redis.redis.cache.windows.net
   redisSslPort: 6380
+  redisTls: "true"
 
   # Key Vault para Secrets Store CSI (output del Bicep).
   keyVault:
@@ -24,6 +33,12 @@ global:
 
   # Dominio base. El Ingress de cada chart usa ${global.domain}.
   domain: miproposito.ucsp.edu.pe
+
+# ----- Charts in-cluster (solo activos en staging) -----
+mssqlServer:
+  enabled: false
+redisServer:
+  enabled: false
 
 # ----- Microservicios: enable/disable individualmente -----
 usersService:

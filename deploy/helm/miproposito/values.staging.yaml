@@ -1,0 +1,55 @@
+# Override de STAGING sobre values.yaml.
+# Usar SQL Server y Redis adentro del cluster (cuando la suscripción Azure no permite
+# crear los servicios gestionados — típico de cuentas nuevas con créditos gratuitos).
+# Para producción real usar values.production.yaml.
+
+global:
+  imageRegistry: miprepositoacr.azurecr.io   # output del Bicep, override desde el pipeline
+  imageTag: "latest"                          # CI/CD lo overridea con el build id
+  imagePullPolicy: IfNotPresent
+
+  # Modo staging: SQL y Redis adentro del cluster (sin TLS).
+  inClusterSql: true
+  inClusterRedis: true
+
+  # Hosts/puertos internos del cluster (Service ClusterIP de los charts mssql-server y redis-server).
+  sqlServer: mssql-server.miproposito.svc.cluster.local
+  sqlPort:   1433
+  # SQL Server in-cluster no tiene cert TLS válido — desactivamos encrypt y confiamos en el cert.
+  # En la red interna del cluster (Pod-to-Pod via Service) el tráfico no sale del cluster.
+  sqlEncrypt: "false"
+  sqlTrustServerCert: "true"
+  redisHost: redis-server.miproposito.svc.cluster.local
+  redisSslPort: 6379
+  redisTls: "false"
+
+  keyVault:
+    name: ""           # override desde pipeline con $(keyVaultName)
+    tenantId: ""       # override desde pipeline con $(tenantId)
+    userAssignedIdentityID: ""  # override desde pipeline con $(secretsProviderClientId)
+
+  domain: miproposito-staging.local
+  jwtIssuer: miproposito.users
+
+  defaults:
+    replicaCount: 1   # staging chico, ahorrar recursos
+    autoscaling:
+      enabled: false  # sin HPA en staging
+      minReplicas: 1
+      maxReplicas: 2
+      targetCPUUtilizationPercentage: 80
+
+# Activar charts in-cluster
+mssqlServer:
+  enabled: true
+redisServer:
+  enabled: true
+
+# Habilitar servicios para staging
+usersService:        { enabled: true }
+exams-service:       { enabled: true }
+keys-service:        { enabled: true }
+hubspot-service:     { enabled: true }
+satisfaction-service: { enabled: true }
+analytics-service:   { enabled: true }
+gateway:             { enabled: true }

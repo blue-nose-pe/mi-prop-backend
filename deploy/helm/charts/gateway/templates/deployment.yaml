@@ -56,6 +56,8 @@ spec:
                 secretKeyRef:
                   name: {{ include "gateway.fullname" . }}-kv
                   key: redis-password
+            - name: REDIS_TLS
+              value: "{{ .Values.global.redisTls | default "true" }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: redis-server
+description: Redis 7 in-cluster (Deployment) para staging cuando Azure Cache for Redis no se puede provisionar. Reemplazado por Azure Redis gestionado en producción.
+type: application
+version: 0.1.0
+appVersion: "7.4"

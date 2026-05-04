@@ -1,0 +1,63 @@
+# mssql-server — SQL Server 2022 corriendo adentro del cluster.
+# Usado cuando global.inClusterSql=true. Reemplaza Azure SQL Server gestionado.
+
+image:
+  repository: mcr.microsoft.com/mssql/server
+  tag: "2022-latest"
+  pullPolicy: IfNotPresent
+
+# SQL Server Developer Edition: gratis, full-features, no soportado en producción.
+# Para staging es perfecto. En producción real va Azure SQL gestionado (managed instance o database).
+edition: "Developer"
+
+service:
+  type: ClusterIP
+  port: 1433
+
+# Persistencia: managed-csi es la default storage class del AKS.
+# Para staging 10Gi alcanza para las 4 BDs (users/exams/keys/satisfaction).
+persistence:
+  enabled: true
+  size: 10Gi
+  storageClass: "managed-csi"
+
+resources:
+  requests:
+    cpu: 500m
+    memory: 2Gi   # SQL Server 2022 mínimo recomendado
+  limits:
+    cpu: 1500m
+    memory: 4Gi
+
+# Bases de datos a crear automáticamente en el job de init post-install.
+databases:
+  - db_users
+  - db_exams
+  - db_keys
+  - db_satisfaction
+
+# La SA password viene del Key Vault. El secret en KV se llama "users-service-sql-password"
+# (lo cargó el install.ps1). Lo reusamos para no duplicar.
+saPasswordSecretName: "users-service-sql-password"
+
+initJob:
+  image:
+    repository: mcr.microsoft.com/mssql-tools
+    tag: latest
+  backoffLimit: 5
+
+# Probes: SQL Server tarda ~30-60s en arrancar la primera vez.
+livenessProbe:
+  tcpSocket:
+    port: 1433
+  initialDelaySeconds: 60
+  periodSeconds: 30
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  tcpSocket:
+    port: 1433
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 3

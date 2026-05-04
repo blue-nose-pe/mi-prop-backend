@@ -43,9 +43,9 @@ spec:
                   name: {{ include "satisfactionService.fullname" . }}-kv
                   key: sql-password
             - name: SQL_ENCRYPT
-              value: "true"
+              value: "{{ .Values.global.sqlEncrypt | default "true" }}"
             - name: SQL_TRUST_SERVER_CERT
-              value: "false"
+              value: "{{ .Values.global.sqlTrustServerCert | default "false" }}"
             - name: JWT_ISSUER
               value: "{{ .Values.global.jwtIssuer | default "miproposito.users" }}"
             - name: JWT_SECRET

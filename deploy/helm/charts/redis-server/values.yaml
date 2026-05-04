@@ -1,0 +1,42 @@
+# redis-server — Redis 7 corriendo adentro del cluster.
+# Usado cuando global.inClusterRedis=true. Reemplaza Azure Cache for Redis.
+
+image:
+  repository: redis
+  tag: "7-alpine"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 6379
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+# Persistencia: para staging emptyDir basta. En prod va Azure Redis gestionado con backups.
+persistence:
+  enabled: false
+  size: 2Gi
+
+# La password viene del Key Vault. El secret en KV se llama "users-service-redis-password"
+# (lo cargó el install.ps1 con la random key generada).
+passwordSecretName: "users-service-redis-password"
+
+livenessProbe:
+  exec:
+    command: ["redis-cli", "ping"]
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  timeoutSeconds: 3
+
+readinessProbe:
+  exec:
+    command: ["redis-cli", "ping"]
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3

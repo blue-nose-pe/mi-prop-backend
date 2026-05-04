@@ -1,0 +1,60 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "mssqlServer.fullname" . }}-init-dbs
+  labels:
+    {{- include "mssqlServer.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.initJob.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "mssqlServer.selectorLabels" . | nindent 8 }}
+        component: init-dbs
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: init
+          image: "{{ .Values.initJob.image.repository }}:{{ .Values.initJob.image.tag }}"
+          env:
+            - name: SA_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "mssqlServer.fullname" . }}-sa
+                  key: SA_PASSWORD
+          volumeMounts:
+            - name: kv-secrets
+              mountPath: /mnt/kv
+              readOnly: true
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              echo "Esperando a mssql-server:1433..."
+              for i in $(seq 1 60); do
+                if /opt/mssql-tools/bin/sqlcmd -S {{ include "mssqlServer.fullname" . }} -U sa -P "$SA_PASSWORD" -Q "SELECT 1" -t 5 >/dev/null 2>&1; then
+                  echo "Conectado."
+                  break
+                fi
+                echo "  intento $i/60 - aún no responde, reintentando en 5s..."
+                sleep 5
+              done
+
+              echo "Creando bases de datos (idempotente)..."
+              {{- range .Values.databases }}
+              /opt/mssql-tools/bin/sqlcmd -S {{ include "mssqlServer.fullname" $ }} -U sa -P "$SA_PASSWORD" -Q "IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{{ . }}') CREATE DATABASE [{{ . }}]"
+              echo "  - {{ . }} OK"
+              {{- end }}
+              echo "Init de bases completado."
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "mssqlServer.fullname" . }}-spc

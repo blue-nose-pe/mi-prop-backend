@@ -6,6 +6,17 @@ version: 0.1.0
 appVersion: "2.0.0"
 
 dependencies:
+  # Stateful in-cluster (solo se activan cuando staging — global.inClusterSql/inClusterRedis=true).
+  - name: mssql-server
+    version: 0.1.0
+    repository: file://../charts/mssql-server
+    condition: mssqlServer.enabled
+
+  - name: redis-server
+    version: 0.1.0
+    repository: file://../charts/redis-server
+    condition: redisServer.enabled
+
   - name: users-service
     version: 0.1.0
     repository: file://../charts/users-service

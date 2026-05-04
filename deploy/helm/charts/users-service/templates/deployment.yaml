@@ -42,6 +42,10 @@ spec:
                 secretKeyRef:
                   name: {{ include "usersService.fullname" . }}-kv
                   key: sql-password
+            - name: SQL_ENCRYPT
+              value: "{{ .Values.global.sqlEncrypt | default "true" }}"
+            - name: SQL_TRUST_SERVER_CERT
+              value: "{{ .Values.global.sqlTrustServerCert | default "false" }}"
             - name: REDIS_ADDR
               value: "{{ .Values.global.redisHost }}:{{ .Values.global.redisSslPort }}"
             - name: REDIS_PASSWORD
@@ -50,7 +54,7 @@ spec:
                   name: {{ include "usersService.fullname" . }}-kv
                   key: redis-password
             - name: REDIS_TLS
-              value: "true"
+              value: "{{ .Values.global.redisTls | default "true" }}"
             - name: REDIS_DB
               value: "{{ .Values.redis.database }}"
             - name: CACHE_TTL

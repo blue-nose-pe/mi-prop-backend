@@ -42,6 +42,13 @@ out/
 *.pfx
 secrets.yaml
 
+# ------ Estado local del installer ------
+# install.ps1 guarda la SQL admin password generada acá. NO subir al repo.
+.deploy-state/
+
+# ------ Workspace local de Claude Code ------
+.claude/
+
 # ------ Helm artifacts ------
 deploy/helm/charts/*.tgz
 deploy/helm/miproposito/charts/

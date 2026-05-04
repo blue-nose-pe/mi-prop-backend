@@ -37,7 +37,7 @@
 - name: REDIS_ADDR
   value: "{{ .Values.global.redisHost }}:{{ .Values.global.redisSslPort }}"
 - name: REDIS_TLS
-  value: "true"
+  value: "{{ .Values.global.redisTls | default "true" }}"
 - name: REDIS_DB
   value: "{{ .Values.hubspot.redis.dbAsynq }}"
 - name: REDIS_DB_RATELIMIT

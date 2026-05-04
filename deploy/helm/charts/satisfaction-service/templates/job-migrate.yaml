@@ -43,6 +43,10 @@ spec:
                 secretKeyRef:
                   name: {{ include "satisfactionService.fullname" . }}-kv
                   key: sql-password
+            - name: SQL_ENCRYPT
+              value: "{{ .Values.global.sqlEncrypt | default "true" }}"
+            - name: SQL_TRUST_SERVER_CERT
+              value: "{{ .Values.global.sqlTrustServerCert | default "false" }}"
           volumeMounts:
             - name: kv-secrets
               mountPath: /mnt/secrets

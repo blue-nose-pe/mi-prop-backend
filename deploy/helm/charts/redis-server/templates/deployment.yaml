@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "redisServer.fullname" . }}
+  labels:
+    {{- include "redisServer.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate     # solo 1 réplica con datos en emptyDir; recreate evita conflictos
+  selector:
+    matchLabels:
+      {{- include "redisServer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "redisServer.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: redis
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "redisServer.fullname" . }}-pwd
+                  key: REDIS_PASSWORD
+          command: ["sh", "-c"]
+          args:
+            - exec redis-server --requirepass "$REDIS_PASSWORD" --save 60 1000 --appendonly no --maxmemory 400mb --maxmemory-policy allkeys-lru
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+            - name: kv-secrets
+              mountPath: /mnt/kv
+              readOnly: true
+      volumes:
+        - name: kv-secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "redisServer.fullname" . }}-spc
+        - name: redis-data
+          emptyDir: {}
