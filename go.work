@@ -1,3 +1,7 @@
+// Workspace multi-module. Cualquier cambio en este archivo dispara un
+// full rebuild del pipeline (todos los servicios pueden estar afectados
+// por cambios cross-module).
+
 go 1.24
 
 use (
