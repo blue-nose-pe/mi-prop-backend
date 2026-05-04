@@ -28,6 +28,11 @@ var (
 	ErrInvalidRefreshToken = apperr.NewUnauthenticated("INVALID_REFRESH_TOKEN", "refresh token is invalid, expired or revoked")
 	ErrAssignmentNotFound  = apperr.NewNotFound("ASSIGNMENT_NOT_FOUND", "no current assignment for the given target")
 
+	// ----- OTP (login estudiante) -----
+	ErrOTPInvalid       = apperr.NewUnauthenticated("OTP_INVALID", "otp is invalid, expired or already used")
+	ErrOTPNotStudent    = apperr.NewPermissionDenied("OTP_NOT_STUDENT", "this user does not log in via OTP")
+	ErrOTPDeliveryFail  = apperr.NewInternal("OTP_DELIVERY_FAIL", "could not deliver OTP", nil)
+
 	// PasswordChangeRequired: el user tiene must_change_password=true.
 	// Todas las rutas (excepto /api/users/me y /change-password) devuelven
 	// este error hasta que cambie su password.

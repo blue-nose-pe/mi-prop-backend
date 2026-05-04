@@ -71,3 +71,31 @@ func (h *AuthHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.Em
 	}
 	return &pb.EmptyResponse{}, nil
 }
+
+func (h *AuthHandler) RequestStudentOTP(ctx context.Context, req *pb.RequestStudentOTPRequest) (*pb.EmptyResponse, error) {
+	if err := h.cmds.RequestStudentOTP(ctx, ports.RequestStudentOTPInput{
+		Email: domain.Email(req.GetEmail()),
+		IP:    req.GetIp(),
+	}); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
+func (h *AuthHandler) VerifyStudentOTP(ctx context.Context, req *pb.VerifyStudentOTPRequest) (*pb.LoginResponse, error) {
+	out, err := h.cmds.VerifyStudentOTP(ctx, ports.VerifyStudentOTPInput{
+		Email:     domain.Email(req.GetEmail()),
+		OTP:       req.GetOtp(),
+		IP:        req.GetIp(),
+		UserAgent: req.GetUserAgent(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.LoginResponse{
+		User:         toProtoUser(out.User),
+		Permissions:  out.Permissions,
+		AccessToken:  out.AccessToken,
+		RefreshToken: out.RefreshToken,
+	}, nil
+}

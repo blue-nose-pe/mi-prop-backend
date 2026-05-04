@@ -209,3 +209,41 @@ type AssignmentRepository interface {
 	// para un (kind, target), ordenadas por valid_from DESC.
 	ListHistory(ctx context.Context, kind AssignmentKind, target domain.UserID) ([]AssignmentRecord, error)
 }
+
+// ---------- OTP (login estudiante) ----------
+
+type OTPRepository interface {
+	// Save inserta un nuevo OTP. El hash y la expiración ya vienen calculados.
+	Save(ctx context.Context, t *domain.OTPToken) error
+	// FindActiveByUser retorna el OTP activo más reciente del user
+	// (no consumido y no vencido). Devuelve ErrOTPInvalid si no hay.
+	FindActiveByUser(ctx context.Context, userID domain.UserID) (*domain.OTPToken, error)
+	// Consume marca consumed_at = now (idempotente).
+	Consume(ctx context.Context, id string) error
+	// IncrementAttempts suma 1 a attempts. Si attempts >= max, también consume.
+	IncrementAttempts(ctx context.Context, id string) error
+	// InvalidateAllForUser marca consumed_at todos los OTP activos del user.
+	// Lo llama Request al pedir uno nuevo (solo 1 OTP activo por user).
+	InvalidateAllForUser(ctx context.Context, userID domain.UserID) error
+}
+
+// OTPHasher: para 6 dígitos numéricos NO usamos bcrypt (overkill + costo).
+// Implementación: HMAC-SHA256(secret, code) → hex.
+type OTPHasher interface {
+	Hash(plain string) string
+	Compare(hashed, plain string) bool
+}
+
+// OTPSender: envía el OTP al user (típicamente vía HubSpot webhook → email).
+// La implementación concreta vive en internal/adapters/outbound/otpsender
+// y dialea hubspot_service.HubspotService/SendOTP.
+type OTPSender interface {
+	Send(ctx context.Context, email, plainOTP string) error
+}
+
+// StudentClassifier: decide si un user loguea via OTP (estudiante) o via
+// email+password (admin/asesor/coordinador). En el modelo actual un user es
+// "estudiante" si pertenece al permission_group "student_permissions".
+type StudentClassifier interface {
+	IsStudent(ctx context.Context, userID domain.UserID) (bool, error)
+}

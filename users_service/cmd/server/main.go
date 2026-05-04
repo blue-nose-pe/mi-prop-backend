@@ -20,8 +20,11 @@ import (
 	bcryptadapter "users_service/internal/adapters/outbound/bcrypt"
 	jwtadapter "users_service/internal/adapters/outbound/jwt"
 	mssqladapter "users_service/internal/adapters/outbound/mssql"
+	otphashadapter "users_service/internal/adapters/outbound/otphash"
+	otpsenderadapter "users_service/internal/adapters/outbound/otpsender"
 	redisadapter "users_service/internal/adapters/outbound/redis"
 	"users_service/internal/core/command"
+	"users_service/internal/core/ports"
 	"users_service/internal/core/query"
 	"users_service/internal/shared/auditmw"
 	"users_service/internal/shared/jwtmw"
@@ -79,9 +82,29 @@ func main() {
 	schoolRepo := mssqladapter.NewSchoolRepo(db)
 	refreshRepo := mssqladapter.NewRefreshTokenRepo(db)
 	assignmentRepo := mssqladapter.NewAssignmentRepo(db)
+	otpRepo := mssqladapter.NewOTPRepo(db)
+	studentClassifier := mssqladapter.NewStudentClassifier(db)
 	auditSink := mssqladapter.NewAuditSink(db)
 	cache := redisadapter.NewUserCache(rdb, cfg.CacheTTL)
 	hasher := bcryptadapter.New(cfg.BcryptCost)
+	otpHasher := otphashadapter.New(cfg.JWTSecret)
+
+	// OTP sender: gRPC al hubspot_service. Si HUBSPOT_SERVICE_ADDR no está
+	// configurado, usamos un noop para que el servicio arranque (los OTPs
+	// no se enviarán pero el binario no muere). En producción siempre debe
+	// estar seteado vía env var.
+	var otpSender ports.OTPSender = noopOTPSender{}
+	if cfg.HubspotServiceAddr != "" {
+		gs, err := otpsenderadapter.NewGrpc(cfg.HubspotServiceAddr)
+		if err != nil {
+			log.Fatalf("otpsender grpc dial: %v", err)
+		}
+		defer gs.Close()
+		otpSender = gs
+		log.Printf("[otpsender] gRPC client → %s", cfg.HubspotServiceAddr)
+	} else {
+		log.Printf("[otpsender] NoOp (HUBSPOT_SERVICE_ADDR vacío)")
+	}
 
 	// JWT (signer + verifier construidos sobre la lib compartida).
 	signer, err := jwtmw.NewSigner(jwtmw.SignerConfig{
@@ -100,7 +123,7 @@ func main() {
 
 	// ---------- 3. CORE — CQRS: commands y queries son piezas separadas ----------
 	userCmds := command.NewUserHandler(userRepo, cache, hasher)
-	authCmds := command.NewAuthHandler(userRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo)
+	authCmds := command.NewAuthHandler(userRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier)
 	permCmds := command.NewPermissionHandler(userRepo, permRepo)
 	assignmentCmds := command.NewAssignmentHandler(userRepo, assignmentRepo)
 	hubspotSyncCmds := command.NewHubspotSyncHandler(userRepo, schoolRepo)
@@ -217,4 +240,16 @@ func redactSensitiveFields(_ string, req proto.Message) proto.Message {
 		return true
 	})
 	return clone
+}
+
+// noopOTPSender se usa cuando HUBSPOT_SERVICE_ADDR está vacío (dev local).
+// Loguea el OTP en plain — solo para development; en prod siempre debe
+// estar wireado a otpsenderadapter.NewGrpc.
+type noopOTPSender struct{}
+
+var _ ports.OTPSender = noopOTPSender{}
+
+func (noopOTPSender) Send(_ context.Context, email, otp string) error {
+	log.Printf("[otpsender:noop] would send OTP %q to %q", otp, email)
+	return nil
 }

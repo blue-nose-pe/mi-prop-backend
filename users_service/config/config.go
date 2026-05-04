@@ -36,6 +36,10 @@ type Config struct {
 	JWTIssuer     string
 	JWTAccessTTL  time.Duration
 	JWTRefreshTTL time.Duration
+
+	// HubSpot service (gRPC) — para enviar OTP por email vía hubspot_service.
+	// Si está vacío, el OTP sender es NoOp (solo dev local).
+	HubspotServiceAddr string
 }
 
 func Load() *Config {
@@ -63,8 +67,10 @@ func Load() *Config {
 		JWTIssuer:     getEnv("JWT_ISSUER", "miproposito.users"),
 		JWTAccessTTL:  getEnvDuration("JWT_ACCESS_TTL", 15*time.Minute),
 		JWTRefreshTTL: getEnvDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
+
+		HubspotServiceAddr: getEnv("HUBSPOT_SERVICE_ADDR", ""),
 	}
-	log.Printf("[config] grpc=%s sql=%s/%s redis=%s", c.GRPCPort, c.SQLServer, c.SQLDatabase, c.RedisAddr)
+	log.Printf("[config] grpc=%s sql=%s/%s redis=%s hubspot=%s", c.GRPCPort, c.SQLServer, c.SQLDatabase, c.RedisAddr, c.HubspotServiceAddr)
 	return c
 }
 

@@ -2,10 +2,16 @@ package command
 
 import (
 	"context"
+	"crypto/rand"
+	"fmt"
+	"log"
+	"math/big"
 	"time"
 
 	"users_service/internal/core/domain"
 	"users_service/internal/core/ports"
+
+	"github.com/google/uuid"
 )
 
 // AuthHandler implementa ports.AuthCommands. Coordina:
@@ -13,6 +19,8 @@ import (
 //   - Login:       Authenticate + emite par JWT + persiste refresh.
 //   - Refresh:     valida refresh, lo rota, emite nuevo access.
 //   - Logout:      revoca refresh.
+//   - RequestStudentOTP / VerifyStudentOTP: flow de login alternativo
+//     para estudiantes (OTP por email vía HubSpot webhook).
 type AuthHandler struct {
 	users        ports.UserRepository
 	perms        ports.PermissionRepository
@@ -21,6 +29,11 @@ type AuthHandler struct {
 	tokens       ports.TokenIssuer
 	verifier     ports.TokenVerifier
 	refreshStore ports.RefreshTokenRepository
+	otpRepo      ports.OTPRepository
+	otpHasher    ports.OTPHasher
+	otpSender    ports.OTPSender
+	classifier   ports.StudentClassifier
+	otpTTL       time.Duration
 }
 
 var _ ports.AuthCommands = (*AuthHandler)(nil)
@@ -33,6 +46,10 @@ func NewAuthHandler(
 	tokens ports.TokenIssuer,
 	verifier ports.TokenVerifier,
 	refreshStore ports.RefreshTokenRepository,
+	otpRepo ports.OTPRepository,
+	otpHasher ports.OTPHasher,
+	otpSender ports.OTPSender,
+	classifier ports.StudentClassifier,
 ) *AuthHandler {
 	return &AuthHandler{
 		users:        users,
@@ -42,6 +59,11 @@ func NewAuthHandler(
 		tokens:       tokens,
 		verifier:     verifier,
 		refreshStore: refreshStore,
+		otpRepo:      otpRepo,
+		otpHasher:    otpHasher,
+		otpSender:    otpSender,
+		classifier:   classifier,
+		otpTTL:       10 * time.Minute,
 	}
 }
 
@@ -206,4 +228,135 @@ func (h *AuthHandler) Logout(ctx context.Context, in ports.LogoutInput) error {
 		return nil
 	}
 	return h.refreshStore.Revoke(ctx, claims.JTI, "")
+}
+
+// RequestStudentOTP genera un OTP de 6 dígitos, lo persiste hasheado y
+// dispara el envío vía hubspot_service. Si el email no existe o el user
+// no es estudiante, devuelve OK sin enviar nada (anti enumeration attack).
+func (h *AuthHandler) RequestStudentOTP(ctx context.Context, in ports.RequestStudentOTPInput) error {
+	email := in.Email.Normalize()
+
+	u, err := h.users.FindByEmail(ctx, email)
+	if err != nil {
+		// User no existe: OK silencioso.
+		return nil
+	}
+	if !u.Active {
+		return nil
+	}
+	isStudent, err := h.classifier.IsStudent(ctx, u.ID)
+	if err != nil {
+		return err
+	}
+	if !isStudent {
+		// User existe pero no es estudiante: OK silencioso.
+		return nil
+	}
+
+	if err := h.otpRepo.InvalidateAllForUser(ctx, u.ID); err != nil {
+		return err
+	}
+
+	plain, err := generateOTPCode()
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	tok := &domain.OTPToken{
+		ID:          uuid.NewString(),
+		UserID:      u.ID,
+		CodeHash:    h.otpHasher.Hash(plain),
+		IssuedAt:    now,
+		ExpiresAt:   now.Add(h.otpTTL),
+		Attempts:    0,
+		MaxAttempts: 3,
+		IP:          in.IP,
+	}
+	if err := h.otpRepo.Save(ctx, tok); err != nil {
+		return err
+	}
+
+	if err := h.otpSender.Send(ctx, string(u.Email), plain); err != nil {
+		// Si el envío falla NO retornamos error al cliente: persistimos un
+		// log + invalidamos el OTP para que el estudiante pida otro.
+		// (alternativa: marcar el row como failed y retentar.)
+		log.Printf("RequestStudentOTP: send failed for user=%s err=%v", u.ID, err)
+		_ = h.otpRepo.Consume(ctx, tok.ID)
+		return domain.ErrOTPDeliveryFail
+	}
+	return nil
+}
+
+// VerifyStudentOTP valida el código y, si match, emite un par access+refresh
+// JWT como un Login normal.
+func (h *AuthHandler) VerifyStudentOTP(ctx context.Context, in ports.VerifyStudentOTPInput) (*ports.LoginOutput, error) {
+	email := in.Email.Normalize()
+
+	u, err := h.users.FindByEmail(ctx, email)
+	if err != nil {
+		return nil, domain.ErrOTPInvalid
+	}
+	if !u.Active {
+		return nil, domain.ErrUserInactive
+	}
+
+	tok, err := h.otpRepo.FindActiveByUser(ctx, u.ID)
+	if err != nil {
+		return nil, err // ya devuelve ErrOTPInvalid si no hay activo
+	}
+	if !h.otpHasher.Compare(tok.CodeHash, in.OTP) {
+		_ = h.otpRepo.IncrementAttempts(ctx, tok.ID)
+		return nil, domain.ErrOTPInvalid
+	}
+
+	if err := h.otpRepo.Consume(ctx, tok.ID); err != nil {
+		return nil, err
+	}
+
+	codes, err := h.perms.FindCodesByUserID(ctx, u.ID)
+	if err != nil {
+		return nil, err
+	}
+	_ = h.users.TouchLastAccess(ctx, u.ID)
+	_ = h.cache.Delete(ctx, u.ID)
+
+	roles := []string{}
+	pair, err := h.tokens.IssuePair(ports.TokenIssueParams{
+		UserID:      u.ID,
+		Email:       string(u.Email),
+		Roles:       roles,
+		Permissions: codes,
+		SchoolID:    string(u.SchoolID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if err := h.refreshStore.Save(ctx, &ports.RefreshTokenRecord{
+		JTI:       pair.RefreshJTI,
+		UserID:    u.ID,
+		IssuedAt:  time.Now().UTC(),
+		ExpiresAt: pair.RefreshExp,
+		IP:        in.IP,
+		UserAgent: in.UserAgent,
+	}); err != nil {
+		return nil, err
+	}
+
+	return &ports.LoginOutput{
+		User:         u,
+		Permissions:  codes,
+		AccessToken:  pair.AccessToken,
+		RefreshToken: pair.RefreshToken,
+	}, nil
+}
+
+// generateOTPCode produce 6 dígitos numéricos cripto-aleatorios.
+func generateOTPCode() (string, error) {
+	const digits = 6
+	max := big.NewInt(1_000_000)
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%0*d", digits, n.Int64()), nil
 }

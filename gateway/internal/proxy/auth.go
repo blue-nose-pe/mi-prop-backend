@@ -1,12 +1,11 @@
 // Auth handlers — proxy a users-service AuthService.
 //
 // Rutas REST:
-//   POST /api/auth/login       → AuthService.Login
-//   POST /api/auth/refresh     → AuthService.Refresh
-//   POST /api/auth/logout      → AuthService.Logout
-//   POST /api/auth/student/request-otp → AuthService no expone OTP request hoy.
-//                                          Lo implementaremos cuando se
-//                                          modele el flow OTP en users.
+//   POST /api/auth/login                  → AuthService.Login
+//   POST /api/auth/refresh                → AuthService.Refresh
+//   POST /api/auth/logout                 → AuthService.Logout
+//   POST /api/auth/student/request-otp    → AuthService.RequestStudentOTP
+//   POST /api/auth/student/verify-otp     → AuthService.VerifyStudentOTP
 package proxy
 
 import (
@@ -19,6 +18,8 @@ func (p *Proxy) RegisterAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/login", p.login)
 	mux.HandleFunc("POST /api/auth/refresh", p.refresh)
 	mux.HandleFunc("POST /api/auth/logout", p.logout)
+	mux.HandleFunc("POST /api/auth/student/request-otp", p.requestStudentOTP)
+	mux.HandleFunc("POST /api/auth/student/verify-otp", p.verifyStudentOTP)
 }
 
 type loginRequest struct {
@@ -103,6 +104,68 @@ func (p *Proxy) logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// ----- Student OTP flow (login alternativo para estudiantes) -----
+//
+//   POST /api/auth/student/request-otp { email }            → 200 {status:"ok"}
+//   POST /api/auth/student/verify-otp  { email, otp }       → 200 {user, permissions, access_token, refresh_token}
+//
+// Comportamiento de seguridad: request-otp siempre devuelve 200 OK aunque
+// el email no exista o el user no sea estudiante (anti enumeration attack).
+// El email solo llega si el user es realmente estudiante.
+
+type requestStudentOTPRequest struct {
+	Email string `json:"email"`
+}
+
+type verifyStudentOTPRequest struct {
+	Email string `json:"email"`
+	OTP   string `json:"otp"`
+}
+
+func (p *Proxy) requestStudentOTP(w http.ResponseWriter, r *http.Request) {
+	var in requestStudentOTPRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	if _, err := p.cli.Auth.RequestStudentOTP(r.Context(), &usersgrpcpb.RequestStudentOTPRequest{
+		Email: in.Email,
+		Ip:    clientIPFromRequest(r),
+	}); err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (p *Proxy) verifyStudentOTP(w http.ResponseWriter, r *http.Request) {
+	var in verifyStudentOTPRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	resp, err := p.cli.Auth.VerifyStudentOTP(r.Context(), &usersgrpcpb.VerifyStudentOTPRequest{
+		Email:     in.Email,
+		Otp:       in.OTP,
+		Ip:        clientIPFromRequest(r),
+		UserAgent: r.Header.Get("User-Agent"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	perms := resp.GetPermissions()
+	if perms == nil {
+		perms = []string{}
+	}
+	writeJSON(w, http.StatusOK, loginResponse{
+		User:         protoUserToJSON(resp.GetUser()),
+		Permissions:  perms,
+		AccessToken:  resp.GetAccessToken(),
+		RefreshToken: resp.GetRefreshToken(),
+	})
 }
 
 // ----- helpers locales -----

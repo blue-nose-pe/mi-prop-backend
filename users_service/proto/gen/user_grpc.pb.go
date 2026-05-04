@@ -628,10 +628,12 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AuthService_Authenticate_FullMethodName = "/users.v1.AuthService/Authenticate"
-	AuthService_Login_FullMethodName        = "/users.v1.AuthService/Login"
-	AuthService_Refresh_FullMethodName      = "/users.v1.AuthService/Refresh"
-	AuthService_Logout_FullMethodName       = "/users.v1.AuthService/Logout"
+	AuthService_Authenticate_FullMethodName      = "/users.v1.AuthService/Authenticate"
+	AuthService_Login_FullMethodName             = "/users.v1.AuthService/Login"
+	AuthService_Refresh_FullMethodName           = "/users.v1.AuthService/Refresh"
+	AuthService_Logout_FullMethodName            = "/users.v1.AuthService/Logout"
+	AuthService_RequestStudentOTP_FullMethodName = "/users.v1.AuthService/RequestStudentOTP"
+	AuthService_VerifyStudentOTP_FullMethodName  = "/users.v1.AuthService/VerifyStudentOTP"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -652,6 +654,13 @@ type AuthServiceClient interface {
 	// Logout revoca el refresh token. El access sigue siendo válido hasta
 	// su exp natural — el cliente debe descartarlo.
 	Logout(ctx context.Context, in *LogoutRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// RequestStudentOTP genera un OTP de 6 dígitos y lo envía al email
+	// del estudiante vía hubspot_service. Silencioso si email no existe
+	// o user no es estudiante (anti enumeration). Público.
+	RequestStudentOTP(ctx context.Context, in *RequestStudentOTPRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// VerifyStudentOTP valida el código y emite par access+refresh JWT.
+	// Público.
+	VerifyStudentOTP(ctx context.Context, in *VerifyStudentOTPRequest, opts ...grpc.CallOption) (*LoginResponse, error)
 }
 
 type authServiceClient struct {
@@ -702,6 +711,26 @@ func (c *authServiceClient) Logout(ctx context.Context, in *LogoutRequest, opts 
 	return out, nil
 }
 
+func (c *authServiceClient) RequestStudentOTP(ctx context.Context, in *RequestStudentOTPRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, AuthService_RequestStudentOTP_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *authServiceClient) VerifyStudentOTP(ctx context.Context, in *VerifyStudentOTPRequest, opts ...grpc.CallOption) (*LoginResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LoginResponse)
+	err := c.cc.Invoke(ctx, AuthService_VerifyStudentOTP_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -720,6 +749,13 @@ type AuthServiceServer interface {
 	// Logout revoca el refresh token. El access sigue siendo válido hasta
 	// su exp natural — el cliente debe descartarlo.
 	Logout(context.Context, *LogoutRequest) (*EmptyResponse, error)
+	// RequestStudentOTP genera un OTP de 6 dígitos y lo envía al email
+	// del estudiante vía hubspot_service. Silencioso si email no existe
+	// o user no es estudiante (anti enumeration). Público.
+	RequestStudentOTP(context.Context, *RequestStudentOTPRequest) (*EmptyResponse, error)
+	// VerifyStudentOTP valida el código y emite par access+refresh JWT.
+	// Público.
+	VerifyStudentOTP(context.Context, *VerifyStudentOTPRequest) (*LoginResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -741,6 +777,12 @@ func (UnimplementedAuthServiceServer) Refresh(context.Context, *RefreshRequest) 
 }
 func (UnimplementedAuthServiceServer) Logout(context.Context, *LogoutRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Logout not implemented")
+}
+func (UnimplementedAuthServiceServer) RequestStudentOTP(context.Context, *RequestStudentOTPRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RequestStudentOTP not implemented")
+}
+func (UnimplementedAuthServiceServer) VerifyStudentOTP(context.Context, *VerifyStudentOTPRequest) (*LoginResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method VerifyStudentOTP not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -835,6 +877,42 @@ func _AuthService_Logout_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_RequestStudentOTP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RequestStudentOTPRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).RequestStudentOTP(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_RequestStudentOTP_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).RequestStudentOTP(ctx, req.(*RequestStudentOTPRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AuthService_VerifyStudentOTP_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(VerifyStudentOTPRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).VerifyStudentOTP(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_VerifyStudentOTP_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).VerifyStudentOTP(ctx, req.(*VerifyStudentOTPRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -857,6 +935,14 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Logout",
 			Handler:    _AuthService_Logout_Handler,
+		},
+		{
+			MethodName: "RequestStudentOTP",
+			Handler:    _AuthService_RequestStudentOTP_Handler,
+		},
+		{
+			MethodName: "VerifyStudentOTP",
+			Handler:    _AuthService_VerifyStudentOTP_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

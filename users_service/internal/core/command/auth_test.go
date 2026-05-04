@@ -26,9 +26,38 @@ func newAuthHandlerWithMocks() (
 	refresh := testutil.NewRefreshRepoMock()
 	issuer := &testutil.TokenIssuerMock{}
 	verifier := &testutil.TokenVerifierMock{}
-	h := NewAuthHandler(users, perms, cache, hasher, issuer, verifier, refresh)
+	// Tests existentes no ejercitan OTP. Pasamos nil-implementations seguras
+	// para los nuevos puertos: stubs que devuelven valores neutrales.
+	h := NewAuthHandler(users, perms, cache, hasher, issuer, verifier, refresh,
+		stubOTPRepo{}, stubOTPHasher{}, stubOTPSender{}, stubClassifier{})
 	return h, users, perms, refresh, issuer, verifier
 }
+
+type stubOTPRepo struct{}
+
+func (stubOTPRepo) Save(_ context.Context, _ *domain.OTPToken) error      { return nil }
+func (stubOTPRepo) FindActiveByUser(_ context.Context, _ domain.UserID) (*domain.OTPToken, error) {
+	return nil, domain.ErrOTPInvalid
+}
+func (stubOTPRepo) Consume(_ context.Context, _ string) error              { return nil }
+func (stubOTPRepo) IncrementAttempts(_ context.Context, _ string) error    { return nil }
+func (stubOTPRepo) InvalidateAllForUser(_ context.Context, _ domain.UserID) error { return nil }
+
+type stubOTPHasher struct{}
+
+func (stubOTPHasher) Hash(_ string) string             { return "" }
+func (stubOTPHasher) Compare(_ string, _ string) bool  { return false }
+
+type stubOTPSender struct{}
+
+func (stubOTPSender) Send(_ context.Context, _ string, _ string) error { return nil }
+
+type stubClassifier struct{}
+
+func (stubClassifier) IsStudent(_ context.Context, _ domain.UserID) (bool, error) { return false, nil }
+
+// silence unused-import on ports
+var _ ports.OTPRepository = stubOTPRepo{}
 
 func TestAuth_Login_Ok(t *testing.T) {
 	h, users, perms, refresh, issuer, _ := newAuthHandlerWithMocks()

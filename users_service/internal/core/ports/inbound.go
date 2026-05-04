@@ -63,6 +63,12 @@ type AuthCommands interface {
 	Login(ctx context.Context, in LoginInput) (*LoginOutput, error)
 	Refresh(ctx context.Context, in RefreshInput) (*RefreshOutput, error)
 	Logout(ctx context.Context, in LogoutInput) error
+	// RequestStudentOTP: genera y envía un OTP al email del estudiante.
+	// Comportamiento "silencioso" para evitar enumeration: si el email no
+	// existe o el user no es estudiante, devuelve OK sin enviar nada.
+	RequestStudentOTP(ctx context.Context, in RequestStudentOTPInput) error
+	// VerifyStudentOTP: valida el OTP y emite par access+refresh JWT.
+	VerifyStudentOTP(ctx context.Context, in VerifyStudentOTPInput) (*LoginOutput, error)
 }
 
 // =============== PERMISSION ===============
@@ -213,4 +219,21 @@ type RefreshOutput struct {
 // debe descartarlo.
 type LogoutInput struct {
 	RefreshToken string
+}
+
+// RequestStudentOTPInput: dispara el envío de un OTP de 6 dígitos al
+// email del estudiante. Si el email no existe o el user no es estudiante,
+// el comando devuelve OK sin enviar nada (anti enumeration attack).
+type RequestStudentOTPInput struct {
+	Email domain.Email
+	IP    string
+}
+
+// VerifyStudentOTPInput: valida el OTP recibido y, si es correcto, emite
+// un par access+refresh igual que Login normal.
+type VerifyStudentOTPInput struct {
+	Email     domain.Email
+	OTP       string // 6 dígitos
+	IP        string
+	UserAgent string
 }

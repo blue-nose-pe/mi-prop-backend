@@ -28,6 +28,13 @@ spec:
               containerPort: {{ .Values.service.grpcPort }}
               protocol: TCP
           env:
+            # Workaround del registro duplicado de proto/common/error.proto:
+            # users_service importa hubspot_service/proto/gen (cliente OTP),
+            # ambos paquetes registran el mismo file path en init() y protobuf
+            # v1.20+ panicea por defecto. 'warn' degrada a log.
+            # Fix definitivo: consolidar proto/common/ único compartido.
+            - name: GOLANG_PROTOBUF_REGISTRATION_CONFLICT
+              value: "warn"
             - name: GRPC_PORT
               value: ":{{ .Values.service.grpcPort }}"
             - name: SQL_SERVER
@@ -73,6 +80,10 @@ spec:
                   key: jwt-secret
             - name: BCRYPT_COST
               value: "{{ .Values.bcryptCost }}"
+            # OTP del estudiante: dialea a hubspot_service.SendOTP. El
+            # adapter NoOp solo se usa si esta env queda vacía (dev local).
+            - name: HUBSPOT_SERVICE_ADDR
+              value: "{{ .Release.Name }}-hubspot-service:50054"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:

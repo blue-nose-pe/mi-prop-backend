@@ -50,6 +50,15 @@ service AuthService {
   // Logout revoca el refresh token. El access sigue siendo válido hasta
   // su exp natural — el cliente debe descartarlo.
   rpc Logout (LogoutRequest) returns (EmptyResponse);
+
+  // RequestStudentOTP genera un OTP de 6 dígitos y lo envía al email
+  // del estudiante vía hubspot_service. Silencioso si email no existe
+  // o user no es estudiante (anti enumeration). Público.
+  rpc RequestStudentOTP (RequestStudentOTPRequest) returns (EmptyResponse);
+
+  // VerifyStudentOTP valida el código y emite par access+refresh JWT.
+  // Público.
+  rpc VerifyStudentOTP (VerifyStudentOTPRequest) returns (LoginResponse);
 }
 
 // --------- Messages ---------
@@ -124,6 +133,18 @@ message RefreshResponse {
 }
 
 message LogoutRequest { string refresh_token = 1; }
+
+message RequestStudentOTPRequest {
+  string email = 1;
+  string ip    = 2; // opcional; si vacío el server lo extrae del context
+}
+
+message VerifyStudentOTPRequest {
+  string email      = 1;
+  string otp        = 2; // 6 dígitos
+  string ip         = 3;
+  string user_agent = 4;
+}
 
 message AssignGroupRequest { string user_id = 1; uint32 permission_group_id = 2; }
 message RevokeGroupRequest { string user_id = 1; uint32 permission_group_id = 2; }
