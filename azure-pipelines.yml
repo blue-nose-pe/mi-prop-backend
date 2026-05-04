@@ -263,34 +263,52 @@ stages:
                   fi
 
                   if [ "$RELEASE_EXISTS" = "false" ]; then
-                    # Caso especial: install full pero el stage Images se saltó
-                    # porque solo cambiaron archivos no-de-servicio (ej. deploy/helm/).
-                    # El tag $(imageTag) del run actual NO existe en el ACR. Usamos
-                    # el último tag disponible del ACR como fallback.
+                    # Install full: necesitamos UN tag base que exista para TODOS
+                    # los servicios + overrides per-servicio para los que cambiaron
+                    # en este run. Sin esto, helm intenta usar tag $(imageTag) para
+                    # services no buildeados → ImagePullBackOff.
+                    LAST_ACR_TAG=$(az acr repository show-tags \
+                      --name $(acrName) --repository users-service \
+                      --orderby time_desc --top 1 -o tsv 2>/dev/null || echo "")
                     if [ -z "$CHANGED" ]; then
-                      EFFECTIVE_TAG=$(az acr repository show-tags \
-                        --name $(acrName) --repository users-service \
-                        --orderby time_desc --top 1 -o tsv 2>/dev/null || echo "")
-                      if [ -z "$EFFECTIVE_TAG" ]; then
-                        echo ">>> ERROR: install full sin servicios cambiados Y sin imágenes en ACR. Hacer un commit que toque algún _service/."
+                      # Sin services cambiados: todo viene del último tag.
+                      if [ -z "$LAST_ACR_TAG" ]; then
+                        echo ">>> ERROR: sin servicios cambiados Y sin imágenes en ACR. Hacer un commit que toque algún _service/."
                         exit 1
                       fi
-                      echo ">>> Install full sin cambios — reusando último tag del ACR: $EFFECTIVE_TAG"
+                      BASE_TAG=$LAST_ACR_TAG
+                      PER_SVC_SETS=""
+                      echo ">>> Install full sin cambios — todos los services usan tag $BASE_TAG"
+                    elif [ -z "$LAST_ACR_TAG" ]; then
+                      # Primer deploy de la historia: $(imageTag) buildeó TODOS los services.
+                      BASE_TAG=$(imageTag)
+                      PER_SVC_SETS=""
+                      echo ">>> Install full primer deploy — todos los services con tag $BASE_TAG"
                     else
-                      EFFECTIVE_TAG=$(imageTag)
-                      echo ">>> Install full con tag del run actual: $EFFECTIVE_TAG"
+                      # Caso típico: hay imágenes previas en ACR + algunos services cambiaron
+                      # en este run. Tag base = último de ACR (para no-cambiados); override
+                      # per-servicio con el tag actual (para cambiados).
+                      BASE_TAG=$LAST_ACR_TAG
+                      PER_SVC_SETS=""
+                      for svc in $CHANGED; do
+                        base=$(echo $svc | tr _ -)
+                        PER_SVC_SETS="$PER_SVC_SETS --set-string ${base}.image.tag=$(imageTag)"
+                      done
+                      echo ">>> Install full mixto — base=$BASE_TAG, services rebuilt=$(imageTag) [$CHANGED]"
                     fi
+
                     # --set-string fuerza tipos string. Sin esto, Helm parsea
                     # imageTag numérico (Build.BuildId=15) como int64 y rompe
                     # el printf "%s:%s" del helper de imagen → InvalidImageName.
                     helm upgrade --install miproposito . \
                       -n miproposito --create-namespace \
                       -f $(valuesFile) \
-                      --set-string global.imageTag=$EFFECTIVE_TAG \
+                      --set-string global.imageTag=$BASE_TAG \
                       --set-string global.imageRegistry=$(acrLoginServer) \
                       --set-string global.keyVault.name=$(keyVaultName) \
                       --set-string global.keyVault.tenantId=$(tenantId) \
                       --set-string global.keyVault.userAssignedIdentityID=$(secretsProviderClientId) \
+                      $PER_SVC_SETS \
                       --timeout 10m
                   elif [ -z "$CHANGED" ]; then
                     echo ">>> Release existe pero sin servicios cambiados — nada que deployar"

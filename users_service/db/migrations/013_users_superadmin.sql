@@ -28,8 +28,10 @@ BEGIN
 END;
 
 -- Índice para chequeo rápido "¿hay algún superadmin?" (lo usa el bootstrap).
+-- sp_executesql difiere la compilación al runtime — la columna is_superadmin
+-- recién agregada arriba ya existe cuando este sub-batch se ejecuta.
 IF NOT EXISTS (
     SELECT 1 FROM sys.indexes
      WHERE name = 'idx_users_superadmin' AND object_id = OBJECT_ID('users')
 )
-    CREATE INDEX idx_users_superadmin ON users (is_superadmin) WHERE is_superadmin = 1;
+    EXEC sp_executesql N'CREATE INDEX idx_users_superadmin ON users (is_superadmin) WHERE is_superadmin = 1';
