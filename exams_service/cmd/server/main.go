@@ -65,11 +65,20 @@ func main() {
 	attempts := mssqladapter.NewAttemptRepo(db)
 	auditSink := mssqladapter.NewAuditSink(db)
 
-	// keys_service: noop por ahora (Fase 2 standalone). Cuando keys_service
-	// esté desplegado, reemplazar por un GrpcClient que llame a cfg.KeysServiceAddr.
-	var keys ports.KeysClient = keysclient.NewNoop()
+	// keys_service: si KEYS_SERVICE_ADDR está seteado usamos el GrpcClient real;
+	// si no, fallback a Noop para dev local sin keys_service.
+	var keys ports.KeysClient
 	if cfg.KeysServiceAddr != "" {
-		log.Printf("KEYS_SERVICE_ADDR set to %q; using NoopClient until GrpcClient is wired", cfg.KeysServiceAddr)
+		gc, err := keysclient.NewGrpc(cfg.KeysServiceAddr)
+		if err != nil {
+			log.Fatalf("keysclient grpc dial: %v", err)
+		}
+		defer gc.Close()
+		keys = gc
+		log.Printf("[keysclient] gRPC client → %s", cfg.KeysServiceAddr)
+	} else {
+		keys = keysclient.NewNoop()
+		log.Printf("[keysclient] NoOp (KEYS_SERVICE_ADDR vacío)")
 	}
 
 	// ---------- 3. Core (CQRS) ----------
