@@ -392,7 +392,10 @@ paths:
 
         El access token sigue siendo criptográficamente válido hasta su `exp`
         natural (15 min). El cliente debe descartarlo.
-      security: []
+
+        **Requiere `Authorization: Bearer <access_token>`** del mismo usuario
+        dueño del refresh token. Esto impide que un atacante con sólo un
+        refresh token robado pueda invalidarlo (DoS sobre la sesión víctima).
       requestBody:
         required: true
         content:
@@ -411,6 +414,11 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: "ok" }
+        '401':
+          description: Falta access token o está expirado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ──────────────────────────────────────────────────────────────────
   # USERS
