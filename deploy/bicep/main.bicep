@@ -126,7 +126,7 @@ module keyVault 'modules/keyvault.bicep' = {
     namePrefix: namePrefix
     location: location
     adminObjectId: adminObjectId
-    secretsProviderObjectId: aks.outputs.secretsProviderObjectId
+    secretsProviderObjectId: aks.outputs.kubeletIdentityObjectId
     tags: tags
   }
 }
@@ -186,7 +186,12 @@ output namePrefix string = namePrefix
 // AKS
 output aksClusterName string = aks.outputs.clusterName
 output aksKubeletClientId string = aks.outputs.kubeletIdentityClientId
-output aksSecretsProviderClientId string = aks.outputs.secretsProviderClientId
+// Client ID de la kubelet identity. Los charts lo consumen como
+// global.keyVault.userAssignedIdentityID y los SCCs lo usan en modo
+// useVMManagedIdentity=true para autenticar al Key Vault. Es la kubelet
+// (no el addon Secrets Provider) porque useVMManagedIdentity solo funciona
+// con MIs asignadas a las VMs del nodepool — las MIs del addon no lo están.
+output aksSecretsProviderClientId string = aks.outputs.kubeletIdentityClientId
 
 // SQL — vacío cuando enableAzureSql=false (el helm chart usa el SQL in-cluster)
 output sqlServerFqdn string = enableAzureSql ? sql.outputs.sqlServerFqdn : ''
