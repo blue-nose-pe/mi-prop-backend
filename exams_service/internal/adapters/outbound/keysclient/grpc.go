@@ -83,12 +83,22 @@ func (g *Grpc) IncrementUsage(ctx context.Context, keyID domain.KeyID, attemptID
 	return err
 }
 
-// Propaga x-correlation-id si viene en context (lo inyecta el interceptor inbound).
+// Propaga del context inbound al outbound:
+//   - x-correlation-id (trazabilidad)
+//   - authorization (Bearer JWT) — keys_service tiene jwtmw obligatorio
+//     fuera de health/reflection, así que sin reenviar el header el
+//     ValidateKey/IncrementUsage muere con Unauthenticated.
 func forwardCorrelation(ctx context.Context) context.Context {
-	if md, ok := metadata.FromIncomingContext(ctx); ok {
-		if v := md.Get("x-correlation-id"); len(v) > 0 {
-			return metadata.AppendToOutgoingContext(ctx, "x-correlation-id", v[0])
-		}
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return ctx
 	}
-	return ctx
+	out := ctx
+	if v := md.Get("x-correlation-id"); len(v) > 0 {
+		out = metadata.AppendToOutgoingContext(out, "x-correlation-id", v[0])
+	}
+	if v := md.Get("authorization"); len(v) > 0 {
+		out = metadata.AppendToOutgoingContext(out, "authorization", v[0])
+	}
+	return out
 }
