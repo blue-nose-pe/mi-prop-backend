@@ -49,9 +49,13 @@ func (p *Proxy) login(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+	perms := resp.GetPermissions()
+	if perms == nil {
+		perms = []string{}
+	}
 	writeJSON(w, http.StatusOK, loginResponse{
 		User:         protoUserToJSON(resp.GetUser()),
-		Permissions:  resp.GetPermissions(),
+		Permissions:  perms,
 		AccessToken:  resp.GetAccessToken(),
 		RefreshToken: resp.GetRefreshToken(),
 	})
@@ -134,15 +138,17 @@ func protoUserToJSON(u *usersgrpcpb.User) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"id":              u.GetId(),
-		"email":           u.GetEmail(),
-		"first_name":      u.GetFirstName(),
-		"last_name":       u.GetLastName(),
-		"document_number": u.GetDocumentNumber(),
-		"school_id":       u.GetSchoolId(),
-		"active":          u.GetActive(),
-		"last_access_at":  optionalTimestamp(u.GetLastAccessAt()),
-		"created_at":      optionalTimestamp(u.GetCreatedAt()),
-		"updated_at":      optionalTimestamp(u.GetUpdatedAt()),
+		"id":                   u.GetId(),
+		"email":                u.GetEmail(),
+		"first_name":           u.GetFirstName(),
+		"last_name":            u.GetLastName(),
+		"document_number":      u.GetDocumentNumber(),
+		"school_id":            u.GetSchoolId(),
+		"active":               u.GetActive(),
+		"last_access_at":       optionalTimestamp(u.GetLastAccessAt()),
+		"created_at":            optionalTimestamp(u.GetCreatedAt()),
+		"updated_at":           optionalTimestamp(u.GetUpdatedAt()),
+		"is_superadmin":        u.GetIsSuperadmin(),
+		"must_change_password": u.GetMustChangePassword(),
 	}
 }
