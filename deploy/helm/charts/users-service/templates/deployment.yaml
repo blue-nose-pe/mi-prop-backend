@@ -29,7 +29,7 @@ spec:
               protocol: TCP
           env:
             - name: GRPC_PORT
-              value: "{{ .Values.service.grpcPort }}"
+              value: ":{{ .Values.service.grpcPort }}"
             - name: SQL_SERVER
               value: "{{ .Values.global.sqlServer }}"
             - name: SQL_PORT
