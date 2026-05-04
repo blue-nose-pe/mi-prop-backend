@@ -264,28 +264,31 @@ stages:
 
                   if [ "$RELEASE_EXISTS" = "false" ]; then
                     echo ">>> Release Helm no existe — instalación full"
+                    # --set-string fuerza tipos string. Sin esto, Helm parsea
+                    # imageTag numérico (Build.BuildId=15) como int64 y rompe
+                    # el printf "%s:%s" del helper de imagen → InvalidImageName.
                     helm upgrade --install miproposito . \
                       -n miproposito --create-namespace \
                       -f $(valuesFile) \
-                      --set global.imageTag=$(imageTag) \
-                      --set global.imageRegistry=$(acrLoginServer) \
-                      --set global.keyVault.name=$(keyVaultName) \
-                      --set global.keyVault.tenantId=$(tenantId) \
-                      --set global.keyVault.userAssignedIdentityID=$(secretsProviderClientId) \
+                      --set-string global.imageTag=$(imageTag) \
+                      --set-string global.imageRegistry=$(acrLoginServer) \
+                      --set-string global.keyVault.name=$(keyVaultName) \
+                      --set-string global.keyVault.tenantId=$(tenantId) \
+                      --set-string global.keyVault.userAssignedIdentityID=$(secretsProviderClientId) \
                       --timeout 10m
                   elif [ -z "$CHANGED" ]; then
                     echo ">>> Release existe pero sin servicios cambiados — nada que deployar"
                     exit 0
                   else
                     # Upgrade incremental: --reuse-values mantiene global.imageTag
-                    # del release anterior, y --set <service>.image.tag=NEW solo
-                    # afecta los charts cuyos servicios cambiaron. Kubernetes
+                    # del release anterior, y --set-string <service>.image.tag=NEW
+                    # solo afecta los charts cuyos servicios cambiaron. Kubernetes
                     # solo reinicia esos Deployments.
                     echo ">>> Upgrade incremental — solo: $CHANGED"
                     HELM_SETS=""
                     for svc in $CHANGED; do
                       base=$(echo $svc | tr _ -)
-                      HELM_SETS="$HELM_SETS --set ${base}.image.tag=$(imageTag)"
+                      HELM_SETS="$HELM_SETS --set-string ${base}.image.tag=$(imageTag)"
                     done
 
                     helm upgrade miproposito . \
