@@ -6,7 +6,7 @@
 #   docker build --target server -t hubspot-service:0.1.0 .
 #   docker build --target worker -t hubspot-service-worker:0.1.0 .
 
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 WORKDIR /app
 RUN apk add --no-cache git
 COPY go.mod go.sum ./
