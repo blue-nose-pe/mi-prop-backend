@@ -28,6 +28,7 @@ type UserCommands interface {
 	Create(ctx context.Context, in CreateUserInput) (*domain.User, error)
 	Update(ctx context.Context, in UpdateUserInput) (*domain.User, error)
 	Deactivate(ctx context.Context, id domain.UserID) error
+	Reactivate(ctx context.Context, id domain.UserID) (*domain.User, error)
 	// ChangePassword: el dueño cambia su propia password verificando la
 	// vieja. Limpia el flag must_change_password.
 	ChangePassword(ctx context.Context, in ChangePasswordInput) error

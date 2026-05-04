@@ -79,6 +79,17 @@ func (h *UserHandler) DeactivateUser(ctx context.Context, req *pb.DeactivateUser
 	return &pb.EmptyResponse{}, nil
 }
 
+func (h *UserHandler) ReactivateUser(ctx context.Context, req *pb.ReactivateUserRequest) (*pb.UserResponse, error) {
+	if req.GetId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
+	}
+	u, err := h.userCmds.Reactivate(ctx, domain.UserID(req.GetId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.UserResponse{User: toProtoUser(u)}, nil
+}
+
 // ---------- User queries ----------
 
 func (h *UserHandler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.UserResponse, error) {

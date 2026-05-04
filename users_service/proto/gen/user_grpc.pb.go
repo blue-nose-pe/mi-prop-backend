@@ -25,6 +25,7 @@ const (
 	UserService_GetUserByEmail_FullMethodName        = "/users.v1.UserService/GetUserByEmail"
 	UserService_UpdateUser_FullMethodName            = "/users.v1.UserService/UpdateUser"
 	UserService_DeactivateUser_FullMethodName        = "/users.v1.UserService/DeactivateUser"
+	UserService_ReactivateUser_FullMethodName        = "/users.v1.UserService/ReactivateUser"
 	UserService_Me_FullMethodName                    = "/users.v1.UserService/Me"
 	UserService_ChangeMyPassword_FullMethodName      = "/users.v1.UserService/ChangeMyPassword"
 	UserService_ResetPassword_FullMethodName         = "/users.v1.UserService/ResetPassword"
@@ -47,6 +48,7 @@ type UserServiceClient interface {
 	GetUserByEmail(ctx context.Context, in *GetUserByEmailRequest, opts ...grpc.CallOption) (*UserResponse, error)
 	UpdateUser(ctx context.Context, in *UpdateUserRequest, opts ...grpc.CallOption) (*UserResponse, error)
 	DeactivateUser(ctx context.Context, in *DeactivateUserRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	ReactivateUser(ctx context.Context, in *ReactivateUserRequest, opts ...grpc.CallOption) (*UserResponse, error)
 	// Sobre el caller autenticado.
 	Me(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*MeResponse, error)
 	ChangeMyPassword(ctx context.Context, in *ChangeMyPasswordRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
@@ -112,6 +114,16 @@ func (c *userServiceClient) DeactivateUser(ctx context.Context, in *DeactivateUs
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EmptyResponse)
 	err := c.cc.Invoke(ctx, UserService_DeactivateUser_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *userServiceClient) ReactivateUser(ctx context.Context, in *ReactivateUserRequest, opts ...grpc.CallOption) (*UserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserResponse)
+	err := c.cc.Invoke(ctx, UserService_ReactivateUser_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -210,6 +222,7 @@ type UserServiceServer interface {
 	GetUserByEmail(context.Context, *GetUserByEmailRequest) (*UserResponse, error)
 	UpdateUser(context.Context, *UpdateUserRequest) (*UserResponse, error)
 	DeactivateUser(context.Context, *DeactivateUserRequest) (*EmptyResponse, error)
+	ReactivateUser(context.Context, *ReactivateUserRequest) (*UserResponse, error)
 	// Sobre el caller autenticado.
 	Me(context.Context, *EmptyRequest) (*MeResponse, error)
 	ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*EmptyResponse, error)
@@ -245,6 +258,9 @@ func (UnimplementedUserServiceServer) UpdateUser(context.Context, *UpdateUserReq
 }
 func (UnimplementedUserServiceServer) DeactivateUser(context.Context, *DeactivateUserRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateUser not implemented")
+}
+func (UnimplementedUserServiceServer) ReactivateUser(context.Context, *ReactivateUserRequest) (*UserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReactivateUser not implemented")
 }
 func (UnimplementedUserServiceServer) Me(context.Context, *EmptyRequest) (*MeResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Me not implemented")
@@ -377,6 +393,24 @@ func _UserService_DeactivateUser_Handler(srv interface{}, ctx context.Context, d
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(UserServiceServer).DeactivateUser(ctx, req.(*DeactivateUserRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _UserService_ReactivateUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReactivateUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ReactivateUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ReactivateUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ReactivateUser(ctx, req.(*ReactivateUserRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -551,6 +585,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateUser",
 			Handler:    _UserService_DeactivateUser_Handler,
+		},
+		{
+			MethodName: "ReactivateUser",
+			Handler:    _UserService_ReactivateUser_Handler,
 		},
 		{
 			MethodName: "Me",

@@ -125,6 +125,16 @@ func (h *UserHandler) Deactivate(ctx context.Context, id domain.UserID) error {
 	return nil
 }
 
+// Reactivate reactiva un user previamente desactivado.
+// Idempotente: si el user ya está activo, no falla.
+func (h *UserHandler) Reactivate(ctx context.Context, id domain.UserID) (*domain.User, error) {
+	if err := h.users.SetActive(ctx, id, true); err != nil {
+		return nil, err
+	}
+	_ = h.cache.Delete(ctx, id)
+	return h.users.FindByID(ctx, id)
+}
+
 // ChangePassword: el dueño cambia su propia password.
 // Reglas:
 //   - Verifica que OldPassword coincida con el hash actual (anti hijack).

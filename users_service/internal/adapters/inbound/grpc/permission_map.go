@@ -22,6 +22,7 @@ var PermissionMap = map[string]string{
 	"/users.v1.UserService/CreateUser":             "db_users.users.write",
 	"/users.v1.UserService/UpdateUser":             "db_users.users.write",
 	"/users.v1.UserService/DeactivateUser":         "db_users.users.write",
+	"/users.v1.UserService/ReactivateUser":         "db_users.users.write",
 	"/users.v1.UserService/GetUser":                "db_users.users.read",
 	"/users.v1.UserService/GetUserByEmail":         "db_users.users.read",
 	"/users.v1.UserService/SearchUsers":            "db_users.users.read",
