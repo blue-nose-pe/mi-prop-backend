@@ -51,7 +51,20 @@ spec:
               /opt/mssql-tools/bin/sqlcmd -S {{ include "mssqlServer.fullname" $ }} -U sa -P "$SA_PASSWORD" -Q "IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = '{{ . }}') CREATE DATABASE [{{ . }}]"
               echo "  - {{ . }} OK"
               {{- end }}
-              echo "Init de bases completado."
+
+              echo ""
+              echo "Creando login 'miprop_admin' (mismo password que SA, sysadmin role)..."
+              # Los servicios Go esperan conectarse con miprop_admin (es el user
+              # de Azure SQL gestionado en producción). Lo creamos en el SQL
+              # Server in-cluster con la misma SA password para que los charts
+              # no tengan que cambiar credenciales según modo staging vs prod.
+              # Escapamos comillas simples del password para T-SQL ('' = ').
+              ESC=$(printf '%s' "$SA_PASSWORD" | sed "s/'/''/g")
+              /opt/mssql-tools/bin/sqlcmd -S {{ include "mssqlServer.fullname" $ }} -U sa -P "$SA_PASSWORD" -Q "IF NOT EXISTS (SELECT * FROM sys.sql_logins WHERE name = 'miprop_admin') CREATE LOGIN miprop_admin WITH PASSWORD = '$ESC'"
+              /opt/mssql-tools/bin/sqlcmd -S {{ include "mssqlServer.fullname" $ }} -U sa -P "$SA_PASSWORD" -Q "IF NOT EXISTS (SELECT 1 FROM sys.server_role_members r JOIN sys.server_principals m ON r.member_principal_id = m.principal_id JOIN sys.server_principals rl ON r.role_principal_id = rl.principal_id WHERE rl.name = 'sysadmin' AND m.name = 'miprop_admin') ALTER SERVER ROLE sysadmin ADD MEMBER miprop_admin"
+              echo "  - login miprop_admin OK"
+
+              echo "Init de bases + login completado."
       volumes:
         - name: kv-secrets
           csi:

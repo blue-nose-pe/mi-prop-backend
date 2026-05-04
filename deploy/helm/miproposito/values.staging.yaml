@@ -46,6 +46,11 @@ redisServer:
   enabled: true
 
 # Habilitar servicios para staging
+# gateway: tiene panic protobuf por registro duplicado de "common/error.proto"
+# entre múltiples _service/proto/gen/common (cada service genera su propio
+# common.error en lugar de compartir uno solo en proto/common/). El deployment
+# del gateway lleva GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn como workaround
+# que degrada el panic a log. Fix definitivo (post-demo): consolidar protos.
 usersService:        { enabled: true }
 exams-service:       { enabled: true }
 keys-service:        { enabled: true }

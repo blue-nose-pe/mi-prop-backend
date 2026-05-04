@@ -23,6 +23,13 @@ spec:
             - name: http
               containerPort: {{ .Values.service.httpPort }}
           env:
+            # Workaround: cada _service/proto/gen/common/error.pb.go registra
+            # "common/error.proto" en su init(). El gateway importa los 6
+            # paquetes a la vez → protobuf v1.20+ panicea por registro duplicado.
+            # 'warn' degrada el panic a log y permite que el binario arranque.
+            # Fix definitivo: consolidar common/*.proto en proto/common/ único.
+            - name: GOLANG_PROTOBUF_REGISTRATION_CONFLICT
+              value: "warn"
             - name: HTTP_PORT
               value: ":{{ .Values.service.httpPort }}"
             - name: JWT_ISSUER
