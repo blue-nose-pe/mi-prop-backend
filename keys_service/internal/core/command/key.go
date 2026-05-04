@@ -64,8 +64,7 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 	if err != nil {
 		return nil, err
 	}
-	k.ID = id
-	return k, nil
+	return h.keys.FindByID(ctx, id)
 }
 
 func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*domain.Key, error) {

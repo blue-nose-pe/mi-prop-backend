@@ -33,8 +33,7 @@ func (h *QuestionHandler) Create(ctx context.Context, in ports.CreateQuestionInp
 	if err != nil {
 		return nil, err
 	}
-	q.ID = id
-	return q, nil
+	return h.questions.FindByID(ctx, id)
 }
 
 func (h *QuestionHandler) Update(ctx context.Context, in ports.UpdateQuestionInput) (*domain.Question, error) {

@@ -61,8 +61,9 @@ func (h *ExamHandler) Create(ctx context.Context, in ports.CreateExamInput) (*do
 	if err != nil {
 		return nil, err
 	}
-	e.ID = id
-	return e, nil
+	// Refetch para hidratar timestamps asignados por la DB (created_at,
+	// updated_at). Sin esto el response inmediato traia zero-value de Go.
+	return h.exams.FindByID(ctx, id)
 }
 
 func (h *ExamHandler) Update(ctx context.Context, in ports.UpdateExamInput) (*domain.Exam, error) {
@@ -136,9 +137,8 @@ func (h *ExamHandler) Clone(ctx context.Context, id domain.ExamID) (*domain.Exam
 	if err != nil {
 		return nil, err
 	}
-	clone.ID = newID
 	if err := h.examQuestions.CloneInto(ctx, src.ID, newID); err != nil {
 		return nil, err
 	}
-	return clone, nil
+	return h.exams.FindByID(ctx, newID)
 }
