@@ -3,7 +3,7 @@
 - name: GRPC_PORT
   value: "0.0.0.0:{{ .Values.service.grpcPort }}"
 - name: WEBHOOK_HTTP_PORT
-  value: "{{ .Values.service.webhookPort }}"
+  value: ":{{ .Values.service.webhookPort }}"
 - name: HUBSPOT_ENVIRONMENT
   value: "{{ .Values.hubspot.environment }}"
 - name: HUBSPOT_CO_KEY_ID
@@ -59,4 +59,11 @@
     secretKeyRef:
       name: {{ include "hubspotService.fullname" . }}-kv
       key: redis-password
+- name: JWT_SECRET
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "hubspotService.fullname" . }}-kv
+      key: jwt-secret
+- name: JWT_ISSUER
+  value: "{{ .Values.global.jwtIssuer | default "miproposito.users" }}"
 {{- end -}}
