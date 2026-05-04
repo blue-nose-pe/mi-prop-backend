@@ -14,6 +14,7 @@ spec:
     metadata:
       labels:
         {{- include "mssqlServer.selectorLabels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
     spec:
       terminationGracePeriodSeconds: 30
       securityContext:

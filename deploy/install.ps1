@@ -192,10 +192,12 @@ $outputs = az deployment group show `
     --name $deploymentName `
     --query properties.outputs -o json | ConvertFrom-Json
 
-$aksName         = $outputs.aksClusterName.value
-$kvName          = $outputs.keyVaultName.value
-$acrLogin        = $outputs.acrLoginServer.value
-$secretsClientId = $outputs.aksSecretsProviderClientId.value
+$aksName            = $outputs.aksClusterName.value
+$kvName             = $outputs.keyVaultName.value
+$acrLogin           = $outputs.acrLoginServer.value
+$secretsClientId    = $outputs.aksSecretsProviderClientId.value
+$oidcIssuerUrl      = $outputs.aksOidcIssuerUrl.value
+$nodeResourceGroup  = $outputs.aksNodeResourceGroup.value
 
 # Hosts de SQL y Redis: si Azure los aprovisionó, el FQDN sale del Bicep;
 # si no, apuntan al Service interno del cluster (lo crea el Helm chart).
@@ -273,6 +275,56 @@ Step "7/7  Conectando kubectl al AKS"
 
 az aks get-credentials -g $ResourceGroup -n $aksName --overwrite-existing | Out-Null
 Ok "kubeconfig descargado"
+
+# ─────────────────────────────────────────────────────────────────────
+# 7b. Workload Identity Federation para que los pods lean del Key Vault
+# ─────────────────────────────────────────────────────────────────────
+# El Secrets Store CSI driver necesita autenticarse a AAD para leer del KV.
+# Con múltiples MIs en el VMSS del nodepool, useVMManagedIdentity falla con
+# "Multiple user assigned identities exist". La forma robusta es Workload
+# Identity Federation:
+#   1. Crear el namespace si no existe.
+#   2. Anotar el ServiceAccount default con el clientID del addon Secrets Provider.
+#   3. Crear federated identity credential vinculando OIDC issuer + SA del namespace.
+# Los Helm charts ya tienen `azure.workload.identity/use: "true"` en los pods.
+Step "7b  Configurando Workload Identity Federation"
+
+# Identidad managed del addon (creada por AKS, vive en el MC_* RG).
+$secretsProviderMiName = "azurekeyvaultsecretsprovider-$aksName"
+$namespace             = "miproposito"
+$fcName                = "miprop-default-sa"
+
+# Crear/asegurar namespace.
+kubectl create namespace $namespace --dry-run=client -o yaml | kubectl apply -f - | Out-Null
+Ok "namespace '$namespace' listo"
+
+# Anotar el SA default del namespace con el clientID del Secrets Provider MI.
+kubectl annotate serviceaccount default `
+    "azure.workload.identity/client-id=$secretsClientId" `
+    -n $namespace --overwrite | Out-Null
+Ok "SA 'default' anotado con clientID=$secretsClientId"
+
+# Crear federated identity credential (idempotente: si ya existe, az retorna error
+# que silenciamos y seguimos).
+$fcExists = az identity federated-credential show `
+    --name $fcName `
+    --identity-name $secretsProviderMiName `
+    --resource-group $nodeResourceGroup `
+    --query name -o tsv 2>$null
+
+if (-not $fcExists) {
+    az identity federated-credential create `
+        --name $fcName `
+        --identity-name $secretsProviderMiName `
+        --resource-group $nodeResourceGroup `
+        --issuer $oidcIssuerUrl `
+        --subject "system:serviceaccount:${namespace}:default" `
+        --audience "api://AzureADTokenExchange" | Out-Null
+    Ok "federated credential creada: $fcName"
+} else {
+    Ok "federated credential '$fcName' ya existe — reusando"
+}
+
 Write-Host ""
 $nodes = kubectl get nodes 2>&1 | Out-String
 Write-Host $nodes

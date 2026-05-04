@@ -126,7 +126,7 @@ module keyVault 'modules/keyvault.bicep' = {
     namePrefix: namePrefix
     location: location
     adminObjectId: adminObjectId
-    secretsProviderObjectId: aks.outputs.kubeletIdentityObjectId
+    secretsProviderObjectId: aks.outputs.secretsProviderObjectId
     tags: tags
   }
 }
@@ -186,12 +186,20 @@ output namePrefix string = namePrefix
 // AKS
 output aksClusterName string = aks.outputs.clusterName
 output aksKubeletClientId string = aks.outputs.kubeletIdentityClientId
-// Client ID de la kubelet identity. Los charts lo consumen como
-// global.keyVault.userAssignedIdentityID y los SCCs lo usan en modo
-// useVMManagedIdentity=true para autenticar al Key Vault. Es la kubelet
-// (no el addon Secrets Provider) porque useVMManagedIdentity solo funciona
-// con MIs asignadas a las VMs del nodepool — las MIs del addon no lo están.
-output aksSecretsProviderClientId string = aks.outputs.kubeletIdentityClientId
+// Client ID del addon Secrets Provider del AKS. Los charts lo consumen como
+// global.keyVault.userAssignedIdentityID. Los SCCs lo usan en modo
+// Workload Identity (usePodIdentity=false, useVMManagedIdentity=false) y
+// piden tokens federados que esta MI puede emitir si tiene una federated
+// credential vinculada al ServiceAccount del namespace.
+output aksSecretsProviderClientId string = aks.outputs.secretsProviderClientId
+
+// OIDC issuer URL del cluster — necesario para crear las federated identity
+// credentials que vinculan el ServiceAccount K8s con la MI.
+output aksOidcIssuerUrl string = aks.outputs.oidcIssuerUrl
+
+// Resource group "MC_*" donde AKS crea sus recursos managed (VMSS + MIs del addon).
+// install.ps1 lo usa para crear la federated credential.
+output aksNodeResourceGroup string = aks.outputs.nodeResourceGroup
 
 // SQL — vacío cuando enableAzureSql=false (el helm chart usa el SQL in-cluster)
 output sqlServerFqdn string = enableAzureSql ? sql.outputs.sqlServerFqdn : ''

@@ -13,6 +13,7 @@ spec:
     metadata:
       labels:
         {{- include "gateway.selectorLabels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
     spec:
       containers:
         - name: gateway

@@ -116,4 +116,8 @@ output secretsProviderClientId string = aks.properties.addonProfiles.azureKeyvau
 // Object ID (≠ Client ID) — necesario para roleAssignment al Key Vault.
 // Sin este, el CSI driver del SCC falla con AADSTS70025 al montar secretos.
 output secretsProviderObjectId string = aks.properties.addonProfiles.azureKeyvaultSecretsProvider.identity.objectId
+
+// Resource group "MC_*" donde AKS crea sus recursos managed (VMSS, MIs del addon).
+// install.ps1 lo necesita para crear las federated identity credentials.
+output nodeResourceGroup string = aks.properties.nodeResourceGroup
 output oidcIssuerUrl string = aks.properties.oidcIssuerProfile.issuerURL

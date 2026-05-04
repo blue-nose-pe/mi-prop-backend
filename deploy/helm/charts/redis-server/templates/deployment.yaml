@@ -15,6 +15,7 @@ spec:
     metadata:
       labels:
         {{- include "redisServer.selectorLabels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
     spec:
       containers:
         - name: redis

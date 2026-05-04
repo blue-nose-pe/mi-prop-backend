@@ -16,6 +16,7 @@ spec:
     metadata:
       labels:
         {{- include "hubspotService.selectorLabels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
         component: worker
     spec:
       containers:

@@ -18,6 +18,7 @@ spec:
     metadata:
       labels:
         {{- include "usersService.selectorLabels" . | nindent 8 }}
+        azure.workload.identity/use: "true"
         job-type: migrate
     spec:
       restartPolicy: OnFailure
