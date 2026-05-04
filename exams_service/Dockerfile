@@ -9,7 +9,7 @@
 ##   docker build --target server  -f exams_service/Dockerfile -t exams-service:tag .
 ##   docker build --target migrate -f exams_service/Dockerfile -t exams-service-migrate:tag .
 
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 WORKDIR /workspace
 RUN apk add --no-cache git
 
