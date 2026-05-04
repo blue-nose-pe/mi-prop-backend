@@ -55,7 +55,7 @@ spec:
                   name: {{ include "examsService.fullname" . }}-kv
                   key: jwt-secret
             - name: KEYS_SERVICE_ADDR
-              value: "{{ .Values.upstreams.keysService }}"
+              value: "{{ .Release.Name }}-{{ .Values.upstreams.keysService }}"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:

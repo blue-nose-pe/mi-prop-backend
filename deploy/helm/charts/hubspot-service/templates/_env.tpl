@@ -43,7 +43,7 @@
 - name: REDIS_DB_RATELIMIT
   value: "{{ .Values.hubspot.redis.dbRateLimit }}"
 - name: USERS_SERVICE_GRPC
-  value: "users-service:50051"
+  value: "{{ .Release.Name }}-users-service:50051"
 - name: HUBSPOT_API_TOKENS
   valueFrom:
     secretKeyRef:

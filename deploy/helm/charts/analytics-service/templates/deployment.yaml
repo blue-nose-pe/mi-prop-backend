@@ -37,13 +37,13 @@ spec:
                   name: {{ include "analyticsService.fullname" . }}-kv
                   key: jwt-secret
             - name: USERS_SERVICE_ADDR
-              value: "{{ .Values.upstreams.usersService }}"
+              value: "{{ .Release.Name }}-{{ .Values.upstreams.usersService }}"
             - name: EXAMS_SERVICE_ADDR
-              value: "{{ .Values.upstreams.examsService }}"
+              value: "{{ .Release.Name }}-{{ .Values.upstreams.examsService }}"
             - name: KEYS_SERVICE_ADDR
-              value: "{{ .Values.upstreams.keysService }}"
+              value: "{{ .Release.Name }}-{{ .Values.upstreams.keysService }}"
             - name: SATISFACTION_SERVICE_ADDR
-              value: "{{ .Values.upstreams.satisfactionService }}"
+              value: "{{ .Release.Name }}-{{ .Values.upstreams.satisfactionService }}"
             - name: REDIS_ADDR
               value: "{{ .Values.global.redisHost }}:{{ .Values.global.redisSslPort }}"
             - name: REDIS_PASSWORD
