@@ -123,12 +123,15 @@ if ($SkipBuild) {
             Write-Host ""
             Write-Host "  [$current/$totalBuilds] Building $imgName (target=$target)..." -ForegroundColor Yellow
 
+            # gateway importa protos de hermanos via go.work — necesita contexto raíz.
+            $buildContext = if ($svc -eq 'gateway') { '.' } else { $svc }
+
             az acr build `
                 --registry $AcrName `
                 --image $imgName `
                 --target $target `
                 --file "$svc/Dockerfile" `
-                $svc
+                $buildContext
 
             if ($LASTEXITCODE -ne 0) {
                 Die "Falló el build de $imgName. Revisá el Dockerfile y los logs arriba."

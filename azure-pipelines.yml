@@ -106,7 +106,13 @@ stages:
                 tag="$REG/$base-$target:$TAG"
               fi
               echo "Building $tag (target=$target)"
-              docker build --target $target -t $tag $svc
+              # gateway importa protos de hermanos via go.work — necesita contexto raíz.
+              # Los demás services son standalone y usan su carpeta como contexto.
+              if [ "$svc" = "gateway" ]; then
+                docker build --target $target -t $tag -f $svc/Dockerfile .
+              else
+                docker build --target $target -t $tag $svc
+              fi
               docker push $tag
             done
           done
