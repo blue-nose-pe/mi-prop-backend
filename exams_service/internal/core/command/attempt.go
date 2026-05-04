@@ -89,6 +89,20 @@ func (h *AttemptHandler) Answer(ctx context.Context, in ports.AnswerInput) error
 	if att.SubmittedAt != nil {
 		return domain.ErrAttemptAlreadyDone
 	}
+	opts, err := h.options.ListByQuestion(ctx, in.QuestionID)
+	if err != nil {
+		return err
+	}
+	valid := false
+	for _, o := range opts {
+		if o.ID == in.OptionID {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return domain.ErrAnswerOptionMismatch
+	}
 	return h.attempts.UpsertAnswer(ctx, &domain.AttemptAnswer{
 		AttemptID:  att.ID,
 		QuestionID: in.QuestionID,

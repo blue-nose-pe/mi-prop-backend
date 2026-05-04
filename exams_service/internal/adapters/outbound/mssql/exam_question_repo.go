@@ -17,17 +17,24 @@ var _ ports.ExamQuestionRepository = (*ExamQuestionRepo)(nil)
 func NewExamQuestionRepo(db *sql.DB) *ExamQuestionRepo { return &ExamQuestionRepo{db: db} }
 
 func (r *ExamQuestionRepo) Add(ctx context.Context, eq *domain.ExamQuestion) error {
-	const q = `
-		IF NOT EXISTS (
-		    SELECT 1 FROM exam_question
-		     WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)
-		       AND question_id = CONVERT(UNIQUEIDENTIFIER, @p2)
-		)
+	var existing int
+	err := r.db.QueryRowContext(ctx, `
+		SELECT 1 FROM exam_question
+		 WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		   AND question_id = CONVERT(UNIQUEIDENTIFIER, @p2)`,
+		string(eq.ExamID), string(eq.QuestionID)).Scan(&existing)
+	switch {
+	case err == nil:
+		return domain.ErrExamQuestionAlreadyLinked
+	case err != sql.ErrNoRows:
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, `
 		INSERT INTO exam_question (exam_id, question_id, points, sort_order)
 		VALUES (CONVERT(UNIQUEIDENTIFIER, @p1),
 		        CONVERT(UNIQUEIDENTIFIER, @p2),
-		        @p3, @p4);`
-	_, err := r.db.ExecContext(ctx, q, string(eq.ExamID), string(eq.QuestionID), eq.Points, eq.SortOrder)
+		        @p3, @p4)`,
+		string(eq.ExamID), string(eq.QuestionID), eq.Points, eq.SortOrder)
 	return err
 }
 
