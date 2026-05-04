@@ -126,7 +126,7 @@ module keyVault 'modules/keyvault.bicep' = {
     namePrefix: namePrefix
     location: location
     adminObjectId: adminObjectId
-    secretsProviderObjectId: aks.outputs.kubeletIdentityObjectId
+    secretsProviderObjectId: aks.outputs.secretsProviderObjectId
     tags: tags
   }
 }

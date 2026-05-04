@@ -113,4 +113,7 @@ output clusterId string = aks.id
 output kubeletIdentityClientId string = aks.properties.identityProfile.kubeletidentity.clientId
 output kubeletIdentityObjectId string = aks.properties.identityProfile.kubeletidentity.objectId
 output secretsProviderClientId string = aks.properties.addonProfiles.azureKeyvaultSecretsProvider.identity.clientId
+// Object ID (≠ Client ID) — necesario para roleAssignment al Key Vault.
+// Sin este, el CSI driver del SCC falla con AADSTS70025 al montar secretos.
+output secretsProviderObjectId string = aks.properties.addonProfiles.azureKeyvaultSecretsProvider.identity.objectId
 output oidcIssuerUrl string = aks.properties.oidcIssuerProfile.issuerURL
