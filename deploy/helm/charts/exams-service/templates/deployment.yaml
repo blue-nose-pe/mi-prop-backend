@@ -28,6 +28,14 @@ spec:
               containerPort: {{ .Values.service.grpcPort }}
               protocol: TCP
           env:
+            # Workaround del registro duplicado de proto/common/error.proto
+            # que ocurre porque exams_service importa keys_service/proto/gen
+            # (cliente gRPC). Ambos paquetes registran el mismo file path en
+            # init() y protobuf v1.20+ panicea por defecto. 'warn' degrada
+            # el panic a log y permite que el binario arranque.
+            # Fix definitivo: consolidar common/*.proto en proto/common/ único.
+            - name: GOLANG_PROTOBUF_REGISTRATION_CONFLICT
+              value: "warn"
             - name: GRPC_PORT
               value: ":{{ .Values.service.grpcPort }}"
             - name: SQL_SERVER
