@@ -132,6 +132,11 @@ stages:
       runOnce:
         deploy:
           steps:
+            # Los deployment jobs no hacen checkout por default — pedirlo explícito
+            # para que `cd deploy/helm/miproposito` y `helm dependency build` encuentren
+            # los charts del repo.
+            - checkout: self
+
             - task: HelmInstaller@0
               inputs: { helmVersionToInstall: 'latest' }
 
