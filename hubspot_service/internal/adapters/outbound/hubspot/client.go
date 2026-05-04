@@ -111,6 +111,11 @@ func (c *Client) UpsertCustomObjectByProp(
 // ---------- helpers ----------
 
 // searchByProperty: POST /search con filterGroups EQ.
+//
+// Defensive matching: HubSpot devuelve resultados ruidosos cuando la
+// propiedad EQ no existe en el portal (en vez de 400). Validamos
+// explicitamente que el primer resultado traiga la prop con el valor
+// pedido, sino devolvemos "no encontrado".
 func (c *Client) searchByProperty(ctx context.Context, path, prop, value string) (domain.RecordID, error) {
 	body := searchRequest{
 		FilterGroups: []filterGroup{{
@@ -124,6 +129,10 @@ func (c *Client) searchByProperty(ctx context.Context, path, prop, value string)
 		return "", err
 	}
 	if len(resp.Results) == 0 {
+		return "", nil
+	}
+	got, ok := resp.Results[0].Properties[prop]
+	if !ok || got != value {
 		return "", nil
 	}
 	return domain.RecordID(resp.Results[0].ID), nil
@@ -194,5 +203,10 @@ type filter struct {
 }
 
 type searchResponse struct {
-	Results []objectResponse `json:"results"`
+	Results []searchResultItem `json:"results"`
+}
+
+type searchResultItem struct {
+	ID         string            `json:"id"`
+	Properties map[string]string `json:"properties"`
 }
