@@ -1,19 +1,21 @@
 # Azure DevOps Pipeline — Mi Propósito 2.0
 #
-# Construye TODOS los servicios y publica las imágenes a Azure Container
-# Registry. Detecta cambios por carpeta para evitar reconstruir todo en
-# cada commit (path filters en `trigger`).
+# Pipeline incremental: detecta qué microservicios cambiaron en el push y solo
+# rebuilda/redeploya esos. Si tocaron archivos compartidos (proto, pkg, deploy,
+# go.work, este archivo) o si el release Helm aún no existe, hace full rebuild.
 #
 # Stages:
-#   1. test       → go test ./... por cada microservicio Go
-#   2. build      → docker build (server + migrate/worker cuando aplica)
-#   3. push       → docker push a ACR
-#   4. deploy     → helm upgrade --install (solo en main, manual approval)
+#   1. Test    → go test ./... por servicio cambiado
+#   2. Images  → docker build/push de imágenes de servicios cambiados
+#   3. Deploy  → helm upgrade incremental (solo cambia tags de servicios rebuilt)
+#                con manual approval gate.
 #
 # Variables esperadas (Library / Variable Group "miproposito-cicd"):
 #   - acrName              (ej: "mipropositoacr")
+#   - acrLoginServer       (ej: "mipropositoacr.azurecr.io")
 #   - aksResourceGroup     (ej: "rg-miproposito")
 #   - aksClusterName       (ej: "aks-miproposito")
+#   - keyVaultName, tenantId, secretsProviderClientId, valuesFile
 #   - serviceConnectionArm (ARM service connection — ej: "azure-subscription")
 #   - serviceConnectionAcr (Docker Registry connection — ej: "acr-connection")
 
@@ -29,7 +31,10 @@ trigger:
       - hubspot_service/**
       - analytics_service/**
       - gateway/**
+      - proto/**
+      - pkg/**
       - deploy/**
+      - go.work
       - azure-pipelines.yml
 
 pr:
@@ -42,42 +47,110 @@ variables:
     value: $(Build.BuildId)
   - name: goVersion
     value: '1.24'
+  # Lista canónica de microservicios. Si agregás uno nuevo, sumalo acá y al
+  # mapping `SERVICES` del stage Images.
+  - name: allServices
+    value: 'users_service exams_service keys_service satisfaction_service hubspot_service analytics_service gateway'
 
 pool:
   vmImage: ubuntu-latest
 
 stages:
 # =========================================================
-# Stage 1 — Test
+# Stage 1 — Detect changes + Test
 # =========================================================
 - stage: Test
-  displayName: 'Build & test all Go services'
+  displayName: 'Detect changes & test'
   jobs:
-  - job: GoTest
-    displayName: 'go test'
+  - job: DetectAndTest
+    displayName: 'Detect changes & go test'
     steps:
+      - checkout: self
+        fetchDepth: 2   # necesitamos HEAD~1 para diff. 2 es suficiente.
+
       - task: GoTool@0
         inputs: { version: '$(goVersion)' }
 
       - script: |
           set -e
-          for s in users_service exams_service keys_service satisfaction_service hubspot_service analytics_service gateway; do
-            echo "=== $s ==="
+          ALL_SVCS="$(allServices)"
+
+          # Detectar archivos cambiados desde el commit anterior. Si HEAD~1 no
+          # existe (primer commit / fetchDepth insuficiente) o si el cambio
+          # tocó archivos COMPARTIDOS (afectan a TODOS los servicios), forzamos
+          # full rebuild.
+          if ! git rev-parse HEAD~1 >/dev/null 2>&1; then
+            echo "No hay commit anterior — full rebuild"
+            CHANGED_SVCS="$ALL_SVCS"
+          else
+            CHANGED_PATHS=$(git diff --name-only HEAD~1 HEAD)
+            echo "Archivos cambiados en este push:"
+            echo "$CHANGED_PATHS" | sed 's/^/  - /'
+
+            # Triggers de full rebuild: cualquier cambio en pkg/, proto/, go.work
+            # o el propio pipeline implica que TODOS los servicios pueden estar afectados.
+            if echo "$CHANGED_PATHS" | grep -qE "^(pkg/|proto/|go\.work|azure-pipelines\.yml)"; then
+              echo ""
+              echo "Cambio en archivo compartido — full rebuild"
+              CHANGED_SVCS="$ALL_SVCS"
+            else
+              CHANGED_SVCS=""
+              for svc in $ALL_SVCS; do
+                if echo "$CHANGED_PATHS" | grep -q "^$svc/"; then
+                  CHANGED_SVCS="$CHANGED_SVCS $svc"
+                fi
+              done
+              CHANGED_SVCS=$(echo "$CHANGED_SVCS" | xargs)  # trim leading space
+            fi
+          fi
+
+          if [ -z "$CHANGED_SVCS" ]; then
+            echo ""
+            echo "Ningún microservicio cambió — solo cambios en deploy/ u otros archivos no relacionados con código."
+            echo "Igual ejecutamos tests para sanidad, pero el stage Images saltea sin builds."
+            CHANGED_SVCS=""
+          fi
+
+          echo ""
+          echo "Servicios afectados: ${CHANGED_SVCS:-(ninguno)}"
+
+          # Exportamos la lista para que stages downstream la consuman.
+          echo "##vso[task.setvariable variable=changedServices;isOutput=true]$CHANGED_SVCS"
+        displayName: 'Detectar servicios cambiados'
+        name: detect
+
+      - script: |
+          set -e
+          CHANGED="$(detect.changedServices)"
+
+          if [ -z "$CHANGED" ]; then
+            echo "Sin servicios cambiados — saltando tests."
+            exit 0
+          fi
+
+          for s in $CHANGED; do
+            echo ""
+            echo "=== go test $s ==="
             (cd $s && go build ./... && go vet ./... && go test -count=1 -race -cover ./...)
           done
-        displayName: 'Build + vet + test each service'
+        displayName: 'Build + vet + test (solo servicios cambiados)'
 
 # =========================================================
-# Stage 2 — Build & Push images
+# Stage 2 — Build & Push images (solo servicios cambiados)
 # =========================================================
 - stage: Images
-  displayName: 'Docker build & push to ACR'
+  displayName: 'Docker build & push (incremental)'
   dependsOn: Test
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  variables:
+    changedServices: $[ stageDependencies.Test.DetectAndTest.outputs['detect.changedServices'] ]
   jobs:
   - job: BuildPush
     displayName: 'Build & push'
+    condition: ne(variables['changedServices'], '')
     steps:
+      - checkout: self
+
       - task: Docker@2
         displayName: 'Login ACR'
         inputs:
@@ -88,6 +161,9 @@ stages:
           set -e
           REG="$(acrName).azurecr.io"
           TAG="$(imageTag)"
+          CHANGED="$(changedServices)"
+
+          # Mapping service → targets (debe matchear con los Dockerfiles multi-stage).
           declare -A SERVICES=(
             [users_service]="server migrate bootstrap"
             [exams_service]="server migrate"
@@ -97,7 +173,11 @@ stages:
             [analytics_service]="server"
             [gateway]="server"
           )
-          for svc in "${!SERVICES[@]}"; do
+
+          echo "Reconstruyendo imágenes de: $CHANGED"
+          echo ""
+
+          for svc in $CHANGED; do
             base=$(echo $svc | tr _ -)   # users_service → users-service
             for target in ${SERVICES[$svc]}; do
               if [ "$target" = "server" ]; then
@@ -106,8 +186,7 @@ stages:
                 tag="$REG/$base-$target:$TAG"
               fi
               echo "Building $tag (target=$target)"
-              # gateway importa protos de hermanos via go.work — necesita contexto raíz.
-              # Los demás services son standalone y usan su carpeta como contexto.
+              # gateway importa protos de hermanos via go.work — contexto raíz.
               if [ "$svc" = "gateway" ]; then
                 docker build --target $target -t $tag -f $svc/Dockerfile .
               else
@@ -116,25 +195,27 @@ stages:
               docker push $tag
             done
           done
-        displayName: 'Build & push all images'
+        displayName: 'Build & push (incremental)'
 
 # =========================================================
-# Stage 3 — Deploy to AKS (manual approval)
+# Stage 3 — Deploy to AKS (incremental, manual approval)
 # =========================================================
 - stage: Deploy
-  displayName: 'Helm upgrade en AKS'
-  dependsOn: Images
+  displayName: 'Helm upgrade en AKS (incremental)'
+  dependsOn:
+    - Test
+    - Images
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  variables:
+    changedServices: $[ stageDependencies.Test.DetectAndTest.outputs['detect.changedServices'] ]
   jobs:
   - deployment: HelmUpgrade
-    environment: miproposito-prod   # crear en Environments → habilita gates manuales
+    environment: miproposito-prod
     strategy:
       runOnce:
         deploy:
           steps:
-            # Los deployment jobs no hacen checkout por default — pedirlo explícito
-            # para que `cd deploy/helm/miproposito` y `helm dependency build` encuentren
-            # los charts del repo.
+            # Los deployment jobs no hacen checkout por default.
             - checkout: self
 
             - task: HelmInstaller@0
@@ -158,7 +239,7 @@ stages:
                     --wait --timeout 5m
 
             - task: AzureCLI@2
-              displayName: 'helm upgrade miproposito'
+              displayName: 'helm upgrade miproposito (full o incremental)'
               inputs:
                 azureSubscription: $(serviceConnectionArm)
                 scriptType: bash
@@ -168,17 +249,51 @@ stages:
                   az aks get-credentials -g $(aksResourceGroup) -n $(aksClusterName) --overwrite-existing
                   cd deploy/helm/miproposito
                   helm dependency build
-                  # valuesFile viene del Variable Group: 'values.staging.yaml' para staging in-cluster,
-                  # 'values.production.yaml' para producción con Azure SQL/Redis gestionados.
-                  helm upgrade --install miproposito . \
-                    -n miproposito --create-namespace \
-                    -f $(valuesFile) \
-                    --set global.imageTag=$(imageTag) \
-                    --set global.imageRegistry=$(acrLoginServer) \
-                    --set global.keyVault.name=$(keyVaultName) \
-                    --set global.keyVault.tenantId=$(tenantId) \
-                    --set global.keyVault.userAssignedIdentityID=$(secretsProviderClientId) \
-                    --timeout 10m
+
+                  CHANGED="$(changedServices)"
+
+                  # ¿Existe ya el release? Si no → install full. Si sí → upgrade
+                  # incremental (solo cambia tags de servicios rebuilt vía --set
+                  # per-chart, los demás charts mantienen sus tags actuales por
+                  # --reuse-values).
+                  if helm status miproposito -n miproposito >/dev/null 2>&1; then
+                    RELEASE_EXISTS=true
+                  else
+                    RELEASE_EXISTS=false
+                  fi
+
+                  if [ "$RELEASE_EXISTS" = "false" ]; then
+                    echo ">>> Release Helm no existe — instalación full"
+                    helm upgrade --install miproposito . \
+                      -n miproposito --create-namespace \
+                      -f $(valuesFile) \
+                      --set global.imageTag=$(imageTag) \
+                      --set global.imageRegistry=$(acrLoginServer) \
+                      --set global.keyVault.name=$(keyVaultName) \
+                      --set global.keyVault.tenantId=$(tenantId) \
+                      --set global.keyVault.userAssignedIdentityID=$(secretsProviderClientId) \
+                      --timeout 10m
+                  elif [ -z "$CHANGED" ]; then
+                    echo ">>> Release existe pero sin servicios cambiados — nada que deployar"
+                    exit 0
+                  else
+                    # Upgrade incremental: --reuse-values mantiene global.imageTag
+                    # del release anterior, y --set <service>.image.tag=NEW solo
+                    # afecta los charts cuyos servicios cambiaron. Kubernetes
+                    # solo reinicia esos Deployments.
+                    echo ">>> Upgrade incremental — solo: $CHANGED"
+                    HELM_SETS=""
+                    for svc in $CHANGED; do
+                      base=$(echo $svc | tr _ -)
+                      HELM_SETS="$HELM_SETS --set ${base}.image.tag=$(imageTag)"
+                    done
+
+                    helm upgrade miproposito . \
+                      -n miproposito \
+                      --reuse-values \
+                      $HELM_SETS \
+                      --timeout 10m
+                  fi
 
             - script: |
                 if [ -n "$(smokeTestUrl)" ]; then

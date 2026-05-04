@@ -23,9 +23,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
 {{- define "examsService.image" -}}
-{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.image.repository .Values.global.imageTag -}}
+{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.image.repository (.Values.image.tag | default .Values.global.imageTag) -}}
 {{- end -}}
 
 {{- define "examsService.migrateImage" -}}
-{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.migration.image.repository .Values.global.imageTag -}}
+{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.migration.image.repository (.Values.image.tag | default .Values.global.imageTag) -}}
 {{- end -}}

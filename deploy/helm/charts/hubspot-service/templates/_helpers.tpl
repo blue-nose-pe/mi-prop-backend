@@ -13,8 +13,8 @@ app.kubernetes.io/name: {{ include "hubspotService.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- define "hubspotService.serverImage" -}}
-{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.image.repository .Values.global.imageTag -}}
+{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.image.repository (.Values.image.tag | default .Values.global.imageTag) -}}
 {{- end -}}
 {{- define "hubspotService.workerImage" -}}
-{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.image.workerRepository .Values.global.imageTag -}}
+{{- printf "%s/%s:%s" .Values.global.imageRegistry .Values.image.workerRepository (.Values.image.tag | default .Values.global.imageTag) -}}
 {{- end -}}

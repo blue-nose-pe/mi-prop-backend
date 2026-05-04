@@ -19,7 +19,7 @@ metadata:
     {{- include "usersService.labels" . | nindent 4 }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
-    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-weight": "20"
     "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
 spec:
   backoffLimit: {{ .Values.bootstrap.backoffLimit | default 3 }}
@@ -36,7 +36,7 @@ spec:
       {{- end }}
       containers:
         - name: bootstrap
-          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.bootstrap.image.repository .Values.global.imageTag }}
+          image: {{ printf "%s/%s:%s" .Values.global.imageRegistry .Values.bootstrap.image.repository (.Values.image.tag | default .Values.global.imageTag) }}
           imagePullPolicy: {{ .Values.global.imagePullPolicy }}
           env:
             - name: SQL_SERVER
