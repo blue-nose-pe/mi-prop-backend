@@ -186,9 +186,10 @@ stages:
                 tag="$REG/$base-$target:$TAG"
               fi
               echo "Building $tag (target=$target)"
-              # gateway, exams_service y users_service importan protos de
-              # hermanos vía go.work, así que su build necesita contexto raíz.
-              if [ "$svc" = "gateway" ] || [ "$svc" = "exams_service" ] || [ "$svc" = "users_service" ]; then
+              # gateway, exams_service, users_service y analytics_service
+              # importan protos de hermanos vía go.work, así que su build
+              # necesita contexto raíz.
+              if [ "$svc" = "gateway" ] || [ "$svc" = "exams_service" ] || [ "$svc" = "users_service" ] || [ "$svc" = "analytics_service" ]; then
                 docker build --target $target -t $tag -f $svc/Dockerfile .
               else
                 docker build --target $target -t $tag $svc

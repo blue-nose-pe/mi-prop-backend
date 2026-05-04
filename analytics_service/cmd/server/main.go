@@ -50,13 +50,50 @@ func main() {
 		}
 	}
 
-	// ---------- 2. Upstream clients (NoOp para arrancar; ver TODO) ----------
-	// TODO: cuando todos los servicios upstream estén corriendo, sustituir
-	//       por GrpcUsers/GrpcExams/GrpcKeys que dialean cfg.*ServiceAddr.
-	//       La interfaz queda igual — no se toca core.
-	usersC := clients.NoopUsers{}
-	examsC := clients.NoopExams{}
-	keysC := clients.NoopKeys{}
+	// ---------- 2. Upstream clients ----------
+	// Si la env var *_SERVICE_ADDR está seteada, usamos el cliente gRPC
+	// real; si está vacía, fallback al Noop (útil para dev local sin
+	// los servicios upstream corriendo). El error en NewGrpc* solo
+	// fallará si addr es "", que ya filtramos arriba — un dial fallido
+	// más tarde devuelve error en el primer RPC, no acá.
+	var usersC ports.UsersClient = clients.NoopUsers{}
+	if cfg.UsersServiceAddr != "" {
+		gu, err := clients.NewGrpcUsers(cfg.UsersServiceAddr)
+		if err != nil {
+			log.Fatalf("init users client: %v", err)
+		}
+		defer func() { _ = gu.Close() }()
+		usersC = gu
+		log.Printf("[wire] users client: gRPC -> %s", cfg.UsersServiceAddr)
+	} else {
+		log.Printf("[wire] users client: NoOp (USERS_SERVICE_ADDR vacío)")
+	}
+
+	var examsC ports.ExamsClient = clients.NoopExams{}
+	if cfg.ExamsServiceAddr != "" {
+		ge, err := clients.NewGrpcExams(cfg.ExamsServiceAddr)
+		if err != nil {
+			log.Fatalf("init exams client: %v", err)
+		}
+		defer func() { _ = ge.Close() }()
+		examsC = ge
+		log.Printf("[wire] exams client: gRPC -> %s", cfg.ExamsServiceAddr)
+	} else {
+		log.Printf("[wire] exams client: NoOp (EXAMS_SERVICE_ADDR vacío)")
+	}
+
+	var keysC ports.KeysClient = clients.NoopKeys{}
+	if cfg.KeysServiceAddr != "" {
+		gk, err := clients.NewGrpcKeys(cfg.KeysServiceAddr)
+		if err != nil {
+			log.Fatalf("init keys client: %v", err)
+		}
+		defer func() { _ = gk.Close() }()
+		keysC = gk
+		log.Printf("[wire] keys client: gRPC -> %s", cfg.KeysServiceAddr)
+	} else {
+		log.Printf("[wire] keys client: NoOp (KEYS_SERVICE_ADDR vacío)")
+	}
 
 	// ---------- 3. Core ----------
 	dashboards := query.NewDashboardHandler(usersC, examsC, keysC, cache)

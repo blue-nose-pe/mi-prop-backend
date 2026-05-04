@@ -27,6 +27,11 @@ spec:
             - name: grpc
               containerPort: {{ .Values.service.grpcPort }}
           env:
+            # analytics_service importa proto/gen de users/exams/keys (clientes
+            # gRPC reales). Cada paquete registra common/error.proto en init().
+            # 'warn' degrada el panic a log. Fix definitivo: proto/common/ único.
+            - name: GOLANG_PROTOBUF_REGISTRATION_CONFLICT
+              value: "warn"
             - name: GRPC_PORT
               value: ":{{ .Values.service.grpcPort }}"
             - name: JWT_ISSUER
