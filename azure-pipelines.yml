@@ -263,14 +263,30 @@ stages:
                   fi
 
                   if [ "$RELEASE_EXISTS" = "false" ]; then
-                    echo ">>> Release Helm no existe — instalación full"
+                    # Caso especial: install full pero el stage Images se saltó
+                    # porque solo cambiaron archivos no-de-servicio (ej. deploy/helm/).
+                    # El tag $(imageTag) del run actual NO existe en el ACR. Usamos
+                    # el último tag disponible del ACR como fallback.
+                    if [ -z "$CHANGED" ]; then
+                      EFFECTIVE_TAG=$(az acr repository show-tags \
+                        --name $(acrName) --repository users-service \
+                        --orderby time_desc --top 1 -o tsv 2>/dev/null || echo "")
+                      if [ -z "$EFFECTIVE_TAG" ]; then
+                        echo ">>> ERROR: install full sin servicios cambiados Y sin imágenes en ACR. Hacer un commit que toque algún _service/."
+                        exit 1
+                      fi
+                      echo ">>> Install full sin cambios — reusando último tag del ACR: $EFFECTIVE_TAG"
+                    else
+                      EFFECTIVE_TAG=$(imageTag)
+                      echo ">>> Install full con tag del run actual: $EFFECTIVE_TAG"
+                    fi
                     # --set-string fuerza tipos string. Sin esto, Helm parsea
                     # imageTag numérico (Build.BuildId=15) como int64 y rompe
                     # el printf "%s:%s" del helper de imagen → InvalidImageName.
                     helm upgrade --install miproposito . \
                       -n miproposito --create-namespace \
                       -f $(valuesFile) \
-                      --set-string global.imageTag=$(imageTag) \
+                      --set-string global.imageTag=$EFFECTIVE_TAG \
                       --set-string global.imageRegistry=$(acrLoginServer) \
                       --set-string global.keyVault.name=$(keyVaultName) \
                       --set-string global.keyVault.tenantId=$(tenantId) \
