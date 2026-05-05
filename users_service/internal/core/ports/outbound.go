@@ -70,6 +70,22 @@ type PermissionRepository interface {
 	GroupExists(ctx context.Context, groupID uint32) (bool, error)
 	AssignGroupToUser(ctx context.Context, userID domain.UserID, groupID uint32) error
 	RevokeGroupFromUser(ctx context.Context, userID domain.UserID, groupID uint32) error
+
+	// CRUD de grupos.
+	CreateGroup(ctx context.Context, code, name, description string, permissionIDs []uint32) (uint32, error)
+	UpdateGroup(ctx context.Context, id uint32, name, description string) error
+	DeleteGroup(ctx context.Context, id uint32) error
+	FindGroupByID(ctx context.Context, id uint32) (*domain.PermissionGroup, error)
+	ListGroups(ctx context.Context) ([]domain.PermissionGroup, error)
+
+	// Permisos por grupo.
+	AddPermissionToGroup(ctx context.Context, groupID, permissionID uint32) error
+	RemovePermissionFromGroup(ctx context.Context, groupID, permissionID uint32) error
+
+	// Catálogo de permisos.
+	ListPermissions(ctx context.Context) ([]domain.Permission, error)
+	PermissionExists(ctx context.Context, permissionID uint32) (bool, error)
+	GroupHasUsers(ctx context.Context, groupID uint32) (bool, error)
 }
 
 // ---------- School ----------

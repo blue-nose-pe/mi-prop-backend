@@ -125,10 +125,12 @@ func main() {
 	userCmds := command.NewUserHandler(userRepo, cache, hasher)
 	authCmds := command.NewAuthHandler(userRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier)
 	permCmds := command.NewPermissionHandler(userRepo, permRepo)
+	permGroupCmds := command.NewPermissionGroupHandler(permRepo)
 	assignmentCmds := command.NewAssignmentHandler(userRepo, assignmentRepo)
 	hubspotSyncCmds := command.NewHubspotSyncHandler(userRepo, schoolRepo)
 	userQrys := query.NewUserHandler(userRepo, cache, permRepo)
 	permQrys := query.NewPermissionHandler(userRepo, permRepo)
+	permGroupQrys := query.NewPermissionGroupHandler(permRepo)
 	assignmentQrys := query.NewAssignmentHandler(assignmentRepo)
 
 	// Estos handlers todavía no se exponen por gRPC; quedan listos para
@@ -140,6 +142,7 @@ func main() {
 	// ---------- 4. ADAPTERS INBOUND gRPC ----------
 	userHandler := grpchandler.NewUserHandler(userCmds, userQrys, permCmds, permQrys)
 	authHandler := grpchandler.NewAuthHandler(authCmds)
+	permGroupHandler := grpchandler.NewPermissionGroupHandler(permGroupCmds, permGroupQrys)
 
 	// ---------- 5. SERVIDOR gRPC ----------
 	lis, err := net.Listen("tcp", cfg.GRPCPort)
@@ -179,12 +182,14 @@ func main() {
 	pb.RegisterUserServiceServer(s, userHandler)
 	pb.RegisterAuthServiceServer(s, authHandler)
 	pb.RegisterSchoolServiceServer(s, grpchandler.NewSchoolHandler(schoolRepo))
+	pb.RegisterPermissionGroupServiceServer(s, permGroupHandler)
 
 	// Health check (usado por readiness/liveness de Kubernetes).
 	hs := health.NewServer()
 	healthpb.RegisterHealthServer(s, hs)
 	hs.SetServingStatus("users.v1.UserService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("users.v1.AuthService", healthpb.HealthCheckResponse_SERVING)
+	hs.SetServingStatus("users.v1.PermissionGroupService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 
 	reflection.Register(s) // para debuggear con grpcurl

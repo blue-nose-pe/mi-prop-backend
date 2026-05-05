@@ -43,27 +43,59 @@ El sistema distingue **dos cosas diferentes** que conviene no confundir:
    del cluster. Está marcado con un flag (`users.is_superadmin = 1`) y
    ese flag bypasa TODOS los chequeos de permisos. **No es un grupo, es
    un atributo del usuario**.
-2. **Los grupos de permisos**: son cuatro grupos pre-seedeados en la
-   tabla `permission_group` por las migraciones SQL del primer install.
-   Existen desde el día uno; el superadmin **no los crea** — los asigna.
+2. **Los grupos de permisos** (también llamados "roles"): los crea y
+   administra el superadmin a runtime vía API. Cada grupo es una
+   combinación arbitraria de permisos individuales del catálogo, y
+   cualquier usuario puede tener uno o más grupos asignados.
 
-### Los cuatro grupos pre-seedeados
+### Cuatro grupos pre-seedeados de fábrica
+
+El primer install incluye cuatro grupos canónicos como referencia /
+arranque rápido. El cliente puede modificarlos, eliminarlos o crear
+nuevos según necesite.
 
 | Grupo | Permisos típicos |
 |---|---|
-| `admin_permissions` | CRUD completo sobre tablas operacionales (no edita el catálogo de permisos — eso queda al superadmin). |
+| `admin_permissions` | CRUD completo sobre tablas operacionales y administración de roles (incluye `db_users.permission_group.write`). |
 | `asesor_permissions` | Lectura amplia + escritura sobre sus colegios y keys + ver dashboards de sus asignaciones. |
 | `coordinador_permissions` | Lectura del colegio asignado, sus estudiantes y sus resultados. |
 | `student_permissions` | Leer su propio progreso, resolver tests. |
 
-Asignación: el superadmin (o cualquiera con `db_users.permission_group.write`)
-asigna a cada usuario uno o más grupos vía
-`POST /api/users/{id}/permissions/groups`.
+### Administración de grupos (CRUD via API)
 
-**Los grupos no se crean a runtime.** Si UCSP necesita un grupo nuevo
-(por ejemplo "padres" o "marketing"), hay que escribir una migración SQL
-y deployarla. Esto es deliberado: los grupos son parte del catálogo del
-producto, no algo que el cliente final modifica desde un panel.
+```
+POST   /api/permission-groups                              ← crear grupo
+GET    /api/permission-groups                              ← listar
+GET    /api/permission-groups/{id}                         ← detalle (incluye sus permisos)
+PATCH  /api/permission-groups/{id}                         ← editar nombre/descripción
+DELETE /api/permission-groups/{id}                         ← eliminar (rechaza si tiene users)
+POST   /api/permission-groups/{id}/permissions/{perm_id}   ← agregar permiso al grupo
+DELETE /api/permission-groups/{id}/permissions/{perm_id}   ← quitar permiso del grupo
+GET    /api/permissions                                     ← listar el catálogo de permisos disponibles
+```
+
+Permiso necesario: `db_users.permission_group.read` (lectura) /
+`db_users.permission_group.write` (escritura). El superadmin lo tiene
+todo por bypass.
+
+Asignación de un grupo a un usuario:
+
+```
+POST /api/users/{id}/permissions/groups       { permission_group_id }
+DELETE /api/users/{id}/permissions/groups/{permission_group_id}
+GET    /api/users/{id}/permissions             ← devuelve los codes efectivos del usuario
+```
+
+### El catálogo de permisos individuales sí es read-only
+
+Los códigos de permiso atómicos (`db_users.users.read`,
+`db_exams.exam.write`, etc.) están atados al middleware de validación del
+backend Go: cada RPC declara qué permiso necesita en `permission_map.go`.
+Crear un código nuevo solo tiene efecto si se agrega también ese mapeo en
+código y se libera una versión nueva del producto, así que el catálogo
+no se expone como modificable desde la API. El cliente puede listarlo
+con `GET /api/permissions` y combinar esos códigos como quiera dentro de
+sus grupos, pero no inventar nuevos.
 
 ### Login según el tipo de usuario
 

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.3.0
+  version: 0.4.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -238,6 +238,13 @@ tags:
       CRUD de usuarios + asignación de permission groups + búsqueda.
       Un `User` modela cualquier persona del sistema (admin, asesor, coordinador,
       estudiante). Los colegios también se representan como users — ver `Schools`.
+
+  - name: Permissions
+    description: |
+      Administración de roles y permisos. Los grupos los crea el cliente
+      combinando permisos del catálogo. El catálogo de permisos individuales
+      (codes como `db_users.users.read`) lo gobierna Blue Nose vía migraciones
+      SQL — el cliente solo lo lista.
 
   - name: Schools
     description: Colegios. Cada `school` está atado a un `user.id` (`schools_as_users`).
@@ -1077,6 +1084,294 @@ paths:
                 type: object
                 properties:
                   allowed: { type: boolean }
+
+  # ──────────────────────────────────────────────────────────────────
+  # PERMISSIONS — CRUD de permission groups + catálogo de permisos
+  # ──────────────────────────────────────────────────────────────────
+  /api/permission-groups:
+    post:
+      tags: [Permissions]
+      summary: Crear grupo de permisos (rol)
+      description: |
+        Crea un `permission_group` (rol). El `code` es la clave estable y debe
+        ser **único** en todo el sistema (ej: `marketing_permissions`).
+
+        El campo `permission_ids` es opcional al crear: si se pasan, los
+        permisos quedan asociados al grupo en el momento de la creación. Si se
+        omite o llega vacío, el grupo se crea sin permisos y luego se agregan
+        de a uno con `POST /api/permission-groups/{id}/permissions/{permission_id}`.
+
+        Permiso requerido: `db_users.permission_group.write`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePermissionGroupRequest' }
+            example:
+              code: "marketing_permissions"
+              name: "Equipo de Marketing UCSP"
+              description: "Lectura de leads y dashboards de campaign performance"
+              permission_ids: [12, 18, 25]
+      responses:
+        '200':
+          description: Grupo creado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group: { $ref: '#/components/schemas/PermissionGroup' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Sin permiso `db_users.permission_group.write`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '409':
+          description: El `code` ya está tomado por otro grupo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "PERMISSION_GROUP_CODE_TAKEN"
+                message: "permission group code already exists"
+                category: "CONFLICT"
+    get:
+      tags: [Permissions]
+      summary: Listar todos los grupos
+      description: |
+        Devuelve todos los `permission_group` con sus permisos hidratados
+        (cada item trae el array `permissions[]` ya resuelto).
+
+        Permiso requerido: `db_users.permission_group.read`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de grupos con permisos hidratados
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/PermissionGroup' }
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+        '403':
+          description: Sin permiso `db_users.permission_group.read`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  /api/permission-groups/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int32 }
+        description: ID del permission_group (INT identity, no UUID)
+    get:
+      tags: [Permissions]
+      summary: Detalle de un grupo (incluye sus permisos)
+      description: |
+        Devuelve el grupo con su array `permissions[]` hidratado.
+
+        Permiso requerido: `db_users.permission_group.read`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Grupo encontrado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group: { $ref: '#/components/schemas/PermissionGroup' }
+        '404':
+          description: El grupo no existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "PERMISSION_GROUP_NOT_FOUND"
+                message: "permission group not found"
+                category: "NOT_FOUND"
+    patch:
+      tags: [Permissions]
+      summary: Editar nombre o descripción del grupo
+      description: |
+        Permite editar el `name` y/o el `description` del grupo. El `code`
+        **no se puede editar** porque es la clave estable que referencian
+        otros sistemas y eventualmente el frontend.
+
+        Si se quiere cambiar el code, el flujo correcto es: crear un grupo
+        nuevo con el code deseado, reasignar los users y borrar el viejo.
+
+        Permiso requerido: `db_users.permission_group.write`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePermissionGroupRequest' }
+            example:
+              name: "Equipo de Marketing UCSP — 2026"
+              description: "Lectura de leads, dashboards y export Excel"
+      responses:
+        '200':
+          description: Grupo actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  group: { $ref: '#/components/schemas/PermissionGroup' }
+        '400': { $ref: '#/components/responses/ValidationError' }
+        '404':
+          description: El grupo no existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "PERMISSION_GROUP_NOT_FOUND"
+                message: "permission group not found"
+                category: "NOT_FOUND"
+    delete:
+      tags: [Permissions]
+      summary: Eliminar grupo
+      description: |
+        Borra el `permission_group`. **Falla con 409 `PERMISSION_GROUP_HAS_USERS`
+        si el grupo tiene users asignados** — primero hay que reasignar a
+        esos usuarios a otro grupo (via `POST /api/users/{id}/permissions/groups`)
+        y recién entonces se puede borrar este.
+
+        Permiso requerido: `db_users.permission_group.write`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+        '404':
+          description: El grupo no existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "PERMISSION_GROUP_NOT_FOUND"
+                message: "permission group not found"
+                category: "NOT_FOUND"
+        '409':
+          description: El grupo tiene users asignados
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "PERMISSION_GROUP_HAS_USERS"
+                message: "permission group still has users assigned"
+                category: "CONFLICT"
+
+  /api/permission-groups/{id}/permissions/{permission_id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int32 }
+        description: ID del permission_group
+      - in: path
+        name: permission_id
+        required: true
+        schema: { type: integer, format: int32 }
+        description: ID del permission individual del catálogo
+    post:
+      tags: [Permissions]
+      summary: Agregar un permiso al grupo
+      description: |
+        **Idempotente**: si el `permission_id` ya estaba asociado al grupo,
+        la llamada devuelve 200 sin modificar nada. Si el `permission_id`
+        no existe en el catálogo, devuelve 404 `PERMISSION_NOT_FOUND`.
+
+        Permiso requerido: `db_users.permission_group.write`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+        '404':
+          description: El grupo o el permission no existen
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "PERMISSION_NOT_FOUND"
+                message: "permission not found in catalog"
+                category: "NOT_FOUND"
+    delete:
+      tags: [Permissions]
+      summary: Quitar un permiso del grupo
+      description: |
+        **Idempotente**: si el `permission_id` no estaba asociado al grupo,
+        la llamada devuelve 200 igual.
+
+        Permiso requerido: `db_users.permission_group.write`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/Empty' }
+
+  /api/permissions:
+    get:
+      tags: [Permissions]
+      summary: Listar el catálogo completo de permisos individuales disponibles
+      description: |
+        Devuelve el catálogo entero de permisos individuales que el cliente
+        puede combinar en grupos.
+
+        El catálogo lo define **Blue Nose vía migraciones SQL** — cada `code`
+        está atado al middleware de validación del backend Go, así que un
+        permiso solo es útil si existe el chequeo correspondiente del lado
+        servidor. El cliente solo puede leerlo y combinar los códigos en
+        grupos vía los endpoints de `permission-groups`.
+
+        **No hay endpoint para crear permisos individuales** — agregar uno
+        nuevo requiere una versión nueva del producto (migración + deploy).
+
+        Permiso requerido: `db_users.permission.read`.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Catálogo completo de permisos individuales
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Permission' }
+              example:
+                items:
+                  - { id: 12, code: "db_users.users.read", scope: "db_users", name: "Leer users", description: "Listar y ver detalle de users" }
+                  - { id: 18, code: "db_users.school.read", scope: "db_users", name: "Leer colegios", description: "Listar y ver detalle de colegios" }
+                  - { id: 25, code: "analytics.dashboard.read", scope: "analytics", name: "Leer dashboards", description: "Acceso de lectura a dashboards agregados" }
 
   # ──────────────────────────────────────────────────────────────────
   # SCHOOLS (parte de users-service)
@@ -2677,6 +2972,70 @@ components:
         last_name:       { type: string }
         document_number: { type: string }
         school_id:       { type: string, format: uuid }
+
+    # ----- Permissions -----
+    Permission:
+      type: object
+      description: |
+        Permiso individual del catálogo. El catálogo lo gobierna Blue Nose
+        vía migraciones SQL — el cliente solo lo lista (no lo edita).
+      properties:
+        id:          { type: integer, format: int32 }
+        code:
+          type: string
+          description: "Código `<service>.<table>.<action>` (ej: `db_users.users.read`)"
+        scope:
+          type: string
+          description: "Microservicio dueño del permiso (ej: `db_users`, `db_exams`, `analytics`)"
+        name:        { type: string }
+        description: { type: string }
+
+    PermissionGroup:
+      type: object
+      description: |
+        Grupo de permisos (rol). El cliente lo crea combinando permisos del
+        catálogo. Los users se asignan a uno o más grupos vía
+        `POST /api/users/{id}/permissions/groups`.
+      properties:
+        id:          { type: integer, format: int32 }
+        code:
+          type: string
+          description: "Código único y estable del grupo (ej: `marketing_permissions`). No editable."
+        name:        { type: string }
+        description: { type: string }
+        active:      { type: boolean }
+        created_at:  { type: string, format: date-time }
+        updated_at:  { type: string, format: date-time, nullable: true }
+        permissions:
+          type: array
+          description: "Permisos individuales asociados al grupo (hidratados)."
+          items: { $ref: '#/components/schemas/Permission' }
+
+    CreatePermissionGroupRequest:
+      type: object
+      required: [code, name]
+      properties:
+        code:
+          type: string
+          description: "Código único del grupo. Una vez creado no se puede editar."
+        name:        { type: string }
+        description: { type: string }
+        permission_ids:
+          type: array
+          description: |
+            Opcional. Si se pasan, los permisos quedan asociados al grupo en
+            el momento de la creación. Se pueden agregar/quitar después con
+            los endpoints de `/api/permission-groups/{id}/permissions/{permission_id}`.
+          items: { type: integer, format: int32 }
+
+    UpdatePermissionGroupRequest:
+      type: object
+      description: |
+        Solo se pueden editar `name` y `description`. El `code` es la clave
+        estable y no se modifica.
+      properties:
+        name:        { type: string }
+        description: { type: string }
 
     School:
       type: object

@@ -288,6 +288,49 @@ func (m *PermissionRepoMock) RevokeGroupFromUser(_ context.Context, userID domai
 	return nil
 }
 
+// ----- Métodos del CRUD de permission_group (stubs para satisfacer la
+// interfaz; los handlers que los usan tienen sus propios tests dedicados) -----
+
+func (m *PermissionRepoMock) CreateGroup(_ context.Context, _ , _ , _ string, _ []uint32) (uint32, error) {
+	return 0, nil
+}
+
+func (m *PermissionRepoMock) UpdateGroup(_ context.Context, _ uint32, _, _ string) error {
+	return nil
+}
+
+func (m *PermissionRepoMock) DeleteGroup(_ context.Context, _ uint32) error {
+	return nil
+}
+
+func (m *PermissionRepoMock) FindGroupByID(_ context.Context, _ uint32) (*domain.PermissionGroup, error) {
+	return nil, nil
+}
+
+func (m *PermissionRepoMock) ListGroups(_ context.Context) ([]domain.PermissionGroup, error) {
+	return nil, nil
+}
+
+func (m *PermissionRepoMock) AddPermissionToGroup(_ context.Context, _, _ uint32) error {
+	return nil
+}
+
+func (m *PermissionRepoMock) RemovePermissionFromGroup(_ context.Context, _, _ uint32) error {
+	return nil
+}
+
+func (m *PermissionRepoMock) ListPermissions(_ context.Context) ([]domain.Permission, error) {
+	return nil, nil
+}
+
+func (m *PermissionRepoMock) PermissionExists(_ context.Context, _ uint32) (bool, error) {
+	return false, nil
+}
+
+func (m *PermissionRepoMock) GroupHasUsers(_ context.Context, _ uint32) (bool, error) {
+	return false, nil
+}
+
 // =============== UserCache mock ===============
 
 type UserCacheMock struct {

@@ -83,6 +83,43 @@ type PermissionQueries interface {
 	HasPermission(ctx context.Context, userID domain.UserID, code string) (bool, error)
 }
 
+// =============== PERMISSION GROUP (administración de roles) ===============
+//
+// El cliente combina permisos individuales (catálogo `permission`) en
+// grupos reutilizables. Los grupos se asignan luego a users via
+// PermissionCommands.AssignGroup. El catálogo de permisos atómicos lo
+// gobierna Blue Nose vía migraciones SQL — el cliente solo lo lista.
+
+type PermissionGroupCommands interface {
+	Create(ctx context.Context, in CreateGroupInput) (*domain.PermissionGroup, error)
+	Update(ctx context.Context, in UpdateGroupInput) (*domain.PermissionGroup, error)
+	Delete(ctx context.Context, id uint32) error
+	AddPermission(ctx context.Context, groupID, permissionID uint32) error
+	RemovePermission(ctx context.Context, groupID, permissionID uint32) error
+}
+
+type PermissionGroupQueries interface {
+	Get(ctx context.Context, id uint32) (*domain.PermissionGroup, error)
+	List(ctx context.Context) ([]domain.PermissionGroup, error)
+	ListPermissions(ctx context.Context) ([]domain.Permission, error)
+}
+
+// CreateGroupInput / UpdateGroupInput: los DTOs viajan por el contrato
+// del core, independientes del transporte. PermissionIDs en Create es
+// opcional — el cliente puede agregarlos después con AddPermission.
+type CreateGroupInput struct {
+	Code          string
+	Name          string
+	Description   string
+	PermissionIDs []uint32
+}
+
+type UpdateGroupInput struct {
+	ID          uint32
+	Name        string
+	Description string
+}
+
 // =============== HUBSPOT SYNC ===============
 
 // HubspotSyncCommands lo consume el hubspot-service vía gRPC: cuando

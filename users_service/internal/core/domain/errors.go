@@ -14,8 +14,10 @@ var (
 	ErrPermGroupNotFound  = apperr.NewNotFound("PERMISSION_GROUP_NOT_FOUND", "permission group not found")
 
 	// ----- Conflict (choque de unicidad) -----
-	ErrEmailTaken    = apperr.NewConflict("EMAIL_TAKEN", "email already registered", "email")
-	ErrDocumentTaken = apperr.NewConflict("DOCUMENT_TAKEN", "document number already registered", "document_number")
+	ErrEmailTaken         = apperr.NewConflict("EMAIL_TAKEN", "email already registered", "email")
+	ErrDocumentTaken      = apperr.NewConflict("DOCUMENT_TAKEN", "document number already registered", "document_number")
+	ErrPermGroupCodeTaken = apperr.NewConflict("PERMISSION_GROUP_CODE_TAKEN", "permission group code already exists", "code")
+	ErrPermGroupHasUsers  = apperr.NewConflict("PERMISSION_GROUP_HAS_USERS", "cannot delete: group has users assigned", "id")
 
 	// ----- Validation -----
 	ErrInvalidEmail = apperr.NewValidation("INVALID_EMAIL", "email format is invalid", "email")

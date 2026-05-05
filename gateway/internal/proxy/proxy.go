@@ -19,7 +19,9 @@ func New(c *Clients) *Proxy { return &Proxy{cli: c} }
 // Convención de paths del frontend Angular ya en producción:
 //   /api/auth/*                     auth (login/refresh/logout/student-otp)
 //   /api/users/*                    user_service.UserService + permission groups
-//   /api/schools/*                  (pendiente — sin RPC en users-service todavía)
+//   /api/schools/{id}               user_service.SchoolService
+//   /api/permission-groups/*        user_service.PermissionGroupService (CRUD roles)
+//   /api/permissions                user_service.PermissionGroupService.ListPermissions
 //   /api/exams/*                    exams_service (Exam + ExamQuestion + Attempt)
 //   /api/questions/*                exams_service.QuestionService
 //   /api/options/*                  exams_service.QuestionService (options)
@@ -36,6 +38,7 @@ func (p *Proxy) RegisterAll(mux *http.ServeMux) {
 	p.RegisterAuth(mux)
 	p.RegisterHealth(mux)
 	p.RegisterUsers(mux)
+	p.RegisterPermissionGroups(mux)
 	p.RegisterExams(mux)
 	p.RegisterKeys(mux)
 	p.RegisterSurveys(mux)

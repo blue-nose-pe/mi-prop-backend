@@ -40,6 +40,74 @@ service SchoolService {
   rpc GetSchool (GetSchoolRequest) returns (SchoolResponse);
 }
 
+// PermissionGroupService — administración de grupos de permisos (roles).
+//
+// El catálogo de permisos individuales (`permission`) lo define Blue Nose
+// vía migraciones SQL (cada code está atado al permission_map del código
+// Go que valida cada RPC). El cliente puede LISTAR los permisos disponibles
+// y combinarlos libremente en los grupos que cree.
+service PermissionGroupService {
+  rpc CreateGroup     (CreateGroupRequest)       returns (PermissionGroupResponse);
+  rpc UpdateGroup     (UpdateGroupRequest)       returns (PermissionGroupResponse);
+  rpc DeleteGroup     (DeleteGroupRequest)       returns (EmptyResponse);
+  rpc GetGroup        (GetGroupRequest)          returns (PermissionGroupResponse);
+  rpc ListGroups      (EmptyRequest)             returns (ListGroupsResponse);
+  rpc AddPermission   (AddPermissionRequest)     returns (EmptyResponse);
+  rpc RemovePermission(RemovePermissionRequest)  returns (EmptyResponse);
+  rpc ListPermissions (EmptyRequest)             returns (ListPermissionsResponse);
+}
+
+message PermissionGroup {
+  uint32 id          = 1;
+  string code        = 2;
+  string name        = 3;
+  string description = 4;
+  bool   active      = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  repeated Permission permissions = 8;
+}
+
+message Permission {
+  uint32 id          = 1;
+  string code        = 2;
+  string scope       = 3;
+  string name        = 4;
+  string description = 5;
+}
+
+message CreateGroupRequest {
+  string code        = 1; // único; ej "marketing_permissions"
+  string name        = 2;
+  string description = 3;
+  // permission_ids opcional al momento de crear; el cliente puede
+  // agregarlos después con AddPermission.
+  repeated uint32 permission_ids = 4;
+}
+
+message UpdateGroupRequest {
+  uint32 id          = 1;
+  string name        = 2;
+  string description = 3;
+}
+
+message DeleteGroupRequest { uint32 id = 1; }
+message GetGroupRequest    { uint32 id = 1; }
+
+message PermissionGroupResponse { PermissionGroup group = 1; }
+message ListGroupsResponse      { repeated PermissionGroup items = 1; }
+message ListPermissionsResponse { repeated Permission items = 1; }
+
+message AddPermissionRequest {
+  uint32 group_id      = 1;
+  uint32 permission_id = 2;
+}
+
+message RemovePermissionRequest {
+  uint32 group_id      = 1;
+  uint32 permission_id = 2;
+}
+
 message GetSchoolRequest { string id = 1; }
 message SchoolResponse   { School school = 1; }
 
