@@ -6,9 +6,8 @@ import (
 	"time"
 )
 
-// Value Objects tipados. UserID y SchoolID son UUIDs (v7) generados
-// por Postgres. Los transportamos como string por simplicidad — si
-// manana se necesita validar formato, se agrega un metodo Validate().
+// UserID y SchoolID son UUIDs generados server-side por SQL Server
+// (UNIQUEIDENTIFIER con DEFAULT NEWID()). Los transportamos como string.
 type UserID string
 type SchoolID string
 type Email string

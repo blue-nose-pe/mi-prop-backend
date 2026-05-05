@@ -1,11 +1,10 @@
 // Package proxy contiene los handlers HTTP que traducen REST → gRPC.
 //
 // Cada microservicio expone su contrato gRPC; el gateway dialea cada
-// uno con un client persistente (gRPC keepalive). La traducción request/
-// response se hace explícita por handler — más boilerplate que
-// grpc-gateway autogenerado, pero da control fino sobre paths legacy
-// del P1 (/api/admin/tiv/colegios, /api/user/login, etc.) y nos evita
-// modificar todos los .proto.
+// uno con un client persistente (gRPC keepalive). La traducción
+// request/response se hace explícita por handler — más boilerplate
+// que grpc-gateway autogenerado, pero da control fino sobre el shape
+// del JSON público y evita modificar los .proto por requisitos REST.
 package proxy
 
 import (

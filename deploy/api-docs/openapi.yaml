@@ -260,7 +260,7 @@ tags:
   - name: Keys
     description: |
       Códigos de acceso a tests. Modos: `school` (atado a un colegio) o `lan`
-      (sesión masiva sin colegio). Reemplaza al sistema de keys del P1.
+      (sesión masiva sin colegio).
 
   - name: Surveys
     description: |
@@ -360,9 +360,9 @@ paths:
                 user:
                   id: "9b24e0e3-3d22-4c14-bd8b-62a7b6a8d21f"
                   email: "admin@ucsp.edu.pe"
-                  first_name: "Cinthia"
-                  last_name: "Ramirez"
-                  document_number: "70123456"
+                  first_name: "Admin"
+                  last_name: "UCSP"
+                  document_number: "00000000"
                   school_id: ""
                   active: true
                 permissions: ["db_users.users.read", "db_users.users.write", "db_users.school.read", "db_users.school.write"]
@@ -2239,8 +2239,9 @@ paths:
       summary: Upsert contact en HubSpot por DNI
       description: |
         **Síncrono** — el caller necesita el `record_id` devuelto. Si se
-        provee `user_id`, además persistimos el record_id en la tabla
-        `users.hubspot_record_id` (resuelve los TODOs sin terminar del P1).
+        provee `user_id`, además persistimos el record_id en la columna
+        `users.hubspot_record_id` para evitar tener que buscar el contacto
+        por DNI en sincronizaciones posteriores.
       requestBody:
         required: true
         content:

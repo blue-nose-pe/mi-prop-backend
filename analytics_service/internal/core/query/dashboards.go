@@ -198,11 +198,10 @@ func (h *DashboardHandler) GetColegioComparativo(ctx context.Context, examTypeCo
 	if !validExamType(examTypeCode) {
 		return nil, domain.ErrInvalidExamType
 	}
-	// El servicio NO tiene la lista global de colegios; conviene pedir
-	// a users_service un Search con filtro school activo. Para el MVP
-	// devolvemos vacío y dejamos hookable (TODO: agregar
-	// users.ListSchools en UsersClient). Por ahora retorna shell para
-	// que el front pueda integrarse.
+	// La lista global de colegios no está disponible en este servicio
+	// — se obtendría haciendo un Search a users_service con filtro
+	// school activo. Mientras tanto devolvemos un shell vacío para que
+	// el frontend pueda integrarse contra el contrato.
 	return &domain.ColegioComparativo{
 		ExamTypeCode: examTypeCode,
 		Items:        []domain.ColegioComparativoItem{},

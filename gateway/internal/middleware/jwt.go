@@ -31,9 +31,7 @@ func ClaimsFromContext(ctx context.Context) *JWTClaims {
 // JWT valida el header Authorization: Bearer <token>. Si la ruta está
 // en `skip`, lo saltea (ej. /api/auth/login no requiere JWT).
 //
-// Importante: gateway NO emite tokens, solo valida. Quien los emite es
-// users-service AuthService — el gateway delega allí cuando recibe
-// /api/auth/login.
+// El gateway sólo valida tokens; los emite users-service AuthService.
 func JWT(secret []byte, issuer string, skipPrefixes []string) Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

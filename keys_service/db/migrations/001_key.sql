@@ -1,5 +1,4 @@
 -- Tabla: key. Códigos de acceso a tests (modos: school o LAN).
--- Reemplaza a las "keys" del P1 (prod_ucsp_simulacro/vocacional/habitos).
 --
 -- Campos clave:
 --   * code         único (alfanumérico, ej: "S2024001" o "LAN##").

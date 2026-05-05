@@ -1,13 +1,12 @@
 // Package permsclient — cliente que cualquier microservicio (excepto
-// users-service mismo) usa para validar permisos contra users-service.
+// users-service) usa para validar permisos contra users-service.
 //
-// Lo importante:
-//   * Implementa permmw.Resolver, así enchufa directo al interceptor.
-//   * Cachea la lista de codes del user en Redis con TTL corto
-//     (30s default). Eso significa: revocaciones del lado users-service
-//     se propagan en máx ~TTL.
-//   * Fail-closed: si Redis falla pero users-service responde, sigue.
-//     Si users-service falla, devuelve error → permmw retorna 503.
+// Implementa permmw.Resolver para enchufarse directo al interceptor.
+// Cachea la lista de codes del user en Redis con TTL corto (30s por
+// defecto), de modo que las revocaciones del lado users-service se
+// propagan como máximo en ~TTL. Si Redis falla pero users-service
+// responde, sigue funcionando; si users-service no responde, devuelve
+// error y permmw responde 503.
 //
 // Este archivo se COPIA en cada microservicio (autonomía total — ningún
 // servicio importa código de otro). En cada copia, ajustar el import

@@ -143,7 +143,7 @@ func (r *UserRepo) TouchLastAccess(ctx context.Context, id domain.UserID) error 
 // SetHubspotRecordID guarda el record_id que devuelve HubSpot al crear
 // un contact. Lo invoca el hubspot-service vía gRPC tras un sync exitoso.
 // Sin este id, los updates posteriores requerirían search-by-DNI/email
-// (frágil, era el TODO #1 de P1).
+// — frágil cuando la propiedad de HubSpot no está bien definida.
 func (r *UserRepo) SetHubspotRecordID(ctx context.Context, id domain.UserID, recordID string) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE users SET hubspot_record_id = NULLIF(@p1, '')

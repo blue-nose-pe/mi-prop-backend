@@ -25,9 +25,9 @@
 --   db_exams.exam.write              ← crear/publicar/clonar exams
 --   hubspot.contact.write            ← upsert de contacts en HS
 --
--- IMPORTANTE: superadmins (users.is_superadmin = 1) BYPASSAN este
--- catálogo — siempre tienen acceso. La tabla `permission` solo aplica
--- a NO-superadmins.
+-- Los superadmins (users.is_superadmin = 1) bypasean este catálogo —
+-- siempre tienen acceso total. La tabla `permission` solo aplica a
+-- usuarios no-superadmin.
 --
 -- Esta migración:
 --   1. Elimina los permisos viejos (formato `users.view`, etc.) que

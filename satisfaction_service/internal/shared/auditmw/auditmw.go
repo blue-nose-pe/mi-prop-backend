@@ -146,9 +146,8 @@ func ipFromContext(ctx context.Context) string {
 }
 
 func protoToJSON(m proto.Message) ([]byte, error) {
-	// proto.Marshal entrega binario; para legibilidad en BD usamos JSON.
-	// Convertir vía json.Marshal directo funciona para mensajes sin
-	// tipos exóticos (Any, Timestamp, etc). Para casos más ricos
-	// podemos cambiar a protojson más adelante.
+	// proto.Marshal entrega binario; para legibilidad en BD usamos JSON
+	// vía json.Marshal directo. Para mensajes con tipos especiales
+	// (Any, Timestamp, etc.) puede ser necesario protojson.
 	return json.Marshal(m)
 }

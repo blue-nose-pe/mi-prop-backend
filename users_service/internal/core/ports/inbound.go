@@ -83,7 +83,7 @@ type PermissionQueries interface {
 	HasPermission(ctx context.Context, userID domain.UserID, code string) (bool, error)
 }
 
-// =============== HUBSPOT SYNC (resuelve los 3 TODOs del P1) ===============
+// =============== HUBSPOT SYNC ===============
 
 // HubspotSyncCommands lo consume el hubspot-service vía gRPC: cuando
 // crea/actualiza el contact (o el custom object de school) en HubSpot,
