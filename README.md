@@ -37,65 +37,135 @@ Sobre eso se montan tres capacidades transversales:
 
 ## 2. Identidad y autorización
 
-El sistema distingue **dos cosas diferentes** que conviene no confundir:
+### El modelo en tres niveles
 
-1. **El superadmin**: es un solo usuario inicial creado por el bootstrap
-   del cluster. Está marcado con un flag (`users.is_superadmin = 1`) y
-   ese flag bypasa TODOS los chequeos de permisos. **No es un grupo, es
-   un atributo del usuario**.
-2. **Los grupos de permisos** (también llamados "roles"): los crea y
-   administra el superadmin a runtime vía API. Cada grupo es una
-   combinación arbitraria de permisos individuales del catálogo, y
-   cualquier usuario puede tener uno o más grupos asignados.
+La autorización se construye en capas para que UCSP pueda darle a cada
+persona exactamente el alcance que necesita, sin más:
+
+```
+permisos atómicos (catálogo fijo)  →  grupos (roles)  →  usuarios
+```
+
+1. **Permisos atómicos** — el catálogo del producto, definido por Blue
+   Nose y read-only desde la API. Cada permiso describe **una acción
+   sobre una tabla específica de una base de datos específica**.
+2. **Grupos de permisos (roles)** — los arma el cliente combinando
+   permisos atómicos. Un grupo es básicamente una etiqueta reutilizable
+   ("Cargador de exámenes", "Asesor de Arequipa", "Director de colegio
+   X") que agrupa el conjunto de permisos que ese rol necesita.
+3. **Usuarios** — cada usuario tiene cero o más grupos asignados. Sus
+   permisos efectivos son la unión de todos los grupos que tiene.
+
+El **superadmin** está fuera de esta lógica: es un flag
+(`users.is_superadmin = 1`) sobre un único usuario inicial creado por el
+bootstrap del cluster. Bypassa TODOS los chequeos. Existe para arrancar
+el sistema y para tener siempre una vía de recuperación; el operador
+real (ej. el equipo de IT de UCSP) trabaja con un usuario distinto al
+que se le asigna el grupo `admin_permissions`.
+
+### Cómo está formado un permiso atómico
+
+```
+<base_de_datos>.<tabla>.<acción>
+```
+
+| Parte | Ejemplos | Qué representa |
+|---|---|---|
+| `<base_de_datos>` | `db_users`, `db_exams`, `db_keys`, `db_satisfaction`, `analytics`, `hubspot` | El microservicio / dominio de datos. |
+| `<tabla>` | `users`, `school`, `exam`, `question`, `key`, `survey`, `dashboard`, `permission_group` | La entidad concreta sobre la que se actúa. |
+| `<acción>` | `read`, `write` | Lectura (GET / List / Search) o escritura (POST / PATCH / DELETE). |
+
+Algunos ejemplos del catálogo seedeado:
+
+- `db_exams.question.write` — crear, editar y borrar preguntas del banco.
+- `db_users.users.read` — listar y consultar usuarios.
+- `db_keys.key.write` — generar y desactivar códigos de acceso.
+- `analytics.dashboard.read` — consultar los dashboards agregados.
+- `db_users.permission_group.write` — administrar roles (crear grupos, agregar/quitar permisos).
+
+### Por qué esa granularidad — caso de uso
+
+Imaginá que UCSP contrata a una persona **solo para llenar el banco de
+preguntas** de los exámenes vocacional / simulacro / hábitos. No querés
+darle acceso a usuarios, ni a colegios, ni a resultados, ni a HubSpot.
+Solo a la tabla `question` y `question_option` de `db_exams`.
+
+Con este modelo, en tres llamadas:
+
+```
+# 1. Listar el catálogo y encontrar los IDs de los permisos relevantes
+GET /api/permissions
+   → encuentra: db_exams.question.read, db_exams.question.write,
+                db_exams.exam.read
+
+# 2. Crear el grupo "Cargador de exámenes" con esos permisos
+POST /api/permission-groups
+{
+  "code": "exam_loader_permissions",
+  "name": "Cargador de exámenes",
+  "description": "Solo carga preguntas y opciones; no ve datos de usuarios",
+  "permission_ids": [12, 13, 9]
+}
+
+# 3. Asignar el grupo al usuario contratado
+POST /api/users/{user_id}/permissions/groups
+{ "permission_group_id": 7 }
+```
+
+Listo. Esa persona ahora puede llamar a `POST /api/questions`,
+`PATCH /api/questions/{id}`, `POST /api/exams/{id}/questions`, etc., pero
+si intenta hacer un `GET /api/users/{id}` el backend devuelve
+`403 PERMISSION_DENIED`. Sin tocar código ni redeployar — todo a
+runtime.
 
 ### Cuatro grupos pre-seedeados de fábrica
 
-El primer install incluye cuatro grupos canónicos como referencia /
-arranque rápido. El cliente puede modificarlos, eliminarlos o crear
-nuevos según necesite.
+El primer install incluye cuatro grupos canónicos como referencia. El
+cliente puede modificarlos, eliminarlos o ignorarlos y armar los suyos.
 
 | Grupo | Permisos típicos |
 |---|---|
-| `admin_permissions` | CRUD completo sobre tablas operacionales y administración de roles (incluye `db_users.permission_group.write`). |
+| `admin_permissions` | CRUD completo sobre tablas operacionales + administración de roles (incluye `db_users.permission_group.write`). Pensado para el operador de UCSP que reemplaza al superadmin en el día a día. |
 | `asesor_permissions` | Lectura amplia + escritura sobre sus colegios y keys + ver dashboards de sus asignaciones. |
 | `coordinador_permissions` | Lectura del colegio asignado, sus estudiantes y sus resultados. |
 | `student_permissions` | Leer su propio progreso, resolver tests. |
 
-### Administración de grupos (CRUD via API)
+### Endpoints de administración
+
+Roles (cualquiera con `db_users.permission_group.write` puede usarlos;
+el superadmin los tiene por bypass):
 
 ```
-POST   /api/permission-groups                              ← crear grupo
+POST   /api/permission-groups                              ← crear rol
 GET    /api/permission-groups                              ← listar
-GET    /api/permission-groups/{id}                         ← detalle (incluye sus permisos)
+GET    /api/permission-groups/{id}                         ← detalle (con permisos)
 PATCH  /api/permission-groups/{id}                         ← editar nombre/descripción
 DELETE /api/permission-groups/{id}                         ← eliminar (rechaza si tiene users)
-POST   /api/permission-groups/{id}/permissions/{perm_id}   ← agregar permiso al grupo
-DELETE /api/permission-groups/{id}/permissions/{perm_id}   ← quitar permiso del grupo
-GET    /api/permissions                                     ← listar el catálogo de permisos disponibles
+POST   /api/permission-groups/{id}/permissions/{perm_id}   ← agregar permiso al rol
+DELETE /api/permission-groups/{id}/permissions/{perm_id}   ← quitar permiso del rol
+GET    /api/permissions                                     ← listar el catálogo (read-only)
 ```
 
-Permiso necesario: `db_users.permission_group.read` (lectura) /
-`db_users.permission_group.write` (escritura). El superadmin lo tiene
-todo por bypass.
-
-Asignación de un grupo a un usuario:
+Asignación de roles a un usuario:
 
 ```
 POST /api/users/{id}/permissions/groups       { permission_group_id }
 DELETE /api/users/{id}/permissions/groups/{permission_group_id}
-GET    /api/users/{id}/permissions             ← devuelve los codes efectivos del usuario
+GET    /api/users/{id}/permissions             ← codes efectivos del usuario
 ```
 
-### El catálogo de permisos individuales sí es read-only
+### Por qué el catálogo de permisos atómicos es read-only
 
-Los códigos de permiso atómicos (`db_users.users.read`,
-`db_exams.exam.write`, etc.) están atados al middleware de validación del
-backend Go: cada RPC declara qué permiso necesita en `permission_map.go`.
-Crear un código nuevo solo tiene efecto si se agrega también ese mapeo en
-código y se libera una versión nueva del producto, así que el catálogo
-no se expone como modificable desde la API. El cliente puede listarlo
-con `GET /api/permissions` y combinar esos códigos como quiera dentro de
-sus grupos, pero no inventar nuevos.
+Cada code (`db_users.users.read`, etc.) está mapeado en el código Go a
+los RPCs concretos que valida (en `permission_map.go` de cada servicio).
+Inventar un code nuevo a runtime no tendría efecto: ningún RPC lo
+chequearía. Por eso `GET /api/permissions` solo lista — agregar un code
+nuevo es trabajo de versión y se entrega como parte de una migración
+del producto.
+
+En la práctica esto significa que **la línea entre lo que decide el
+cliente y lo que decide Blue Nose está clara**: Blue Nose define qué
+acciones existen sobre qué tablas; UCSP decide quién puede hacer qué.
 
 ### Login según el tipo de usuario
 
