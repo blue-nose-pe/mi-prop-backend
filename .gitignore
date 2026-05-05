@@ -83,3 +83,26 @@ logs/
 # ------ Temporales ------
 tmp/
 .tmp/
+*.tmp
+*.bak
+*.backup
+*~
+
+# ------ Notas locales y archivos de trabajo no entregables ------
+# Cualquier markdown o JSON con notas, listas de UUIDs, dumps de secrets
+# accidentales, etc. mantener fuera del repo del cliente.
+NOTES.md
+notes.md
+TODO.md
+todo.md
+*.local.md
+*.private.md
+*-internal.md
+*-internal.json
+*-internal.txt
+*.dump
+*.dump.json
+
+# Archivos con caracteres raros o bytes random (suelen ser dumps de KV).
+BWd*
+?[!a-zA-Z0-9_.-]?
