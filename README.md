@@ -35,16 +35,43 @@ Sobre eso se montan tres capacidades transversales:
 
 ---
 
-## 2. Roles y autenticación
+## 2. Identidad y autorización
 
-Hay cuatro perfiles de usuario, cada uno con un grupo de permisos
-seedeado en `db_users`:
+El sistema distingue **dos cosas diferentes** que conviene no confundir:
 
-| Rol | Login | Origen del usuario |
-|---|---|---|
-| **Superadmin** | email + password | Lo crea el bootstrap del cluster (un solo usuario inicial). |
-| **Asesor / coordinador / admin operativo** | email + password (bcrypt) | Los crea un superadmin desde el panel. |
-| **Estudiante** | OTP de 6 dígitos por email | Lo crea el equipo UCSP / se autoinscribe vía formulario / sincronización HubSpot. |
+1. **El superadmin**: es un solo usuario inicial creado por el bootstrap
+   del cluster. Está marcado con un flag (`users.is_superadmin = 1`) y
+   ese flag bypasa TODOS los chequeos de permisos. **No es un grupo, es
+   un atributo del usuario**.
+2. **Los grupos de permisos**: son cuatro grupos pre-seedeados en la
+   tabla `permission_group` por las migraciones SQL del primer install.
+   Existen desde el día uno; el superadmin **no los crea** — los asigna.
+
+### Los cuatro grupos pre-seedeados
+
+| Grupo | Permisos típicos |
+|---|---|
+| `admin_permissions` | CRUD completo sobre tablas operacionales (no edita el catálogo de permisos — eso queda al superadmin). |
+| `asesor_permissions` | Lectura amplia + escritura sobre sus colegios y keys + ver dashboards de sus asignaciones. |
+| `coordinador_permissions` | Lectura del colegio asignado, sus estudiantes y sus resultados. |
+| `student_permissions` | Leer su propio progreso, resolver tests. |
+
+Asignación: el superadmin (o cualquiera con `db_users.permission_group.write`)
+asigna a cada usuario uno o más grupos vía
+`POST /api/users/{id}/permissions/groups`.
+
+**Los grupos no se crean a runtime.** Si UCSP necesita un grupo nuevo
+(por ejemplo "padres" o "marketing"), hay que escribir una migración SQL
+y deployarla. Esto es deliberado: los grupos son parte del catálogo del
+producto, no algo que el cliente final modifica desde un panel.
+
+### Login según el tipo de usuario
+
+| Tipo de usuario | Cómo se autentica |
+|---|---|
+| Superadmin (un único usuario inicial) | email + password (bcrypt). |
+| Cualquier otro usuario administrativo (admin / asesor / coordinador) | email + password (bcrypt). Lo crea un superadmin vía `POST /api/users` y le asigna el grupo correspondiente. |
+| Estudiante (asignado al grupo `student_permissions`) | OTP de 6 dígitos enviado por email vía un Workflow de HubSpot. |
 
 ### Bootstrap del primer superadmin
 
@@ -95,19 +122,17 @@ trigger). El backend NO envía emails directamente. El OTP vive 10 minutos,
 permite 3 intentos incorrectos antes de invalidarse, y solo hay un OTP
 activo por usuario simultáneamente.
 
-### Permisos
+### Códigos de permiso
 
-Cuatro grupos seedeados:
+Cada grupo tiene asignado un conjunto de permisos individuales. Los
+permisos siguen el formato `<scope>.<entidad>.<acción>` — por ejemplo
+`db_users.users.read`, `db_exams.exam.write`, `analytics.dashboard.read`.
+El catálogo completo se puede consultar con
+`GET /api/users/{id}/permissions`.
 
-- `student_permissions` — leer su propio progreso, resolver tests.
-- `asesor_permissions` — gestionar keys de su escuela, ver resultados.
-- `coordinador_permissions` — vista de un colegio (consulta).
-- `admin_permissions` — CRUD operacional sobre todo (excepto crear otros
-  superadmins, que es exclusivo de un superadmin existente).
-
-Códigos de permiso con formato `<scope>.<entidad>.<acción>` —
-`db_users.users.read`, `db_exams.exam.write`, `analytics.dashboard.read`,
-etc. El flag `is_superadmin` bypassa todos los checks.
+El flag `is_superadmin` bypasa todos los checks: un superadmin tiene
+acceso a cualquier endpoint sin necesidad de estar asignado a ningún
+grupo.
 
 ---
 
