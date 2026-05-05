@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
+	"google.golang.org/grpc/metadata"
 )
 
 // JWTClaims son los mismos que emite users-service.
@@ -66,6 +67,11 @@ func JWT(secret []byte, issuer string, skipPrefixes []string) Middleware {
 				return
 			}
 			ctx := context.WithValue(r.Context(), claimsCtxKey, claims)
+			// Propagar el Authorization header al outgoing metadata gRPC
+			// para que los servicios downstream (que también validan JWT)
+			// reciban el bearer del caller. Sin esto, todos los RPCs detrás
+			// del gateway responden Unauthenticated.
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", authz)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

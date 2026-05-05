@@ -203,6 +203,9 @@ func (h *UserHandler) ChangeMyPassword(ctx context.Context, req *pb.ChangeMyPass
 // JWT (settable por el bootstrap o por otro superadmin) ANTES de delegar
 // al core. El core también re-valida (defense in depth).
 func (h *UserHandler) ResetPassword(ctx context.Context, req *pb.ResetPasswordRequest) (*pb.ResetPasswordResponse, error) {
+	if req.GetTargetUserId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "target_user_id is required", "target_user_id"))
+	}
 	c := jwtmw.FromContext(ctx)
 	isSuper := false
 	if c != nil {
