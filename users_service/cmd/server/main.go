@@ -178,6 +178,7 @@ func main() {
 	)
 	pb.RegisterUserServiceServer(s, userHandler)
 	pb.RegisterAuthServiceServer(s, authHandler)
+	pb.RegisterSchoolServiceServer(s, grpchandler.NewSchoolHandler(schoolRepo))
 
 	// Health check (usado por readiness/liveness de Kubernetes).
 	hs := health.NewServer()

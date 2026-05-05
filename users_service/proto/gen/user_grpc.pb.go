@@ -628,6 +628,116 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	SchoolService_GetSchool_FullMethodName = "/users.v1.SchoolService/GetSchool"
+)
+
+// SchoolServiceClient is the client API for SchoolService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// SchoolService — lecturas sobre school. No exponemos CreateSchool por
+// gRPC: los colegios se crean implícitamente al promover un user a
+// representante de colegio (flow administrativo aparte).
+type SchoolServiceClient interface {
+	GetSchool(ctx context.Context, in *GetSchoolRequest, opts ...grpc.CallOption) (*SchoolResponse, error)
+}
+
+type schoolServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewSchoolServiceClient(cc grpc.ClientConnInterface) SchoolServiceClient {
+	return &schoolServiceClient{cc}
+}
+
+func (c *schoolServiceClient) GetSchool(ctx context.Context, in *GetSchoolRequest, opts ...grpc.CallOption) (*SchoolResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SchoolResponse)
+	err := c.cc.Invoke(ctx, SchoolService_GetSchool_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// SchoolServiceServer is the server API for SchoolService service.
+// All implementations must embed UnimplementedSchoolServiceServer
+// for forward compatibility.
+//
+// SchoolService — lecturas sobre school. No exponemos CreateSchool por
+// gRPC: los colegios se crean implícitamente al promover un user a
+// representante de colegio (flow administrativo aparte).
+type SchoolServiceServer interface {
+	GetSchool(context.Context, *GetSchoolRequest) (*SchoolResponse, error)
+	mustEmbedUnimplementedSchoolServiceServer()
+}
+
+// UnimplementedSchoolServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedSchoolServiceServer struct{}
+
+func (UnimplementedSchoolServiceServer) GetSchool(context.Context, *GetSchoolRequest) (*SchoolResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetSchool not implemented")
+}
+func (UnimplementedSchoolServiceServer) mustEmbedUnimplementedSchoolServiceServer() {}
+func (UnimplementedSchoolServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeSchoolServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to SchoolServiceServer will
+// result in compilation errors.
+type UnsafeSchoolServiceServer interface {
+	mustEmbedUnimplementedSchoolServiceServer()
+}
+
+func RegisterSchoolServiceServer(s grpc.ServiceRegistrar, srv SchoolServiceServer) {
+	// If the following call pancis, it indicates UnimplementedSchoolServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&SchoolService_ServiceDesc, srv)
+}
+
+func _SchoolService_GetSchool_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetSchoolRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchoolServiceServer).GetSchool(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchoolService_GetSchool_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchoolServiceServer).GetSchool(ctx, req.(*GetSchoolRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// SchoolService_ServiceDesc is the grpc.ServiceDesc for SchoolService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var SchoolService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "users.v1.SchoolService",
+	HandlerType: (*SchoolServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetSchool",
+			Handler:    _SchoolService_GetSchool_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "user.proto",
+}
+
+const (
 	AuthService_Authenticate_FullMethodName      = "/users.v1.AuthService/Authenticate"
 	AuthService_Login_FullMethodName             = "/users.v1.AuthService/Login"
 	AuthService_Refresh_FullMethodName           = "/users.v1.AuthService/Refresh"

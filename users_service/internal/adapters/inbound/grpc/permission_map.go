@@ -32,4 +32,7 @@ var PermissionMap = map[string]string{
 	"/users.v1.UserService/RevokePermissionGroup":  "db_users.permission_group.write",
 	"/users.v1.UserService/ListUserPermissions":    "db_users.permission.read",
 	"/users.v1.UserService/HasPermission":          "db_users.permission.read",
+
+	// schools
+	"/users.v1.SchoolService/GetSchool":             "db_users.school.read",
 }

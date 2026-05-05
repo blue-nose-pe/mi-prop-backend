@@ -5,6 +5,7 @@
 //   GET    /api/users/{id}
 //   PATCH  /api/users/{id}
 //   POST   /api/users/{id}/deactivate
+//   POST   /api/users/{id}/reactivate
 //   GET    /api/users/me
 //   POST   /api/users/me/change-password
 //   POST   /api/users/{id}/reset-password
@@ -14,7 +15,7 @@
 //   DELETE /api/users/{id}/permissions/groups/{group_id}
 //   GET    /api/users/{id}/permissions
 //   GET    /api/users/{id}/permissions/check
-//   GET    /api/schools/{id}                         (no implementado: sin RPC)
+//   GET    /api/schools/{id}
 package proxy
 
 import (
@@ -35,6 +36,7 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/users/{id}", p.getUser)
 	mux.HandleFunc("PATCH /api/users/{id}", p.updateUser)
 	mux.HandleFunc("POST /api/users/{id}/deactivate", p.deactivateUser)
+	mux.HandleFunc("POST /api/users/{id}/reactivate", p.reactivateUser)
 	mux.HandleFunc("POST /api/users/{id}/reset-password", p.resetUserPassword)
 
 	// Permission groups
@@ -42,6 +44,38 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/users/{id}/permissions/groups/{group_id}", p.revokePermissionGroup)
 	mux.HandleFunc("GET /api/users/{id}/permissions", p.listUserPermissions)
 	mux.HandleFunc("GET /api/users/{id}/permissions/check", p.checkUserPermission)
+
+	// Schools
+	mux.HandleFunc("GET /api/schools/{id}", p.getSchool)
+}
+
+func (p *Proxy) getSchool(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_ID", Message: "id is required"})
+		return
+	}
+	resp, err := p.cli.Schools.GetSchool(r.Context(), &usersgrpcpb.GetSchoolRequest{Id: id})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	s := resp.GetSchool()
+	if s == nil {
+		writeJSON(w, http.StatusNotFound, errorBody{Status: "error", Code: "SCHOOL_NOT_FOUND", Message: "school not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"school": map[string]any{
+			"id":                 s.GetId(),
+			"user_id":            s.GetUserId(),
+			"name":               s.GetName(),
+			"active":             s.GetActive(),
+			"hubspot_record_id":  s.GetHubspotRecordId(),
+			"created_at":         optionalTimestamp(s.GetCreatedAt()),
+			"updated_at":         optionalTimestamp(s.GetUpdatedAt()),
+		},
+	})
 }
 
 // ---------- CRUD ----------
@@ -120,6 +154,17 @@ func (p *Proxy) deactivateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (p *Proxy) reactivateUser(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Users.ReactivateUser(r.Context(), &usersgrpcpb.ReactivateUserRequest{
+		Id: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(resp.GetUser())})
 }
 
 // ---------- Self ("me") ----------

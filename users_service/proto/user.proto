@@ -33,6 +33,26 @@ service UserService {
   rpc HasPermission         (HasPermissionRequest) returns (HasPermissionResponse);
 }
 
+// SchoolService — lecturas sobre school. No exponemos CreateSchool por
+// gRPC: los colegios se crean implícitamente al promover un user a
+// representante de colegio (flow administrativo aparte).
+service SchoolService {
+  rpc GetSchool (GetSchoolRequest) returns (SchoolResponse);
+}
+
+message GetSchoolRequest { string id = 1; }
+message SchoolResponse   { School school = 1; }
+
+message School {
+  string id                = 1;
+  string user_id           = 2;
+  string name              = 3;
+  bool   active            = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  string hubspot_record_id = 7;
+}
+
 // AuthService — separado de UserService porque los endpoints de auth
 // suelen tener políticas distintas (ej. SkipFunc en el interceptor JWT,
 // rate-limits específicos, sin Authorization header en Login).

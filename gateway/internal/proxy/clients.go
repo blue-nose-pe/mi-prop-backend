@@ -27,6 +27,7 @@ import (
 type Clients struct {
 	Users        usersgrpcpb.UserServiceClient
 	Auth         usersgrpcpb.AuthServiceClient
+	Schools      usersgrpcpb.SchoolServiceClient
 	Exams        examsgrpcpb.ExamServiceClient
 	Questions    examsgrpcpb.QuestionServiceClient
 	ExamQs       examsgrpcpb.ExamQuestionServiceClient
@@ -93,6 +94,7 @@ func Dial(a Addrs) (*Clients, error) {
 	return &Clients{
 		Users:     usersgrpcpb.NewUserServiceClient(usersConn),
 		Auth:      usersgrpcpb.NewAuthServiceClient(usersConn),
+		Schools:   usersgrpcpb.NewSchoolServiceClient(usersConn),
 		Exams:     examsgrpcpb.NewExamServiceClient(examsConn),
 		Questions: examsgrpcpb.NewQuestionServiceClient(examsConn),
 		ExamQs:    examsgrpcpb.NewExamQuestionServiceClient(examsConn),

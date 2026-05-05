@@ -1,0 +1,32 @@
+# Sirve la documentación interactiva del backend (openapi.yaml + Stoplight
+# Elements) como un Deployment de nginx. El contenido real (openapi.yaml,
+# index.html) se monta desde un ConfigMap creado a partir de los archivos
+# de deploy/api-docs/ vía helm hook (ver templates/configmap.yaml).
+
+image:
+  repository: nginx
+  tag: "1.27-alpine"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  httpPort: 80
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - host: api-docs.miproposito.ucsp.edu.pe
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: api-docs-tls
+      hosts:
+        - api-docs.miproposito.ucsp.edu.pe
+
+resources:
+  requests: { cpu: 25m,  memory: 32Mi }
+  limits:   { cpu: 100m, memory: 96Mi }

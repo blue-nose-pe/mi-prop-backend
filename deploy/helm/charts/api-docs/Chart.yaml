@@ -1,0 +1,6 @@
+apiVersion: v2
+name: api-docs
+description: Mi Propósito 2.0 — Stoplight Elements sirviendo openapi.yaml por HTTP estático con nginx.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
