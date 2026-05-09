@@ -14,7 +14,7 @@ func newUserHandlerWithMocks() (*UserHandler, *testutil.UserRepoMock, *testutil.
 	users := testutil.NewUserRepoMock()
 	cache := testutil.NewUserCacheMock()
 	hasher := &testutil.HasherMock{}
-	return NewUserHandler(users, cache, hasher), users, cache, hasher
+	return NewUserHandler(users, cache, hasher, nil), users, cache, hasher
 }
 
 func TestUserHandler_Create_Ok(t *testing.T) {

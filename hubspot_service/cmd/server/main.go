@@ -91,15 +91,17 @@ func main() {
 	}
 
 	verifier := jwtmw.NewVerifier([]byte(cfg.JWTSecret), cfg.JWTIssuer)
-	// SendOTP es una llamada interna service-to-service (users-service →
-	// hubspot-service) que se dispara cuando un estudiante pide su OTP.
-	// El estudiante todavía no tiene JWT en ese momento, así que la cadena
-	// de llamadas no propaga ningún token. La comunicación es solo dentro
-	// del cluster (no expuesta por el gateway).
+	// Los métodos en esta skip-list son llamadas internas service-to-service
+	// (users-service → hubspot-service) que no propagan el JWT del caller:
+	//   - SendOTP: el estudiante todavía no tiene sesión cuando lo pide.
+	//   - UpsertContact: se dispara fire-and-forget al crear/actualizar
+	//     un user, sin contexto de sesión propagado.
+	// Ambas son tráfico solo intra-cluster, no expuesto por el gateway.
 	jwtSkip := func(fullMethod string) bool {
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||
-			fullMethod == "/hubspot.v1.HubspotService/SendOTP"
+			fullMethod == "/hubspot.v1.HubspotService/SendOTP" ||
+			fullMethod == "/hubspot.v1.HubspotService/UpsertContact"
 	}
 
 	gs := grpc.NewServer(

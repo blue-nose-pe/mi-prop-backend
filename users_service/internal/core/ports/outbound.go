@@ -263,3 +263,21 @@ type OTPSender interface {
 type StudentClassifier interface {
 	IsStudent(ctx context.Context, userID domain.UserID) (bool, error)
 }
+
+// HubspotContact lo que se sincroniza al CRM al crear/actualizar un user.
+// Los campos opcionales se pasan vacíos cuando no se conocen.
+type HubspotContact struct {
+	UserID    domain.UserID
+	Email     string
+	DNI       string
+	FirstName string
+	LastName  string
+}
+
+// HubspotSyncer: empuja un upsert de contact al CRM HubSpot. Implementación
+// concreta dialea hubspot_service.HubspotService/UpsertContact. La llamada
+// es best-effort: el caller la invoca fire-and-forget en una goroutine para
+// no bloquear el flow principal si HubSpot está caído.
+type HubspotSyncer interface {
+	UpsertContact(ctx context.Context, c HubspotContact) error
+}

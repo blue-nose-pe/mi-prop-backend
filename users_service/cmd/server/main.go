@@ -19,6 +19,7 @@ import (
 	auditadapter "users_service/internal/adapters/outbound/audit"
 	bcryptadapter "users_service/internal/adapters/outbound/bcrypt"
 	jwtadapter "users_service/internal/adapters/outbound/jwt"
+	hubspotsyncadapter "users_service/internal/adapters/outbound/hubspotsync"
 	mssqladapter "users_service/internal/adapters/outbound/mssql"
 	otphashadapter "users_service/internal/adapters/outbound/otphash"
 	otpsenderadapter "users_service/internal/adapters/outbound/otpsender"
@@ -94,6 +95,7 @@ func main() {
 	// no se enviarán pero el binario no muere). En producción siempre debe
 	// estar seteado vía env var.
 	var otpSender ports.OTPSender = noopOTPSender{}
+	var hubspotSync ports.HubspotSyncer
 	if cfg.HubspotServiceAddr != "" {
 		gs, err := otpsenderadapter.NewGrpc(cfg.HubspotServiceAddr)
 		if err != nil {
@@ -102,8 +104,17 @@ func main() {
 		defer gs.Close()
 		otpSender = gs
 		log.Printf("[otpsender] gRPC client → %s", cfg.HubspotServiceAddr)
+
+		hs, err := hubspotsyncadapter.NewGrpc(cfg.HubspotServiceAddr)
+		if err != nil {
+			log.Fatalf("hubspotsync grpc dial: %v", err)
+		}
+		defer hs.Close()
+		hubspotSync = hs
+		log.Printf("[hubspotsync] gRPC client → %s", cfg.HubspotServiceAddr)
 	} else {
 		log.Printf("[otpsender] NoOp (HUBSPOT_SERVICE_ADDR vacío)")
+		log.Printf("[hubspotsync] disabled (HUBSPOT_SERVICE_ADDR vacío)")
 	}
 
 	// JWT (signer + verifier construidos sobre la lib compartida).
@@ -122,7 +133,7 @@ func main() {
 	tokenVerifier := jwtadapter.NewVerifier(verifier)
 
 	// ---------- 3. CORE — CQRS: commands y queries son piezas separadas ----------
-	userCmds := command.NewUserHandler(userRepo, cache, hasher)
+	userCmds := command.NewUserHandler(userRepo, cache, hasher, hubspotSync)
 	authCmds := command.NewAuthHandler(userRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier)
 	permCmds := command.NewPermissionHandler(userRepo, permRepo)
 	permGroupCmds := command.NewPermissionGroupHandler(permRepo)

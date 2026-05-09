@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
+	"log"
 	"strings"
 	"time"
 
@@ -18,9 +19,10 @@ import (
 // UserHandler implementa ports.UserCommands.
 // Único responsable de las mutaciones sobre la entidad User.
 type UserHandler struct {
-	users  ports.UserRepository
-	cache  ports.UserCache
-	hasher ports.PasswordHasher
+	users   ports.UserRepository
+	cache   ports.UserCache
+	hasher  ports.PasswordHasher
+	hubspot ports.HubspotSyncer // opcional; si es nil, no se sincroniza
 }
 
 // Compile-time check: UserHandler cumple ports.UserCommands.
@@ -30,8 +32,9 @@ func NewUserHandler(
 	users ports.UserRepository,
 	cache ports.UserCache,
 	hasher ports.PasswordHasher,
+	hubspot ports.HubspotSyncer,
 ) *UserHandler {
-	return &UserHandler{users: users, cache: cache, hasher: hasher}
+	return &UserHandler{users: users, cache: cache, hasher: hasher, hubspot: hubspot}
 }
 
 // Create valida unicidad, hashea password e inserta el user.
@@ -85,7 +88,32 @@ func (h *UserHandler) Create(ctx context.Context, in ports.CreateUserInput) (*do
 	u.ID = id
 
 	_ = h.cache.Set(ctx, u) // best-effort
+	h.syncToHubspotAsync(u)
 	return u, nil
+}
+
+// syncToHubspotAsync hace upsert del contact en HubSpot en una goroutine
+// detachada. No bloquea la respuesta al cliente: si HubSpot está caído o
+// rate-limited, el user queda creado igual y el sync se intenta después
+// vía endpoint manual /api/hubspot/contacts o el job de retry.
+func (h *UserHandler) syncToHubspotAsync(u *domain.User) {
+	if h.hubspot == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := h.hubspot.UpsertContact(ctx, ports.HubspotContact{
+			UserID:    u.ID,
+			Email:     string(u.Email),
+			DNI:       u.DocumentNumber,
+			FirstName: u.FirstName,
+			LastName:  u.LastName,
+		})
+		if err != nil {
+			log.Printf("hubspot upsert failed for user=%s err=%v", u.ID, err)
+		}
+	}()
 }
 
 // Update aplica cambios parciales (campos vacíos no se tocan).
@@ -113,6 +141,7 @@ func (h *UserHandler) Update(ctx context.Context, in ports.UpdateUserInput) (*do
 	}
 
 	_ = h.cache.Delete(ctx, u.ID) // invalidar para no servir datos viejos
+	h.syncToHubspotAsync(u)
 	return u, nil
 }
 
