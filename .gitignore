@@ -46,16 +46,13 @@ secrets.yaml
 # install.ps1 guarda la SQL admin password generada acá. NO subir al repo.
 .deploy-state/
 
-# ------ Workspace y notas internas ------
-.claude/
+# ------ Notas internas y artefactos de trabajo ------
+# Cualquier nota operativa que tenga IDs internos de Azure
+# (tenant, subscription, resource ids) o lista de UUIDs de prueba.
+# NO entregar al cliente. Cada quien arma el suyo.
 GUIA_INSTALACION_CLIENTE.md
 seed-demo-ids.json
 BWd*
-
-# ------ Contexto operativo para Claude (uso interno, contiene IDs internos) ------
-# Tiene IDs de Azure (tenant, subscription, resource ids) que son específicos
-# de la cuenta de prueba. NO entregar al cliente. Cada quien arma el suyo.
-CLAUDE_CONTEXT.md
 
 # ------ Helm artifacts ------
 deploy/helm/charts/*.tgz
