@@ -2785,8 +2785,12 @@ paths:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
               example:
                 status: "error"
-                code: "VALIDATION_ERROR"
-                message: "question_ids must contain all and only the exam's questions"
+                code: "INVALID_REORDER"
+                message: "reorder list must contain exactly the same question_ids that the exam has, with no duplicates"
+                errors:
+                  - code: "INVALID_REORDER"
+                    message: "reorder list must contain exactly the same question_ids that the exam has, with no duplicates"
+                    context: { propertyName: ["question_ids"] }
                 category: "VALIDATION_ERROR"
         '403':
           description: Exam ya publicado
