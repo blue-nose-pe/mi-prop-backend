@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.4.0
+  version: 0.5.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -192,6 +192,352 @@ info:
     También puede **resetear** la password de cualquier user con
     `POST /api/users/{id}/reset-password` (devuelve la password temporal
     una sola vez para entregársela al user).
+
+    ## Quickstart — flujos completos para el frontend
+
+    Esta sección muestra los flujos reales del producto, paso a paso, con
+    los bodies y respuestas tal cual los devuelve el backend en sandbox.
+    Sirve de guía rápida para integrar desde Angular.
+
+    ### Flujo 1 — Login admin / asesor / coordinador
+
+    ```http
+    POST /api/auth/login
+    Content-Type: application/json
+
+    { "email": "admin@ucsp.edu.pe", "password": "..." }
+    ```
+
+    Respuesta:
+
+    ```json
+    {
+      "user": { "id": "68BD...", "email": "...", "is_superadmin": true, "must_change_password": false, "active": true },
+      "permissions": [],
+      "access_token": "eyJ...",   // 15 min
+      "refresh_token": "eyJ..."   // 7 días, rotativo
+    }
+    ```
+
+    Guardar `access_token` en memoria; mandarlo en cada request como
+    `Authorization: Bearer <access_token>`. Cuando expire, llamar
+    `POST /api/auth/refresh` con el `refresh_token` para conseguir un par nuevo.
+
+    ### Flujo 2 — Login estudiante (OTP por email)
+
+    El estudiante NO usa password. Pide un código de un solo uso:
+
+    ```http
+    POST /api/auth/student/request-otp
+    Content-Type: application/json
+
+    { "email": "alumno@example.com" }
+    ```
+
+    El backend genera un código de 6 dígitos, lo guarda hasheado y lo envía
+    al email del estudiante (vía workflow de HubSpot Automation). El
+    estudiante recibe el mail y lo verifica:
+
+    ```http
+    POST /api/auth/student/verify-otp
+    Content-Type: application/json
+
+    { "email": "alumno@example.com", "otp": "654321" }
+    ```
+
+    Si el código matchea, el backend devuelve el mismo shape que `/login`
+    (user + access_token + refresh_token + permissions).
+
+    ### Flujo 3 — Crear y asignar un grupo de permisos
+
+    Modelo de tres niveles: **permiso atómico** (`db_exams.exam.write`) →
+    **grupo** (set de permisos atómicos con `code`/`name`) → **usuario**
+    (al cual se le asigna 0..N grupos).
+
+    Listar el catálogo de permisos atómicos:
+
+    ```http
+    GET /api/permissions
+    Authorization: Bearer <admin_token>
+    ```
+
+    Crear un grupo "Cargador de exámenes":
+
+    ```http
+    POST /api/permission-groups
+    Authorization: Bearer <admin_token>
+
+    {
+      "code": "exam_loader",
+      "name": "Cargador de exámenes",
+      "description": "Solo carga preguntas y crea exámenes",
+      "permission_ids": [25, 26, 27, 28, 29]
+    }
+    ```
+
+    Asignar el grupo a un usuario:
+
+    ```http
+    POST /api/users/{user_id}/permissions/groups
+    Authorization: Bearer <admin_token>
+
+    { "permission_group_id": 7 }
+    ```
+
+    ### Flujo 4 — Generar una key para que un grupo de estudiantes rinda un test
+
+    El asesor genera el código que después le pasa al colegio. `mode` debe
+    ser `"school"` (con `school_id` obligatorio) o `"lan"` (sin school).
+
+    ```http
+    POST /api/keys
+    Authorization: Bearer <admin_token>
+
+    {
+      "code": "VOC-2026-A",
+      "exam_type_id": 1,
+      "school_id": "",
+      "asesor_user_id": "<id_del_asesor>",
+      "mode": "lan",
+      "grade": "5",
+      "section": "A",
+      "valid_from": "2026-01-01T00:00:00Z",
+      "valid_to":   "2027-01-01T00:00:00Z",
+      "max_uses": 100
+    }
+    ```
+
+    El estudiante valida la key antes de empezar:
+
+    ```http
+    POST /api/keys/validate
+    { "code": "VOC-2026-A" }
+    ```
+
+    Devuelve la key entera (incluyendo `exam_type_id`, `valid_from/to`,
+    `current_uses`/`max_uses`) si está activa y vigente. El front la usa
+    para mostrarle al estudiante "estás por rendir el Test Vocacional".
+
+    ### Flujo 5 — Tomar un examen completo (start → answer → finish)
+
+    Este es el flujo central del estudiante. Se hace **una llamada por cada
+    pregunta** porque las opciones NO viajan anidadas en el listing del
+    examen (decisión deliberada para mantener payloads chicos en exámenes
+    largos).
+
+    **Paso 1 — listar las preguntas del examen** (devuelve solo IDs y orden):
+
+    ```http
+    GET /api/exams/{exam_id}/questions
+    Authorization: Bearer <student_token>
+    ```
+
+    ```json
+    {
+      "items": [
+        { "exam_id": "...", "question_id": "Q1", "points": 1, "sort_order": 0 },
+        { "exam_id": "...", "question_id": "Q2", "points": 1, "sort_order": 1 }
+      ]
+    }
+    ```
+
+    **Paso 2 — iniciar el attempt** (esto consume 1 uso de la key):
+
+    ```http
+    POST /api/attempts
+    Authorization: Bearer <student_token>
+
+    {
+      "exam_id":  "<exam_id>",
+      "user_id":  "<student_id>",
+      "key_code": "VOC-2026-A"
+    }
+    ```
+
+    Devuelve `{"attempt": {"id": "...", "started_at": "..."}}`.
+
+    **Paso 3 — para cada pregunta, traer sus opciones y mandar la respuesta**:
+
+    ```http
+    GET /api/questions/{question_id}/options
+    Authorization: Bearer <student_token>
+    ```
+
+    ```json
+    {
+      "options": [
+        { "id": "OPT1", "text": "Nada",     "is_correct": false, "sort_order": 0 },
+        { "id": "OPT2", "text": "Poco",     "is_correct": false, "sort_order": 1 },
+        { "id": "OPT3", "text": "Bastante", "is_correct": false, "sort_order": 2 },
+        { "id": "OPT4", "text": "Mucho",    "is_correct": true,  "sort_order": 3 }
+      ]
+    }
+    ```
+
+    > **Nota**: `is_correct` viene en la respuesta porque la API es interna y
+    > admite que los formularios de admin lo muestren. **El frontend del
+    > estudiante NO debe mostrarlo en pantalla** — usar solo `id`/`text`.
+
+    Mandar la respuesta:
+
+    ```http
+    POST /api/attempts/{attempt_id}/answer
+    Authorization: Bearer <student_token>
+
+    {
+      "question_id": "Q1",
+      "option_id":   "OPT3"
+    }
+    ```
+
+    Repetir por cada pregunta. Las respuestas son idempotentes por
+    `(attempt_id, question_id)` — si el estudiante cambia de opción, el
+    backend reemplaza la respuesta vieja.
+
+    **Paso 4 — finalizar el attempt** (calcula score y cierra el intento):
+
+    ```http
+    POST /api/attempts/{attempt_id}/finish
+    Authorization: Bearer <student_token>
+    ```
+
+    Respuesta:
+
+    ```json
+    {
+      "attempt": {
+        "id": "...",
+        "exam_id": "...",
+        "user_id": "...",
+        "score": 10,
+        "max_score": 10,
+        "started_at":   "2026-05-09T12:00:00Z",
+        "submitted_at": "2026-05-09T12:25:30Z"
+      }
+    }
+    ```
+
+    En tests psicológicos (vocacional, hábitos) `score` siempre vuelve `0` —
+    no hay respuestas "correctas", el análisis de perfil RIASEC/VARK se
+    hace en el módulo Analytics. En el simulacro de admisión el `score`
+    refleja las respuestas correctas (1 punto por pregunta acertada).
+
+    ### Flujo 6 — Encuesta de satisfacción post-test
+
+    Crear la encuesta (admin):
+
+    ```http
+    POST /api/surveys
+    {
+      "code": "sat-vocacional-2026",
+      "title": "Tu experiencia con el test vocacional",
+      "description": "Tu opinión nos ayuda a mejorar",
+      "target_role": "estudiante",
+      "trigger_kind": "post_test"
+    }
+    ```
+
+    `trigger_kind` debe ser uno de: `post_test`, `on_demand`, `recurring`.
+
+    Agregar preguntas a la encuesta:
+
+    ```http
+    POST /api/surveys/{survey_id}/questions
+    {
+      "text": "¿Cómo calificás el test?",
+      "kind": "scale",
+      "sort_order": 1,
+      "required": true,
+      "options_json": "{\"min\":1,\"max\":5}"
+    }
+    ```
+
+    `kind` debe ser uno de: `scale` (escala numérica), `nps`, `single`
+    (un select), `multi` (multi-select), `open` (texto libre).
+
+    Publicar y dejarla disponible:
+
+    ```http
+    POST /api/surveys/{survey_id}/publish
+    ```
+
+    El estudiante envía su respuesta linkeándola al attempt del examen:
+
+    ```http
+    POST /api/survey-responses
+    Authorization: Bearer <student_token>
+
+    {
+      "survey_id":       "<survey_id>",
+      "user_id":         "<student_id>",
+      "exam_attempt_id": "<attempt_id>",
+      "answers": [
+        {
+          "question_id":  "<question_id>",
+          "value_text":   "",
+          "value_number": 5,
+          "has_number":   true
+        }
+      ]
+    }
+    ```
+
+    `has_number=true` indica que el valor a guardar es `value_number` (para
+    `kind=scale` o `nps`); `false` indica que se usa `value_text` (para
+    `kind=open|single|multi`).
+
+    ### Flujo 7 — Analytics y exports
+
+    El asesor ve el resumen de su grupo:
+
+    ```http
+    GET /api/analytics/asesor/{asesor_id}/dashboard
+    Authorization: Bearer <admin_token>
+    ```
+
+    Y descarga un Excel con el detalle:
+
+    ```http
+    GET /api/analytics/asesor/{asesor_id}/export.xlsx
+    Authorization: Bearer <admin_token>
+    ```
+
+    Devuelve `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`.
+    Dashboards equivalentes para colegio (`/api/analytics/colegio/{id}/dashboard`),
+    estudiante (`/api/analytics/estudiante/{id}/dashboard`) y comparativo
+    cross-asesor (`/api/analytics/comparativo`).
+
+    ### Flujo 8 — Sync manual a HubSpot
+
+    El sync no es automático: el admin/front decide cuándo empujar datos a HubSpot.
+
+    Sincronizar un contacto (estudiante o asesor):
+
+    ```http
+    POST /api/hubspot/contacts
+    Authorization: Bearer <admin_token>
+
+    { "email": "...", "dni": "12345678", "first_name": "...", "last_name": "..." }
+    ```
+
+    Devuelve `{ "record_id": "220618784410" }` (ID del contact en HubSpot).
+    Si el contact ya existía, hace upsert por DNI.
+
+    Otros endpoints equivalentes: `/api/hubspot/schools` (colegios),
+    `/api/hubspot/asesores`, `/api/hubspot/results` (resultado de un test).
+
+    ### Notas para integrar desde Angular
+
+    - **Refresh transparente**: interceptor HTTP que ante un `401 TOKEN_EXPIRED`
+      llama `/api/auth/refresh` y reintenta el request original con el nuevo
+      access_token. Si el refresh también falla → logout.
+    - **Polling de estado**: el endpoint `GET /api/users/me` devuelve user
+      + permisos efectivos en una sola llamada. Útil para inicializar la app.
+    - **Idempotencia de respuestas**: re-mandar una respuesta de examen al
+      mismo `(attempt_id, question_id)` la actualiza en lugar de crear duplicados.
+    - **Validaciones del backend**: cuando un POST falla, el body trae
+      `{"status":"error","code":"<CODE>","message":"..."}`. Los códigos más
+      comunes están en la sección "Errores" arriba.
 
     ## Convenciones
 
