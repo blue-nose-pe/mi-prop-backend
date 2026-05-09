@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.5.0
+  version: 0.6.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -507,9 +507,15 @@ info:
     estudiante (`/api/analytics/estudiante/{id}/dashboard`) y comparativo
     cross-asesor (`/api/analytics/comparativo`).
 
-    ### Flujo 8 — Sync manual a HubSpot
+    ### Flujo 8 — Sync HubSpot
 
-    El sync no es automático: el admin/front decide cuándo empujar datos a HubSpot.
+    **Al crear o actualizar un user, el sync a HubSpot es automático**: el
+    backend dispara un `UpsertContact` en background tras `POST /api/users`,
+    `POST /api/users/bulk` o `PATCH /api/users/{id}`. Si HubSpot está caído
+    el user igual queda creado y se puede forzar el sync después.
+
+    Para empujar manualmente entidades distintas a un user (colegio, asesor
+    o resultado de un test), usar los endpoints dedicados:
 
     Sincronizar un contacto (estudiante o asesor):
 
@@ -978,6 +984,12 @@ paths:
         EMAIL_TAKEN` o `409 DOCUMENT_TAKEN` si ya existe otro user con el
         mismo email o DNI.
 
+        **Sync HubSpot automático**: tras crear el user con éxito el
+        servicio dispara en background un `UpsertContact` al CRM HubSpot
+        con el email, DNI, nombre y apellido. Es fire-and-forget — si
+        HubSpot está caído el user queda creado de todos modos y se puede
+        forzar el sync después con `POST /api/hubspot/contacts`.
+
         Permiso requerido: `db_users.users.write`.
       requestBody:
         required: true
@@ -1015,6 +1027,116 @@ paths:
                     message: "email already registered"
                     context: { propertyName: ["email"] }
                 category: "CONFLICT"
+
+  /api/users/bulk:
+    post:
+      tags: [Users]
+      summary: Carga masiva de usuarios (CSV o JSON)
+      description: |
+        Crea N usuarios en una sola llamada — pensado para que el admin
+        suba el listado de un colegio entero. Acepta dos formatos según el
+        header `Content-Type`:
+
+        - `application/json`: body con un array `items` de hasta 1000 entradas.
+          Cada item tiene la misma forma que `POST /api/users`. Opcional:
+          `permission_group_id` numérico para asignar el mismo grupo a
+          todos los users creados (típicamente `1` para `student_permissions`).
+
+        - `text/csv`: primera fila de header con columnas `email,password,
+          first_name,last_name,document_number,school_id`. El orden no
+          importa siempre que las columnas estén nombradas. Si querés
+          asignar grupo a todos, mandalo como query string:
+          `?permission_group_id=1`.
+
+        La operación NO es transaccional: si la fila 5 falla, las primeras
+        4 quedan creadas y las siguientes se intentan igual. La respuesta
+        trae `created` (filas exitosas con su `id`) y `errors` (filas
+        fallidas con `code`/`message`) para que el frontend muestre el
+        detalle al admin. El sync a HubSpot se dispara automáticamente
+        para cada user creado (mismo flujo que `POST /api/users`).
+
+        Permiso requerido: `db_users.users.write`. Si se usa
+        `permission_group_id`, también se requiere `db_users.user_permission_group.write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                permission_group_id:
+                  type: integer
+                  description: Si se provee, se asigna a TODOS los users creados.
+                  example: 1
+                items:
+                  type: array
+                  maxItems: 1000
+                  items: { $ref: '#/components/schemas/CreateUserRequest' }
+            example:
+              permission_group_id: 1
+              items:
+                - { email: "alumno1@col.pe", password: "Temp1234!", first_name: "Ana",  last_name: "Quispe", document_number: "70000001", school_id: "" }
+                - { email: "alumno2@col.pe", password: "Temp1234!", first_name: "Luis", last_name: "Ramos",  document_number: "70000002", school_id: "" }
+                - { email: "alumno3@col.pe", password: "Temp1234!", first_name: "Sofía",last_name: "Ríos",   document_number: "70000003", school_id: "" }
+          text/csv:
+            schema:
+              type: string
+              format: binary
+              description: |
+                CSV con header en primera fila. Columnas obligatorias:
+                `email`, `password`. Opcionales: `first_name`, `last_name`,
+                `document_number`, `school_id`.
+            example: |
+              email,password,first_name,last_name,document_number,school_id
+              alumno1@col.pe,Temp1234!,Ana,Quispe,70000001,
+              alumno2@col.pe,Temp1234!,Luis,Ramos,70000002,
+              alumno3@col.pe,Temp1234!,Sofía,Ríos,70000003,
+      responses:
+        '200':
+          description: |
+            Resumen del procesamiento. Notar que un `200` no garantiza que
+            todas las filas se hayan creado — revisar `summary.failed` y `errors`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index: { type: integer }
+                        id:    { type: string, format: uuid }
+                        email: { type: string }
+                  errors:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index:   { type: integer }
+                        email:   { type: string }
+                        code:    { type: string, example: "EMAIL_TAKEN" }
+                        message: { type: string }
+                  summary:
+                    type: object
+                    properties:
+                      total:   { type: integer }
+                      created: { type: integer }
+                      failed:  { type: integer }
+              example:
+                summary: { total: 3, created: 2, failed: 1 }
+                created:
+                  - { index: 0, id: "78ab...", email: "alumno1@col.pe" }
+                  - { index: 2, id: "9fcd...", email: "alumno3@col.pe" }
+                errors:
+                  - { index: 1, email: "alumno2@col.pe", code: "DOCUMENT_TAKEN", message: "document number already registered" }
+        '400':
+          description: Body vacío, mayor a 1000 entradas, o CSV malformado.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/users/{id}:
     parameters:
