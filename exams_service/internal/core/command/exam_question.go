@@ -43,12 +43,9 @@ func (h *ExamQuestionHandler) Remove(ctx context.Context, examID domain.ExamID, 
 	return h.examQuestions.Remove(ctx, examID, questionID)
 }
 
-// Reorder valida que `ordered` contenga EXACTAMENTE las mismas question_ids
-// que el exam tiene linkeadas, sin faltantes ni extras ni duplicados. Sin
-// esta validación un caller que mande un subconjunto deja al resto con su
-// sort_order viejo, rompiendo la unicidad del orden y mostrando preguntas
-// duplicadas/desordenadas en el front. Devuelve ErrInvalidReorder (400)
-// si el conjunto no calza.
+// Reorder requiere que `ordered` sea una permutación exacta del set de
+// question_ids del exam (preserva la unicidad de sort_order). Devuelve
+// ErrInvalidReorder si no.
 func (h *ExamQuestionHandler) Reorder(ctx context.Context, examID domain.ExamID, ordered []domain.QuestionID) error {
 	if err := h.assertEditable(ctx, examID); err != nil {
 		return err
@@ -63,8 +60,6 @@ func (h *ExamQuestionHandler) Reorder(ctx context.Context, examID domain.ExamID,
 	return h.examQuestions.Reorder(ctx, examID, ordered)
 }
 
-// sameQuestionSet devuelve true si `ordered` es una permutación exacta del
-// set de question_ids actuales (ni faltantes, ni extras, ni duplicados).
 func sameQuestionSet(current []domain.ExamQuestion, ordered []domain.QuestionID) bool {
 	if len(current) != len(ordered) {
 		return false

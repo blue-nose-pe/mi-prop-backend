@@ -1,33 +1,7 @@
-// Carga masiva de usuarios — endpoint POST /api/users/bulk.
-//
-// Acepta dos formatos según el header Content-Type:
-//
-//   1) application/json — body con shape:
-//      {
-//        "permission_group_id": 1,                  // opcional
-//        "items": [
-//          {"email":"a@x.pe","password":"...","first_name":"A","last_name":"B",
-//           "document_number":"12345678","school_id":""},
-//          ...
-//        ]
-//      }
-//
-//   2) text/csv — primera fila de header con columnas:
-//      email,password,first_name,last_name,document_number,school_id
-//      ...filas con los valores correspondientes...
-//      (permission_group_id se pasa por query param ?permission_group_id=1)
-//
-// El gateway itera fila por fila llamando a UsersService.CreateUser; si el
-// caller pidió asignar un grupo, también llama AssignPermissionGroup. La
-// respuesta resume created/errors para que el frontend muestre el detalle:
-//
-//   {
-//     "created": [{"index": 0, "id": "...", "email": "..."}, ...],
-//     "errors":  [{"index": 3, "email": "...", "code": "EMAIL_TAKEN", "message": "..."}]
-//   }
-//
-// El sync a HubSpot se dispara automáticamente desde users-service por cada
-// CreateUser exitoso (no hace falta llamarlo aparte).
+// Carga masiva de usuarios — POST /api/users/bulk.
+// Acepta application/json o text/csv. Itera fila por fila contra
+// UsersService.CreateUser y reporta created/errors. Shape detallado en
+// deploy/api-docs/openapi.yaml.
 package proxy
 
 import (
@@ -71,9 +45,8 @@ type bulkError struct {
 	Message string `json:"message"`
 }
 
-// bulkCreateUsers procesa el array de items y reporta resultado por cada uno.
-// La operación NO es transaccional: si la fila 5 falla, las primeras 4 quedan
-// creadas. El frontend ve `created` y `errors` y muestra el detalle al admin.
+// bulkCreateUsers no es transaccional: las filas que fallan se reportan en
+// `errors` sin detener el resto.
 func (p *Proxy) bulkCreateUsers(w http.ResponseWriter, r *http.Request) {
 	in, err := parseBulkBody(r)
 	if err != nil {
@@ -130,8 +103,7 @@ func (p *Proxy) bulkCreateUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// parseBulkBody soporta JSON y CSV según Content-Type. Para CSV admite
-// el permission_group_id como query param.
+// parseBulkBody despacha por Content-Type. CSV toma permission_group_id del query string.
 func parseBulkBody(r *http.Request) (*bulkCreateUsersRequest, error) {
 	ct := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("Content-Type"), ";")[0]))
 	switch ct {
@@ -160,9 +132,8 @@ func parseBulkBody(r *http.Request) (*bulkCreateUsersRequest, error) {
 	}
 }
 
-// parseBulkCSV lee un CSV con header obligatorio. Las columnas requeridas son
-// email y password; las demás son opcionales y pueden estar en cualquier orden
-// o ausentes.
+// parseBulkCSV requiere header con `email` y `password`; el resto opcional
+// y en cualquier orden.
 func parseBulkCSV(body io.Reader) ([]bulkUserItem, error) {
 	rd := csv.NewReader(body)
 	rd.TrimLeadingSpace = true
@@ -209,8 +180,7 @@ func parseBulkCSV(body io.Reader) ([]bulkUserItem, error) {
 	return items, nil
 }
 
-// grpcCode mapea errores gRPC a un string corto para el reporte. Si el
-// error no es gRPC, devuelve "INTERNAL".
+// grpcCode devuelve el code gRPC, o "INTERNAL" si el error no es gRPC.
 func grpcCode(err error) string {
 	if s, ok := status.FromError(err); ok {
 		return s.Code().String()

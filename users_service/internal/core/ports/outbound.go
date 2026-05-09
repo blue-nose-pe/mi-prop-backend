@@ -264,8 +264,7 @@ type StudentClassifier interface {
 	IsStudent(ctx context.Context, userID domain.UserID) (bool, error)
 }
 
-// HubspotContact lo que se sincroniza al CRM al crear/actualizar un user.
-// Los campos opcionales se pasan vacíos cuando no se conocen.
+// HubspotContact: payload de sync al CRM. Campos opcionales vacíos.
 type HubspotContact struct {
 	UserID    domain.UserID
 	Email     string
@@ -274,10 +273,8 @@ type HubspotContact struct {
 	LastName  string
 }
 
-// HubspotSyncer: empuja un upsert de contact al CRM HubSpot. Implementación
-// concreta dialea hubspot_service.HubspotService/UpsertContact. La llamada
-// es best-effort: el caller la invoca fire-and-forget en una goroutine para
-// no bloquear el flow principal si HubSpot está caído.
+// HubspotSyncer: upsert de contact al CRM. Best-effort, invocado en
+// goroutine separada por el caller.
 type HubspotSyncer interface {
 	UpsertContact(ctx context.Context, c HubspotContact) error
 }

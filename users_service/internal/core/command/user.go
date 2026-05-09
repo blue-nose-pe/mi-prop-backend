@@ -92,10 +92,8 @@ func (h *UserHandler) Create(ctx context.Context, in ports.CreateUserInput) (*do
 	return u, nil
 }
 
-// syncToHubspotAsync hace upsert del contact en HubSpot en una goroutine
-// detachada. No bloquea la respuesta al cliente: si HubSpot está caído o
-// rate-limited, el user queda creado igual y el sync se intenta después
-// vía endpoint manual /api/hubspot/contacts o el job de retry.
+// syncToHubspotAsync: upsert best-effort en goroutine. Si HubSpot falla,
+// el user queda creado igual; reintento manual via /api/hubspot/contacts.
 func (h *UserHandler) syncToHubspotAsync(u *domain.User) {
 	if h.hubspot == nil {
 		return

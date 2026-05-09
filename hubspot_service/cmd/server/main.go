@@ -91,12 +91,8 @@ func main() {
 	}
 
 	verifier := jwtmw.NewVerifier([]byte(cfg.JWTSecret), cfg.JWTIssuer)
-	// Los métodos en esta skip-list son llamadas internas service-to-service
-	// (users-service → hubspot-service) que no propagan el JWT del caller:
-	//   - SendOTP: el estudiante todavía no tiene sesión cuando lo pide.
-	//   - UpsertContact: se dispara fire-and-forget al crear/actualizar
-	//     un user, sin contexto de sesión propagado.
-	// Ambas son tráfico solo intra-cluster, no expuesto por el gateway.
+	// SendOTP y UpsertContact son intra-cluster (users-service las invoca
+	// sin sesion del caller); no expuestas por el gateway.
 	jwtSkip := func(fullMethod string) bool {
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||

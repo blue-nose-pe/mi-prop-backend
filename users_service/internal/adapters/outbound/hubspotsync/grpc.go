@@ -1,7 +1,5 @@
 // Package hubspotsync implementa ports.HubspotSyncer dialeando
-// hubspot_service.HubspotService/UpsertContact. Se invoca fire-and-forget
-// desde UserHandler.Create/Update para sincronizar el contact al CRM
-// inmediatamente después de persistir el user.
+// hubspot_service.HubspotService/UpsertContact.
 package hubspotsync
 
 import (
@@ -26,9 +24,8 @@ type Grpc struct {
 
 var _ ports.HubspotSyncer = (*Grpc)(nil)
 
-// NewGrpc dialea hubspot_service.HubspotService/UpsertContact en el address
-// dado (ej: "miproposito-hubspot-service:50054"). Reusa el mismo servicio
-// gRPC que otpsender pero con otro RPC.
+// NewGrpc dialea hubspot_service en el address dado
+// (ej: "miproposito-hubspot-service:50054").
 func NewGrpc(addr string) (*Grpc, error) {
 	if addr == "" {
 		return nil, fmt.Errorf("hubspot_service address is empty")
@@ -54,10 +51,8 @@ func (g *Grpc) Close() error {
 	return g.conn.Close()
 }
 
-// UpsertContact propaga x-correlation-id si está en el context inbound;
-// no propaga Authorization. La llamada cae en el skip-list del JWT
-// interceptor del hubspot_service (igual que SendOTP) — es comunicación
-// service-to-service interna del cluster.
+// UpsertContact propaga x-correlation-id (no Authorization). El RPC está
+// en la skip-list del JWT interceptor del hubspot_service.
 func (g *Grpc) UpsertContact(ctx context.Context, c ports.HubspotContact) error {
 	out := ctx
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
