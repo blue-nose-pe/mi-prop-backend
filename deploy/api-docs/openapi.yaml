@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.6.0
+  version: 0.7.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -957,6 +957,8 @@ paths:
               required: [refresh_token]
               properties:
                 refresh_token: { type: string }
+            example:
+              refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3YzExNGY2MS04..."
       responses:
         '200':
           description: Logout exitoso
@@ -966,6 +968,18 @@ paths:
                 type: object
                 properties:
                   status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400':
+          description: Body inválido o `refresh_token` ausente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "BAD_BODY"
+                message: "EOF"
+                category: "VALIDATION_ERROR"
         '401':
           description: Falta access token o está expirado
           content:
@@ -1144,7 +1158,12 @@ paths:
     get:
       tags: [Users]
       summary: Obtener un usuario por ID
-      description: Cache-first (Redis). Permiso requerido `db_users.users.read`.
+      description: |
+        Devuelve el detalle completo de un user (sin password_hash). Cache-first
+        (Redis con TTL 5 min). Útil para pantallas de detalle, autocompletado y
+        verificación previa a operaciones admin.
+
+        Permiso requerido: `db_users.users.read`.
       responses:
         '200':
           description: User encontrado
@@ -1154,6 +1173,20 @@ paths:
                 type: object
                 properties:
                   user: { $ref: '#/components/schemas/User' }
+              example:
+                user:
+                  id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  email: "asesor@ucsp.edu.pe"
+                  first_name: "María"
+                  last_name: "Quispe"
+                  document_number: "71234567"
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  active: true
+                  last_access_at: "2026-05-08T19:42:11Z"
+                  created_at: "2026-03-12T09:14:22Z"
+                  updated_at: "2026-04-29T15:02:11Z"
+                  is_superadmin: false
+                  must_change_password: false
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Users]
@@ -1196,11 +1229,24 @@ paths:
       summary: Desactivar usuario (soft delete)
       description: |
         Pone `active = false`. **No borra** ni asignaciones ni histórico —
-        Mi Propósito preserva todos los datos por requisito de UCSP.
+        Mi Propósito preserva todos los datos por requisito de UCSP. El user
+        no podrá volver a loguear hasta que un admin llame
+        `POST /api/users/{id}/reactivate`.
 
-        Permiso: `db_users.users.write`.
+        Idempotente: si el user ya estaba desactivado, devuelve 200 igual.
+
+        Permiso requerido: `db_users.users.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: User desactivado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/users/{id}/reactivate:
@@ -1411,12 +1457,18 @@ paths:
     get:
       tags: [Users]
       summary: Obtener un usuario por email
-      description: Para flujos OTP de estudiante / autocompletado. Permiso `db_users.users.read`.
+      description: |
+        Lookup directo por email (case-insensitive). Útil para flujos OTP de
+        estudiante, autocompletado en formularios admin y validación previa a
+        crear un user. Devuelve la misma forma que `GET /api/users/{id}`.
+
+        Permiso requerido: `db_users.users.read`.
       parameters:
         - in: query
           name: email
           required: true
           schema: { type: string, format: email }
+          example: "alumno@gmail.com"
       responses:
         '200':
           description: User encontrado
@@ -1426,7 +1478,30 @@ paths:
                 type: object
                 properties:
                   user: { $ref: '#/components/schemas/User' }
-        '400': { $ref: '#/components/responses/ValidationError' }
+              example:
+                user:
+                  id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  email: "alumno@gmail.com"
+                  first_name: "Juan"
+                  last_name: "Pérez"
+                  document_number: "70123456"
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  active: true
+                  last_access_at: "2026-05-07T18:22:00Z"
+                  created_at: "2026-02-10T12:00:00Z"
+                  updated_at: null
+                  is_superadmin: false
+                  must_change_password: false
+        '400':
+          description: Falta el query param `email`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "VALIDATION_ERROR"
+                message: "email query param is required"
+                category: "VALIDATION_ERROR"
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/users/search:
@@ -1478,7 +1553,14 @@ paths:
       tags: [Users]
       summary: Asignar un permission_group al user
       description: |
-        Idempotente: si la asignación ya existe, no falla. Permiso `db_users.permission.write`.
+        Asocia el user al grupo indicado (rol). El cliente puede asignar
+        múltiples grupos al mismo user — los permisos efectivos son la unión
+        de los permisos de todos sus grupos.
+
+        Idempotente: si la asignación ya existe no falla y devuelve 200. Si el
+        `permission_group_id` no existe en el catálogo devuelve 404.
+
+        Permiso requerido: `db_users.permission.write`.
       requestBody:
         required: true
         content:
@@ -1493,8 +1575,36 @@ paths:
                   description: ID del catálogo `permission_group` (no UUID, INT identity)
             example: { permission_group_id: 1 }
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
-        '404': { $ref: '#/components/responses/NotFound' }
+        '200':
+          description: Grupo asignado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400':
+          description: Body inválido
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "BAD_BODY"
+                message: "EOF"
+                category: "VALIDATION_ERROR"
+        '404':
+          description: User o permission_group no existen
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "PERMISSION_GROUP_NOT_FOUND"
+                message: "permission group not found"
+                category: "NOT_FOUND"
 
   /api/users/{id}/permissions/groups/{group_id}:
     parameters:
@@ -1503,12 +1613,37 @@ paths:
         name: group_id
         required: true
         schema: { type: integer, format: int32 }
+        description: ID INT del permission_group a desasociar
     delete:
       tags: [Users]
       summary: Revocar permission_group
-      description: Permiso `db_users.permission.write`.
+      description: |
+        Quita la asociación user ↔ permission_group. **Idempotente**: si la
+        asociación no existía, devuelve 200 igual. No borra el grupo ni el
+        user — solo el join.
+
+        Permiso requerido: `db_users.permission.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Asociación revocada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400':
+          description: "`group_id` no es un entero positivo"
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "VALIDATION_ERROR"
+                message: "group_id must be a positive integer"
+                category: "VALIDATION_ERROR"
 
   /api/users/{id}/permissions:
     parameters:
@@ -1537,6 +1672,12 @@ paths:
     get:
       tags: [Users]
       summary: ¿El user tiene este permiso?
+      description: |
+        Útil para que el front muestre/oculte botones según el permiso real
+        del user en cuestión (no del caller). Para superadmins siempre
+        devuelve `allowed=true` sin importar el `code` consultado.
+
+        Permiso requerido: `db_users.permission.read`.
       parameters:
         - in: query
           name: code
@@ -1552,6 +1693,18 @@ paths:
                 type: object
                 properties:
                   allowed: { type: boolean }
+              example:
+                allowed: true
+        '400':
+          description: Falta el query param `code`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "VALIDATION_ERROR"
+                message: "code query param is required"
+                category: "VALIDATION_ERROR"
 
   # ──────────────────────────────────────────────────────────────────
   # PERMISSIONS — CRUD de permission groups + catálogo de permisos
@@ -1936,6 +2089,12 @@ paths:
     get:
       tags: [Exams]
       summary: Obtener un exam por ID
+      description: |
+        Devuelve el detalle del exam (cabecera, ventana temporal, aforo,
+        flags). Para listar las preguntas que lo componen, usar
+        `GET /api/exams/{id}/questions`.
+
+        Permiso requerido: `db_exams.exam.read`.
       responses:
         '200':
           description: Exam encontrado
@@ -1945,6 +2104,21 @@ paths:
                 type: object
                 properties:
                   exam: { $ref: '#/components/schemas/Exam' }
+              example:
+                exam:
+                  id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                  exam_type_id: 1
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  parent_exam_id: ""
+                  version: 1
+                  name: "Vocacional 2026 — Colegio San Pablo"
+                  start_at: "2026-06-01T08:00:00Z"
+                  end_at: "2026-06-30T23:59:59Z"
+                  max_participants: 0
+                  published: true
+                  active: true
+                  created_at: "2026-04-15T10:00:00Z"
+                  updated_at: "2026-04-20T14:32:11Z"
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Exams]
@@ -1952,6 +2126,9 @@ paths:
       description: |
         Solo aplicable a exams en draft (`published=false`). Para editar un
         exam publicado, usar `POST /api/exams/{id}/clone`.
+
+        Solo se actualizan los campos no vacíos del body. Permiso requerido:
+        `db_exams.exam.write`.
       requestBody:
         required: true
         content:
@@ -1963,12 +2140,32 @@ paths:
                 start_at: { type: string, format: date-time }
                 end_at:   { type: string, format: date-time }
                 max_participants: { type: integer, format: int32 }
+            example:
+              name: "Vocacional 2026 — Colegio San Pablo (revisado)"
+              start_at: "2026-06-05T08:00:00Z"
+              end_at: "2026-07-05T23:59:59Z"
+              max_participants: 120
       responses:
         '200':
           description: Exam actualizado
           content:
             application/json:
               schema: { type: object, properties: { exam: { $ref: '#/components/schemas/Exam' } } }
+              example:
+                exam:
+                  id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                  exam_type_id: 1
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  parent_exam_id: ""
+                  version: 1
+                  name: "Vocacional 2026 — Colegio San Pablo (revisado)"
+                  start_at: "2026-06-05T08:00:00Z"
+                  end_at: "2026-07-05T23:59:59Z"
+                  max_participants: 120
+                  published: false
+                  active: true
+                  created_at: "2026-04-15T10:00:00Z"
+                  updated_at: "2026-05-09T09:11:00Z"
         '403':
           description: Exam ya publicado — usar Clone
           content:
@@ -1985,17 +2182,57 @@ paths:
     post:
       tags: [Exams]
       summary: Publicar el exam
-      description: Requiere que el exam tenga al menos UNA pregunta asociada.
+      description: |
+        Marca el exam como `published=true` y lo deja inmutable: a partir de
+        este momento solo se podrá `Clone` para crear una nueva versión.
+        Requiere que el exam tenga al menos UNA pregunta asociada.
+
+        Permiso requerido: `db_exams.exam.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Exam publicado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400':
+          description: El exam no tiene preguntas asociadas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "EXAM_HAS_NO_QUESTIONS"
+                message: "cannot publish an exam without questions"
+                category: "VALIDATION_ERROR"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/exams/{id}/deactivate:
     parameters: [{ $ref: '#/components/parameters/ExamID' }]
     post:
       tags: [Exams]
       summary: Desactivar exam (no borra)
+      description: |
+        Pone `active=false`. Los attempts existentes se preservan; los nuevos
+        no podrán iniciar contra este exam. Idempotente.
+
+        Permiso requerido: `db_exams.exam.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Exam desactivado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/exams/{id}/clone:
     parameters: [{ $ref: '#/components/parameters/ExamID' }]
@@ -2007,12 +2244,30 @@ paths:
         version_origen + 1, **en draft**, copiando todas sus `exam_question`.
         Los `exam_attempt` antiguos siguen apuntando al exam original →
         histórico preservado.
+
+        Permiso requerido: `db_exams.exam.write`.
       responses:
         '200':
           description: Nuevo exam creado
           content:
             application/json:
               schema: { type: object, properties: { exam: { $ref: '#/components/schemas/Exam' } } }
+              example:
+                exam:
+                  id: "9b3f7a12-cd45-4e98-8b31-1a2b3c4d5e6f"
+                  exam_type_id: 1
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  parent_exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                  version: 2
+                  name: "Vocacional 2026 — Colegio San Pablo"
+                  start_at: "2026-06-01T08:00:00Z"
+                  end_at: "2026-06-30T23:59:59Z"
+                  max_participants: 0
+                  published: false
+                  active: true
+                  created_at: "2026-05-09T10:11:22Z"
+                  updated_at: null
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/exams/search:
     post:
@@ -2046,6 +2301,15 @@ paths:
     post:
       tags: [Questions]
       summary: Crear pregunta en el banco
+      description: |
+        Crea una pregunta en el banco global de preguntas. La pregunta nace
+        **sin opciones** — hay que agregarlas con
+        `POST /api/questions/{id}/options` antes de asociarla a un exam.
+
+        El `category` es opcional pero útil para vocacional, donde se agrupan
+        preguntas por área.
+
+        Permiso requerido: `db_exams.question.write`.
       requestBody:
         required: true
         content:
@@ -2065,22 +2329,54 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { question: { $ref: '#/components/schemas/Question' } } }
+              example:
+                question:
+                  id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                  text: "¿Cuánto es 7 × 8?"
+                  category: "matemática"
+                  active: true
+                  created_at: "2026-05-09T10:00:00Z"
+                  updated_at: null
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/questions/{id}:
     parameters: [{ $ref: '#/components/parameters/QuestionID' }]
     get:
       tags: [Questions]
       summary: Obtener pregunta por ID
+      description: |
+        Devuelve la pregunta sin sus opciones. Para traer las opciones, usar
+        `GET /api/questions/{id}/options`.
+
+        Permiso requerido: `db_exams.question.read`.
       responses:
         '200':
           description: Pregunta encontrada
           content:
             application/json:
               schema: { type: object, properties: { question: { $ref: '#/components/schemas/Question' } } }
+              example:
+                question:
+                  id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                  text: "¿Cuánto es 7 × 8?"
+                  category: "matemática"
+                  active: true
+                  created_at: "2026-05-09T10:00:00Z"
+                  updated_at: null
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Questions]
       summary: Actualizar pregunta
+      description: |
+        Actualiza el enunciado y/o la categoría. Solo se modifican los campos
+        no vacíos del body.
+
+        **Atención**: editar una pregunta afecta también a los exams
+        publicados que la incluyen, porque el banco es compartido. Si el
+        cambio es semántico, conviene crear una pregunta nueva en lugar de
+        editar una existente.
+
+        Permiso requerido: `db_exams.question.write`.
       requestBody:
         required: true
         content:
@@ -2090,26 +2386,59 @@ paths:
               properties:
                 text:     { type: string }
                 category: { type: string }
+            example:
+              text: "¿Cuánto es 7 × 8? (responder en cifras)"
+              category: "matemática"
       responses:
         '200':
           description: Pregunta actualizada
           content:
             application/json:
               schema: { type: object, properties: { question: { $ref: '#/components/schemas/Question' } } }
+              example:
+                question:
+                  id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                  text: "¿Cuánto es 7 × 8? (responder en cifras)"
+                  category: "matemática"
+                  active: true
+                  created_at: "2026-05-09T10:00:00Z"
+                  updated_at: "2026-05-09T11:30:00Z"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/questions/{id}/deactivate:
     parameters: [{ $ref: '#/components/parameters/QuestionID' }]
     post:
       tags: [Questions]
       summary: Desactivar pregunta
+      description: |
+        Pone `active=false`. La pregunta desaparece del banco para nuevas
+        asignaciones, pero los exams ya publicados que la usan siguen
+        funcionando normal. Idempotente.
+
+        Permiso requerido: `db_exams.question.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Pregunta desactivada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/questions/{id}/options:
     parameters: [{ $ref: '#/components/parameters/QuestionID' }]
     get:
       tags: [Questions]
       summary: Listar opciones de una pregunta (multiple choice)
+      description: |
+        Devuelve todas las opciones ordenadas por `sort_order`. El front las
+        muestra en ese orden al estudiante.
+
+        Permiso requerido: `db_exams.question.read`.
       responses:
         '200':
           description: Opciones ordenadas por sort_order
@@ -2121,9 +2450,33 @@ paths:
                   options:
                     type: array
                     items: { $ref: '#/components/schemas/QuestionOption' }
+              example:
+                options:
+                  - id: "af2c1d33-1111-4abc-8def-aaaaaaaaaaaa"
+                    question_id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                    text: "54"
+                    is_correct: false
+                    sort_order: 0
+                  - id: "af2c1d33-2222-4abc-8def-bbbbbbbbbbbb"
+                    question_id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                    text: "56"
+                    is_correct: true
+                    sort_order: 1
+                  - id: "af2c1d33-3333-4abc-8def-cccccccccccc"
+                    question_id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                    text: "63"
+                    is_correct: false
+                    sort_order: 2
     post:
       tags: [Questions]
       summary: Agregar opción a una pregunta
+      description: |
+        Agrega una opción nueva al final del listado (o en el `sort_order`
+        provisto). Una pregunta puede tener varias opciones marcadas como
+        correctas (multi-choice), aunque el flujo típico de simulacro UCSP
+        usa una sola correcta.
+
+        Permiso requerido: `db_exams.question.write`.
       requestBody:
         required: true
         content:
@@ -2145,6 +2498,14 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { option: { $ref: '#/components/schemas/QuestionOption' } } }
+              example:
+                option:
+                  id: "af2c1d33-2222-4abc-8def-bbbbbbbbbbbb"
+                  question_id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                  text: "56"
+                  is_correct: true
+                  sort_order: 1
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/options/{id}:
     parameters:
@@ -2152,9 +2513,16 @@ paths:
         name: id
         required: true
         schema: { type: string, format: uuid }
+        description: UUID de la opción (no de la pregunta)
     patch:
       tags: [Questions]
       summary: Actualizar opción
+      description: |
+        Edita el texto, el flag `is_correct` y/o el `sort_order` de una
+        opción ya existente. Igual que con `PATCH /api/questions/{id}`,
+        afecta a exams publicados que usen la pregunta dueña.
+
+        Permiso requerido: `db_exams.question.write`.
       requestBody:
         required: true
         content:
@@ -2165,30 +2533,88 @@ paths:
                 text:       { type: string }
                 is_correct: { type: boolean }
                 sort_order: { type: integer, format: int32 }
+            example:
+              text: "56"
+              is_correct: true
+              sort_order: 1
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Opción actualizada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Questions]
       summary: Eliminar opción
+      description: |
+        Borra la opción definitivamente. Si la pregunta dueña ya está siendo
+        usada por attempts en curso, esos attempts conservan la answer
+        original aunque la opción ya no exista (FK con histórico).
+
+        Permiso requerido: `db_exams.question.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Opción eliminada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/questions/search:
     post:
       tags: [Questions]
       summary: Búsqueda HubSpot-style de preguntas
       description: |
+        Búsqueda paginada del banco de preguntas usando el patrón
+        `filterGroups` (AND dentro, OR entre grupos).
+
         Propiedades whitelist: `text`, `category`, `active`, `created_at`,
         `updated_at`.
+
+        Permiso requerido: `db_exams.question.read`.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/SearchRequest' }
+            example:
+              filter_groups:
+                - filters:
+                    - { property_name: "category", operator: "EQ", values: ["matemática"] }
+                    - { property_name: "active",   operator: "EQ", values: ["true"] }
+              properties: ["text","category"]
+              sorts: [{ property_name: "created_at", direction: "DESC" }]
+              limit: 20
       responses:
         '200':
           description: Resultados
-          content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+              example:
+                total: 47
+                results:
+                  - id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                    created_at: "2026-05-09T10:00:00Z"
+                    updated_at: null
+                    archived: false
+                    properties:
+                      text: "¿Cuánto es 7 × 8?"
+                      category: "matemática"
+                paging:
+                  next_after: 20
+                  has_more: true
 
   # ──────────────────────────────────────────────────────────────────
   # EXAM ↔ QUESTION
@@ -2198,7 +2624,13 @@ paths:
     get:
       tags: [ExamQuestions]
       summary: Listar preguntas asignadas al exam
-      description: Ordenadas por `sort_order`.
+      description: |
+        Devuelve los pares `(exam_id, question_id, points, sort_order)` que
+        forman la estructura del exam, ordenados por `sort_order`. **No trae
+        el texto de las preguntas** — el cliente itera y las pide con
+        `GET /api/questions/{id}` o usa `searchQuestions` con filtro `id IN`.
+
+        Permiso requerido: `db_exams.exam.read`.
       responses:
         '200':
           description: Lista
@@ -2210,10 +2642,25 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/ExamQuestion' }
+              example:
+                items:
+                  - exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                    question_id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                    points: 2
+                    sort_order: 0
+                  - exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                    question_id: "af2c1d33-5555-4abc-8def-eeeeeeeeeeee"
+                    points: 1
+                    sort_order: 1
     post:
       tags: [ExamQuestions]
       summary: Asignar pregunta al exam
-      description: Falla si el exam ya está publicado.
+      description: |
+        Asocia una pregunta del banco al exam con un peso (`points`) y
+        posición (`sort_order`). Falla con 403 `EXAM_PUBLISHED_LOCKED` si el
+        exam ya está publicado.
+
+        Permiso requerido: `db_exams.exam.write`.
       requestBody:
         required: true
         content:
@@ -2226,11 +2673,31 @@ paths:
                 points:      { type: integer, format: int32, default: 1 }
                 sort_order:  { type: integer, format: int32, default: 0 }
             example:
-              question_id: "9d3f..."
+              question_id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
               points: 2
               sort_order: 1
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Pregunta asignada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '403':
+          description: Exam ya publicado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "EXAM_PUBLISHED_LOCKED"
+                message: "published exams cannot be edited; clone for a new version instead"
+                category: "PERMISSION_DENIED"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/exams/{id}/questions/{question_id}:
     parameters:
@@ -2242,15 +2709,47 @@ paths:
     delete:
       tags: [ExamQuestions]
       summary: Quitar pregunta del exam
+      description: |
+        Quita el join `(exam_id, question_id)`. La pregunta sigue existiendo
+        en el banco. Falla con 403 si el exam está publicado.
+
+        Permiso requerido: `db_exams.exam.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Pregunta desasignada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '403':
+          description: Exam ya publicado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "EXAM_PUBLISHED_LOCKED"
+                message: "published exams cannot be edited; clone for a new version instead"
+                category: "PERMISSION_DENIED"
 
   /api/exams/{id}/questions/reorder:
     parameters: [{ $ref: '#/components/parameters/ExamID' }]
     post:
       tags: [ExamQuestions]
       summary: Reordenar preguntas del exam
-      description: Operación atómica (transacción). Falla si el exam está publicado.
+      description: |
+        Reescribe el `sort_order` de todas las preguntas del exam basado en
+        el orden del array `question_ids` (índice = sort_order resultante).
+        Operación atómica (transacción). El array debe contener TODAS las
+        preguntas asignadas — si falta alguna, falla.
+
+        Falla con 403 si el exam está publicado.
+
+        Permiso requerido: `db_exams.exam.write`.
       requestBody:
         required: true
         content:
@@ -2264,9 +2763,36 @@ paths:
                   items: { type: string, format: uuid }
                   description: Orden deseado (índice = sort_order resultante)
             example:
-              question_ids: ["9d3f...","af2c...","b88a..."]
+              question_ids:
+                - "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+                - "af2c1d33-5555-4abc-8def-eeeeeeeeeeee"
+                - "b88a3344-6666-4abc-8def-ffffffffffff"
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Orden actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400':
+          description: La lista no contiene exactamente las preguntas del exam
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "VALIDATION_ERROR"
+                message: "question_ids must contain all and only the exam's questions"
+                category: "VALIDATION_ERROR"
+        '403':
+          description: Exam ya publicado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   # ──────────────────────────────────────────────────────────────────
   # ATTEMPTS
@@ -2313,12 +2839,33 @@ paths:
     get:
       tags: [Attempts]
       summary: Obtener attempt por ID
+      description: |
+        Devuelve la cabecera del attempt: a qué exam y user pertenece, score
+        actual (`max_score` se llena al finalizar), y timestamps. **No trae
+        las answers** — para reconstruir las respuestas usar el endpoint de
+        análisis del attempt (no expuesto al front en esta versión) o
+        recalcular del lado del estudiante con sus selecciones cacheadas.
+
+        `submitted_at` es `null` mientras el attempt esté en curso.
+
+        Permiso requerido: `db_exams.attempt.read` o ser el dueño del attempt.
       responses:
         '200':
           description: Attempt encontrado
           content:
             application/json:
               schema: { type: object, properties: { attempt: { $ref: '#/components/schemas/Attempt' } } }
+              example:
+                attempt:
+                  id: "f3b9e07c-1234-4def-9876-abcdef012345"
+                  exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                  user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  key_id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                  score: 0
+                  max_score: 0
+                  started_at: "2026-05-09T14:22:00Z"
+                  submitted_at: null
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/attempts/{id}/answer:
     parameters: [{ $ref: '#/components/parameters/AttemptID' }]
@@ -2326,9 +2873,17 @@ paths:
       tags: [Attempts]
       summary: Responder una pregunta
       description: |
-        **Idempotente** — un attempt elige UNA opción por pregunta. Si la
-        pregunta ya tenía respuesta, se sobreescribe. Falla con
-        `409 ATTEMPT_ALREADY_SUBMITTED` si el attempt ya fue finalizado.
+        Registra/actualiza la respuesta del attempt para `question_id`.
+        **Idempotente**: un attempt elige UNA opción por pregunta — si la
+        pregunta ya tenía respuesta, se sobreescribe (último write gana).
+
+        El score NO se recalcula acá — se calcula al llamar
+        `POST /api/attempts/{id}/finish`.
+
+        Falla con `409 ATTEMPT_ALREADY_SUBMITTED` si el attempt ya fue
+        finalizado.
+
+        Permiso requerido: `db_exams.attempt.write` o ser el dueño del attempt.
       requestBody:
         required: true
         content:
@@ -2339,13 +2894,31 @@ paths:
               properties:
                 question_id: { type: string, format: uuid }
                 option_id:   { type: string, format: uuid }
+            example:
+              question_id: "9d3f7c21-44ab-4b8d-8e91-2a3b4c5d6e7f"
+              option_id: "af2c1d33-2222-4abc-8def-bbbbbbbbbbbb"
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Respuesta registrada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
         '409':
           description: Attempt ya submitted
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "ATTEMPT_ALREADY_SUBMITTED"
+                message: "attempt already submitted"
+                category: "CONFLICT"
 
   /api/attempts/{id}/finish:
     parameters: [{ $ref: '#/components/parameters/AttemptID' }]
@@ -2353,23 +2926,44 @@ paths:
       tags: [Attempts]
       summary: Finalizar attempt y calcular score
       description: |
-        Calcula `score` sumando puntos de respuestas correctas.
+        Cierra el attempt: calcula `score` sumando los `points` de las
+        respuestas correctas, calcula `max_score` como la suma total de
+        puntos posibles y setea `submitted_at`.
+
         **Idempotente**: si ya estaba finalizado, devuelve el attempt sin
         recalcular. Después de finalizar, se dispara automáticamente el
         sync a HubSpot (propiedades `score_<modulo>`, `ultima_evaluacion`).
+
+        Permiso requerido: `db_exams.attempt.write` o ser el dueño del attempt.
       responses:
         '200':
           description: Attempt finalizado
           content:
             application/json:
               schema: { type: object, properties: { attempt: { $ref: '#/components/schemas/Attempt' } } }
+              example:
+                attempt:
+                  id: "f3b9e07c-1234-4def-9876-abcdef012345"
+                  exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                  user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  key_id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                  score: 17
+                  max_score: 20
+                  started_at: "2026-05-09T14:22:00Z"
+                  submitted_at: "2026-05-09T15:18:42Z"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/users/{id}/attempts:
     parameters: [{ $ref: '#/components/parameters/UserID' }]
     get:
       tags: [Attempts]
       summary: Listar attempts de un usuario
-      description: Ordenados por `started_at DESC`.
+      description: |
+        Devuelve todos los attempts del user ordenados por `started_at DESC`.
+        Útil para la pantalla "Mis tests rendidos" del estudiante y para que
+        un asesor revise el histórico de un alumno.
+
+        Permiso requerido: `db_exams.attempt.read` o ser el propio user.
       responses:
         '200':
           description: Lista
@@ -2381,12 +2975,36 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Attempt' }
+              example:
+                items:
+                  - id: "f3b9e07c-1234-4def-9876-abcdef012345"
+                    exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                    user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                    key_id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                    score: 17
+                    max_score: 20
+                    started_at: "2026-05-09T14:22:00Z"
+                    submitted_at: "2026-05-09T15:18:42Z"
+                  - id: "ee21bc99-7766-4def-9876-987654321000"
+                    exam_id: "ab12cd34-5678-49ab-cdef-1234567890ab"
+                    user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                    key_id: ""
+                    score: 12
+                    max_score: 15
+                    started_at: "2026-04-12T09:00:00Z"
+                    submitted_at: "2026-04-12T09:42:00Z"
 
   /api/exams/{id}/attempts:
     parameters: [{ $ref: '#/components/parameters/ExamID' }]
     get:
       tags: [Attempts]
       summary: Listar attempts de un exam
+      description: |
+        Devuelve todos los attempts contra un exam específico. Útil para que
+        un asesor o admin vea quién rindió un simulacro determinado.
+        Ordenado por `started_at DESC`.
+
+        Permiso requerido: `db_exams.attempt.read`.
       responses:
         '200':
           description: Lista
@@ -2398,6 +3016,16 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/Attempt' }
+              example:
+                items:
+                  - id: "f3b9e07c-1234-4def-9876-abcdef012345"
+                    exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                    user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                    key_id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                    score: 17
+                    max_score: 20
+                    started_at: "2026-05-09T14:22:00Z"
+                    submitted_at: "2026-05-09T15:18:42Z"
 
   # ──────────────────────────────────────────────────────────────────
   # KEYS
@@ -2459,19 +3087,46 @@ paths:
     get:
       tags: [Keys]
       summary: Obtener key por ID
+      description: |
+        Devuelve la key con todos sus metadatos: code, asesor dueño, colegio
+        (si aplica), ventana temporal y aforo (`max_uses` vs
+        `current_uses`).
+
+        Permiso requerido: `db_keys.key.read`.
       responses:
         '200':
           description: Key encontrada
           content:
             application/json:
               schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+              example:
+                key:
+                  id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                  code: "S2026001"
+                  exam_type_id: 1
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  mode: "school"
+                  grade: "5to"
+                  section: "A"
+                  valid_from: "2026-06-01T00:00:00Z"
+                  valid_to: "2026-06-30T23:59:59Z"
+                  max_uses: 30
+                  current_uses: 7
+                  active: true
+                  created_at: "2026-05-09T11:30:00Z"
+                  updated_at: null
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Keys]
       summary: Actualizar key (solo metadatos editables)
       description: |
-        Permite editar grade, section, valid_from/to, max_uses. NO permite
+        Permite editar grade, section, valid_from/to, max_uses. **NO permite**
         cambiar code, mode, school_id o asesor_user_id (esos definen la
-        identidad de la key — para cambiarlos, generar otra y desactivar).
+        identidad de la key — para cambiarlos, generar otra y desactivar la
+        anterior).
+
+        Permiso requerido: `db_keys.key.write`.
       requestBody:
         required: true
         content:
@@ -2484,12 +3139,36 @@ paths:
                 valid_from: { type: string, format: date-time }
                 valid_to:   { type: string, format: date-time }
                 max_uses:   { type: integer, format: int32 }
+            example:
+              grade: "5to"
+              section: "B"
+              valid_from: "2026-06-01T00:00:00Z"
+              valid_to: "2026-07-15T23:59:59Z"
+              max_uses: 35
       responses:
         '200':
           description: Key actualizada
           content:
             application/json:
               schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+              example:
+                key:
+                  id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                  code: "S2026001"
+                  exam_type_id: 1
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  mode: "school"
+                  grade: "5to"
+                  section: "B"
+                  valid_from: "2026-06-01T00:00:00Z"
+                  valid_to: "2026-07-15T23:59:59Z"
+                  max_uses: 35
+                  current_uses: 7
+                  active: true
+                  created_at: "2026-05-09T11:30:00Z"
+                  updated_at: "2026-05-09T16:00:00Z"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/keys/by-code/{code}:
     parameters:
@@ -2497,15 +3176,42 @@ paths:
         name: code
         required: true
         schema: { type: string }
+        example: "S2026001"
     get:
       tags: [Keys]
       summary: Obtener key por código
+      description: |
+        Lookup por el código alfanumérico que el estudiante tipea para entrar
+        al exam. Útil para la pantalla previa al inicio del attempt (mostrar
+        en qué simulacro está por entrar).
+
+        **No incrementa el contador de usos** — solo lee. El contador se
+        incrementa al crear el attempt.
+
+        Permiso requerido: `db_keys.key.read`.
       responses:
         '200':
           description: Key encontrada
           content:
             application/json:
               schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+              example:
+                key:
+                  id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                  code: "S2026001"
+                  exam_type_id: 1
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  mode: "school"
+                  grade: "5to"
+                  section: "A"
+                  valid_from: "2026-06-01T00:00:00Z"
+                  valid_to: "2026-06-30T23:59:59Z"
+                  max_uses: 30
+                  current_uses: 7
+                  active: true
+                  created_at: "2026-05-09T11:30:00Z"
+                  updated_at: null
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/keys/{id}/deactivate:
@@ -2513,8 +3219,23 @@ paths:
     post:
       tags: [Keys]
       summary: Desactivar key
+      description: |
+        Pone `active=false`. Los attempts que ya empezaron con esta key no se
+        invalidan, pero NO se podrán iniciar nuevos. Idempotente.
+
+        Permiso requerido: `db_keys.key.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Key desactivada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/keys/validate:
     post:
@@ -2556,43 +3277,121 @@ paths:
     get:
       tags: [Keys]
       summary: Listar keys generadas por un asesor
+      description: |
+        Devuelve todas las keys cuyo `asesor_user_id` coincide con el path,
+        ordenadas por `created_at DESC`. Útil para el dashboard del asesor:
+        ver qué keys generó, cuáles se usaron y cuántos usos quedan.
+
+        Permiso requerido: `db_keys.key.read` o ser el propio asesor.
       responses:
         '200':
           description: Lista (ordenada por created_at DESC)
           content:
             application/json:
               schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Key' } } } }
+              example:
+                items:
+                  - id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                    code: "S2026001"
+                    exam_type_id: 1
+                    school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                    asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                    mode: "school"
+                    grade: "5to"
+                    section: "A"
+                    valid_from: "2026-06-01T00:00:00Z"
+                    valid_to: "2026-06-30T23:59:59Z"
+                    max_uses: 30
+                    current_uses: 7
+                    active: true
+                    created_at: "2026-05-09T11:30:00Z"
+                    updated_at: null
 
   /api/colegios/{id}/keys:
     parameters: [{ $ref: '#/components/parameters/SchoolID' }]
     get:
       tags: [Keys]
       summary: Listar keys atadas a un colegio
+      description: |
+        Devuelve todas las keys cuyo `school_id` coincide (solo aplica a keys
+        en `mode=school`). Útil para el coordinador del colegio que quiere
+        ver qué keys hay vivas para su institución.
+
+        Permiso requerido: `db_keys.key.read`.
       responses:
         '200':
           description: Lista
           content:
             application/json:
               schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/Key' } } } }
+              example:
+                items:
+                  - id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                    code: "S2026001"
+                    exam_type_id: 1
+                    school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                    asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                    mode: "school"
+                    grade: "5to"
+                    section: "A"
+                    valid_from: "2026-06-01T00:00:00Z"
+                    valid_to: "2026-06-30T23:59:59Z"
+                    max_uses: 30
+                    current_uses: 7
+                    active: true
+                    created_at: "2026-05-09T11:30:00Z"
+                    updated_at: null
 
   /api/keys/search:
     post:
       tags: [Keys]
       summary: Búsqueda HubSpot-style de keys
       description: |
+        Búsqueda paginada con filterGroups (AND dentro, OR entre grupos).
+
         Propiedades whitelist: `code`, `exam_type_id`, `school_id`,
         `asesor_user_id`, `mode`, `grade`, `section`, `valid_from`,
         `valid_to`, `max_uses`, `current_uses`, `active`, `created_at`,
         `updated_at`.
+
+        Permiso requerido: `db_keys.key.read`.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/SearchRequest' }
+            example:
+              filter_groups:
+                - filters:
+                    - { property_name: "active",       operator: "EQ",  values: ["true"] }
+                    - { property_name: "exam_type_id", operator: "EQ",  values: ["1"] }
+                    - { property_name: "valid_to",     operator: "GTE", values: ["2026-05-01T00:00:00Z"] }
+              sorts: [{ property_name: "created_at", direction: "DESC" }]
+              limit: 50
       responses:
         '200':
           description: Resultados
-          content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+              example:
+                total: 12
+                results:
+                  - id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                    created_at: "2026-05-09T11:30:00Z"
+                    updated_at: null
+                    archived: false
+                    properties:
+                      code: "S2026001"
+                      exam_type_id: 1
+                      school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                      mode: "school"
+                      max_uses: 30
+                      current_uses: 7
+                      active: true
+                paging:
+                  next_after: 0
+                  has_more: false
 
   # ──────────────────────────────────────────────────────────────────
   # SURVEYS (satisfaction_service)
@@ -2601,6 +3400,15 @@ paths:
     post:
       tags: [Surveys]
       summary: Crear encuesta (en draft)
+      description: |
+        Crea una encuesta en estado **draft** (`published=false`,
+        `version=1`). Hay que agregarle preguntas con
+        `POST /api/surveys/{id}/questions` y luego publicarla.
+
+        El `code` debe ser único — para crear una nueva versión de una
+        encuesta existente, no se cambia el code, se versionan automáticamente.
+
+        Permiso requerido: `satisfaction.survey.write`.
       requestBody:
         required: true
         content:
@@ -2626,21 +3434,58 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+              example:
+                survey:
+                  id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                  code: "post-vocacional-2026"
+                  title: "Encuesta post Vocacional 2026"
+                  description: "Tu opinión es importante"
+                  target_role: "estudiante"
+                  trigger_kind: "post_test"
+                  version: 1
+                  published: false
+                  active: true
+                  created_at: "2026-05-09T12:00:00Z"
+                  updated_at: null
 
   /api/surveys/{id}:
     parameters: [{ $ref: '#/components/parameters/SurveyID' }]
     get:
       tags: [Surveys]
       summary: Obtener encuesta por ID
+      description: |
+        Devuelve la cabecera de la encuesta (sin sus preguntas — para esas
+        usar `GET /api/surveys/{id}/questions`).
+
+        Permiso requerido: `satisfaction.survey.read`.
       responses:
         '200':
           description: Survey encontrada
           content:
             application/json:
               schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+              example:
+                survey:
+                  id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                  code: "post-vocacional-2026"
+                  title: "Encuesta post Vocacional 2026"
+                  description: "Tu opinión es importante"
+                  target_role: "estudiante"
+                  trigger_kind: "post_test"
+                  version: 1
+                  published: true
+                  active: true
+                  created_at: "2026-05-09T12:00:00Z"
+                  updated_at: "2026-05-09T13:00:00Z"
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Surveys]
       summary: Actualizar encuesta (solo si NO publicada)
+      description: |
+        Permite editar `title` y `description` mientras la encuesta esté en
+        draft. Una vez publicada, hay que crear una versión nueva.
+
+        Permiso requerido: `satisfaction.survey.write`.
       requestBody:
         required: true
         content:
@@ -2650,55 +3495,158 @@ paths:
               properties:
                 title:       { type: string }
                 description: { type: string }
+            example:
+              title: "Encuesta post Vocacional 2026 (revisada)"
+              description: "Tu opinión es muy importante para mejorar el servicio"
       responses:
         '200':
           description: Survey actualizada
           content:
             application/json:
               schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+              example:
+                survey:
+                  id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                  code: "post-vocacional-2026"
+                  title: "Encuesta post Vocacional 2026 (revisada)"
+                  description: "Tu opinión es muy importante para mejorar el servicio"
+                  target_role: "estudiante"
+                  trigger_kind: "post_test"
+                  version: 1
+                  published: false
+                  active: true
+                  created_at: "2026-05-09T12:00:00Z"
+                  updated_at: "2026-05-09T12:30:00Z"
+        '403':
+          description: Survey ya publicada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "SURVEY_PUBLISHED_LOCKED"
+                message: "published surveys cannot be edited"
+                category: "PERMISSION_DENIED"
 
   /api/surveys/{id}/publish:
     parameters: [{ $ref: '#/components/parameters/SurveyID' }]
     post:
       tags: [Surveys]
       summary: Publicar encuesta
-      description: Requiere al menos una pregunta.
+      description: |
+        Marca la encuesta como `published=true`. Requiere al menos una
+        pregunta. A partir de este momento no se puede editar — hay que
+        crear una nueva versión si se quiere cambiar algo.
+
+        Permiso requerido: `satisfaction.survey.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Encuesta publicada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400':
+          description: La encuesta no tiene preguntas
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "SURVEY_HAS_NO_QUESTIONS"
+                message: "cannot publish a survey without questions"
+                category: "VALIDATION_ERROR"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/surveys/{id}/deactivate:
     parameters: [{ $ref: '#/components/parameters/SurveyID' }]
     post:
       tags: [Surveys]
       summary: Desactivar encuesta
+      description: |
+        Pone `active=false`. Las respuestas registradas se preservan; nuevas
+        respuestas serán rechazadas. Idempotente.
+
+        Permiso requerido: `satisfaction.survey.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Encuesta desactivada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/surveys/by-code:
     get:
       tags: [Surveys]
       summary: Obtener encuesta por code + version
+      description: |
+        Lookup por la dupla `(code, version)`. Útil para que el frontend
+        cargue la encuesta cuando solo conoce el slug y la versión (ej. URL
+        compartible: `/encuesta/post-vocacional-2026/v1`).
+
+        Permiso requerido: `satisfaction.survey.read`.
       parameters:
         - in: query
           name: code
           required: true
           schema: { type: string }
+          example: "post-vocacional-2026"
         - in: query
           name: version
           required: true
           schema: { type: integer, format: int32 }
+          example: 1
       responses:
         '200':
           description: Survey encontrada
           content:
             application/json:
               schema: { type: object, properties: { survey: { $ref: '#/components/schemas/Survey' } } }
+              example:
+                survey:
+                  id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                  code: "post-vocacional-2026"
+                  title: "Encuesta post Vocacional 2026"
+                  description: "Tu opinión es importante"
+                  target_role: "estudiante"
+                  trigger_kind: "post_test"
+                  version: 1
+                  published: true
+                  active: true
+                  created_at: "2026-05-09T12:00:00Z"
+                  updated_at: "2026-05-09T13:00:00Z"
+        '400':
+          description: Falta `code` o `version` en query
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "VALIDATION_ERROR"
+                message: "code and version query params are required"
+                category: "VALIDATION_ERROR"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/surveys/{id}/questions:
     parameters: [{ $ref: '#/components/parameters/SurveyID' }]
     get:
       tags: [Surveys]
       summary: Listar preguntas de la encuesta
+      description: |
+        Devuelve las preguntas de la encuesta ordenadas por `sort_order`. El
+        front las muestra en ese orden al respondiente.
+
+        Permiso requerido: `satisfaction.survey.read`.
       responses:
         '200':
           description: Lista ordenada por sort_order
@@ -2710,14 +3658,35 @@ paths:
                   items:
                     type: array
                     items: { $ref: '#/components/schemas/SurveyQuestion' }
+              example:
+                items:
+                  - id: "abc11111-2222-4333-8444-555555555555"
+                    survey_id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                    text: "¿Qué tan probable es que recomiendes Mi Propósito?"
+                    kind: "nps"
+                    sort_order: 0
+                    options_json: ""
+                    required: true
+                  - id: "abc22222-3333-4444-8555-666666666666"
+                    survey_id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                    text: "¿La encuesta fue clara?"
+                    kind: "single"
+                    sort_order: 1
+                    options_json: "[{\"value\":\"si\",\"label\":\"Sí\"},{\"value\":\"no\",\"label\":\"No\"}]"
+                    required: true
     post:
       tags: [Surveys]
       summary: Agregar pregunta a la encuesta
       description: |
+        Agrega una pregunta al final del listado (o en el `sort_order`
+        provisto). Solo válido si la encuesta no está publicada todavía.
+
         El formato de `options_json` depende del `kind`:
         - `scale`/`nps`: `{"min":1,"max":5,"min_label":"Mal","max_label":"Excelente"}`
         - `single`/`multi`: `[{"value":"opt_1","label":"Sí"},{"value":"opt_2","label":"No"}]`
         - `open`: vacío
+
+        Permiso requerido: `satisfaction.survey.write`.
       requestBody:
         required: true
         content:
@@ -2753,6 +3722,16 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { question: { $ref: '#/components/schemas/SurveyQuestion' } } }
+              example:
+                question:
+                  id: "abc11111-2222-4333-8444-555555555555"
+                  survey_id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                  text: "¿Qué tan probable es que recomiendes Mi Propósito?"
+                  kind: "nps"
+                  sort_order: 1
+                  options_json: ""
+                  required: true
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/survey-questions/{id}:
     parameters:
@@ -2760,9 +3739,15 @@ paths:
         name: id
         required: true
         schema: { type: string, format: uuid }
+        description: UUID de la pregunta de encuesta (no del survey)
     patch:
       tags: [Surveys]
       summary: Actualizar pregunta de encuesta
+      description: |
+        Edita el texto, el orden, las opciones o el flag `required`. Solo
+        permitido en encuestas no publicadas.
+
+        Permiso requerido: `satisfaction.survey.write`.
       requestBody:
         required: true
         content:
@@ -2774,38 +3759,105 @@ paths:
                 sort_order:   { type: integer, format: int32 }
                 options_json: { type: string }
                 required:     { type: boolean }
+            example:
+              text: "¿Qué tan probable es que recomiendes Mi Propósito a un amigo?"
+              sort_order: 0
+              required: true
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Pregunta actualizada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Surveys]
       summary: Eliminar pregunta de encuesta
+      description: |
+        Borra la pregunta. Solo permitido si la encuesta NO está publicada.
+
+        Permiso requerido: `satisfaction.survey.write`.
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Pregunta eliminada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/surveys/search:
     post:
       tags: [Surveys]
       summary: Búsqueda HubSpot-style de encuestas
       description: |
-        Propiedades: `code`, `title`, `target_role`, `trigger_kind`, `version`,
-        `published`, `active`, `created_at`.
+        Búsqueda paginada con filterGroups (AND dentro, OR entre grupos).
+
+        Propiedades whitelist: `code`, `title`, `target_role`, `trigger_kind`,
+        `version`, `published`, `active`, `created_at`.
+
+        Permiso requerido: `satisfaction.survey.read`.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/SearchRequest' }
+            example:
+              filter_groups:
+                - filters:
+                    - { property_name: "target_role", operator: "EQ", values: ["estudiante"] }
+                    - { property_name: "active",      operator: "EQ", values: ["true"] }
+                    - { property_name: "published",   operator: "EQ", values: ["true"] }
+              sorts: [{ property_name: "created_at", direction: "DESC" }]
+              limit: 20
       responses:
         '200':
           description: Resultados
-          content: { application/json: { schema: { $ref: '#/components/schemas/SearchResponse' } } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SearchResponse' }
+              example:
+                total: 3
+                results:
+                  - id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                    created_at: "2026-05-09T12:00:00Z"
+                    updated_at: "2026-05-09T13:00:00Z"
+                    archived: false
+                    properties:
+                      code: "post-vocacional-2026"
+                      title: "Encuesta post Vocacional 2026"
+                      target_role: "estudiante"
+                      trigger_kind: "post_test"
+                      version: 1
+                      published: true
+                      active: true
+                paging:
+                  next_after: 0
+                  has_more: false
 
   /api/survey-responses:
     post:
       tags: [Surveys]
       summary: Enviar respuesta a una encuesta
       description: |
-        Persiste la respuesta + answers en una transacción. Falla si la
-        encuesta no está publicada.
+        Persiste la respuesta + answers en una sola transacción. Falla si la
+        encuesta no está publicada o está desactivada.
+
+        Para `value_number`, mandar `has_number: true` cuando se quiera
+        registrar un 0 explícito (sin el flag se interpreta como "no
+        respondió numéricamente").
+
+        Permiso requerido: `satisfaction.response.write` o ser el `user_id`
+        del body.
       requestBody:
         required: true
         content:
@@ -2840,6 +3892,14 @@ paths:
           content:
             application/json:
               schema: { type: object, properties: { response: { $ref: '#/components/schemas/SurveyResponse' } } }
+              example:
+                response:
+                  id: "ee99aabb-1122-4333-8444-555566667777"
+                  survey_id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                  user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  exam_attempt_id: "f3b9e07c-1234-4def-9876-abcdef012345"
+                  submitted_at: "2026-05-09T15:25:00Z"
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/survey-responses/{id}:
     parameters:
@@ -2847,15 +3907,31 @@ paths:
         name: id
         required: true
         schema: { type: string, format: uuid }
+        description: UUID de la response (no del survey)
     get:
       tags: [Surveys]
       summary: Obtener respuesta por ID
+      description: |
+        Devuelve la cabecera de la respuesta. Las answers individuales no se
+        exponen en este endpoint en esta versión — se procesan agregadas en
+        `/api/surveys/{id}/metrics`.
+
+        Permiso requerido: `satisfaction.response.read` o ser el dueño de la
+        respuesta.
       responses:
         '200':
           description: Respuesta encontrada
           content:
             application/json:
               schema: { type: object, properties: { response: { $ref: '#/components/schemas/SurveyResponse' } } }
+              example:
+                response:
+                  id: "ee99aabb-1122-4333-8444-555566667777"
+                  survey_id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                  user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  exam_attempt_id: "f3b9e07c-1234-4def-9876-abcdef012345"
+                  submitted_at: "2026-05-09T15:25:00Z"
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/surveys/{id}/metrics:
     parameters: [{ $ref: '#/components/parameters/SurveyID' }]
@@ -2863,14 +3939,46 @@ paths:
       tags: [Surveys]
       summary: Métricas agregadas de la encuesta
       description: |
-        Calcula NPS, average y distribuciones según el `kind` de cada pregunta.
-        Computado en runtime (no cacheado a nivel de encuesta).
+        Calcula NPS, average y distribuciones por pregunta según el `kind`:
+        - `nps`: devuelve `nps` (-100..100) y el `count` de respuestas.
+        - `scale`: devuelve `average` (promedio) y la distribución por valor.
+        - `single`/`multi`: devuelve `distribution` `{value: count}`.
+        - `open`: solo devuelve `count`.
+
+        Los flags `has_average` y `has_nps` indican si esos campos son
+        significativos (false → ignorar el valor numérico). Computado en
+        runtime sobre los responses publicados — no cacheado.
+
+        Permiso requerido: `satisfaction.metrics.read`.
       responses:
         '200':
           description: Métricas
           content:
             application/json:
               schema: { $ref: '#/components/schemas/SurveyMetrics' }
+              example:
+                survey_id: "0aa1b2c3-d4e5-4f67-8a9b-0c1d2e3f4a5b"
+                total_responses: 142
+                per_question:
+                  - question_id: "abc11111-2222-4333-8444-555555555555"
+                    kind: "nps"
+                    count: 142
+                    average: null
+                    has_average: false
+                    nps: 47
+                    has_nps: true
+                    distribution: {}
+                  - question_id: "abc22222-3333-4444-8555-666666666666"
+                    kind: "single"
+                    count: 142
+                    average: null
+                    has_average: false
+                    nps: null
+                    has_nps: false
+                    distribution:
+                      si: 128
+                      no: 14
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ──────────────────────────────────────────────────────────────────
   # ANALYTICS
@@ -2882,57 +3990,148 @@ paths:
       summary: Dashboard de un asesor
       description: |
         Agrega: total colegios asignados, total keys generadas, total
-        attempts, métricas por tipo de examen.
+        attempts, métricas por tipo de examen (`vocacional`, `simulacro`,
+        `habitos`). El mapa `by_exam_type` puede traer 0..N entradas según
+        los exam_type que el asesor tenga registrados.
 
-        Cacheado en Redis (TTL 5 min). Permiso `analytics.dashboard.read` o ser el
-        propio asesor.
+        Cacheado en Redis (TTL 5 min). Permiso requerido:
+        `analytics.dashboard.read` o ser el propio asesor.
       responses:
         '200':
           description: Dashboard
           content:
             application/json:
               schema: { $ref: '#/components/schemas/AsesorDashboard' }
+              example:
+                asesor_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                asesor_name: "María Quispe"
+                total_colegios: 4
+                total_keys: 27
+                total_attempts: 542
+                by_exam_type:
+                  vocacional:
+                    attempts: 210
+                    avg_score: 14.7
+                    avg_max_score: 20.0
+                  simulacro:
+                    attempts: 332
+                    avg_score: 62.4
+                    avg_max_score: 100.0
+                generated_at: "2026-05-09T16:00:00Z"
 
   /api/analytics/colegio/{id}/dashboard:
     parameters: [{ $ref: '#/components/parameters/SchoolID' }]
     get:
       tags: [Analytics]
       summary: Dashboard de un colegio
+      description: |
+        Agrega: total estudiantes (users con `school_id = id`), total
+        attempts y métricas por tipo de examen.
+
+        Cacheado en Redis (TTL 5 min). Permiso requerido:
+        `analytics.dashboard.read`.
       responses:
         '200':
           description: Dashboard
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ColegioDashboard' }
+              example:
+                school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                school_name: "Colegio San Pablo"
+                total_students: 187
+                total_attempts: 412
+                by_exam_type:
+                  vocacional:
+                    attempts: 165
+                    avg_score: 15.1
+                    avg_max_score: 20.0
+                  simulacro:
+                    attempts: 247
+                    avg_score: 64.2
+                    avg_max_score: 100.0
+                generated_at: "2026-05-09T16:00:00Z"
 
   /api/analytics/estudiante/{id}/dashboard:
     parameters: [{ $ref: '#/components/parameters/UserID' }]
     get:
       tags: [Analytics]
       summary: Dashboard del estudiante
-      description: Tests rendidos + scores. NO cacheado (datos personales sensibles).
+      description: |
+        Lista los tests que rindió el estudiante con sus scores. **NO
+        cacheado** (datos personales sensibles, queremos siempre lectura
+        fresca).
+
+        Permiso requerido: `analytics.dashboard.read` o ser el propio
+        estudiante.
       responses:
         '200':
           description: Dashboard
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EstudianteDashboard' }
+              example:
+                user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                student_name: "Juan Pérez"
+                tests:
+                  - exam_type_code: "vocacional"
+                    exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                    exam_name: "Vocacional 2026 — Colegio San Pablo"
+                    score: 17
+                    max_score: 20
+                    submitted_at: "2026-05-09T15:18:42Z"
+                  - exam_type_code: "simulacro"
+                    exam_id: "ab12cd34-5678-49ab-cdef-1234567890ab"
+                    exam_name: "Simulacro UCSP 2026 - 1"
+                    score: 73
+                    max_score: 100
+                    submitted_at: "2026-04-12T09:42:00Z"
+                generated_at: "2026-05-09T16:00:00Z"
 
   /api/analytics/comparativo:
     get:
       tags: [Analytics]
       summary: Comparativo entre colegios
+      description: |
+        Devuelve para un `exam_type_code` dado un ranking de colegios con
+        promedio (`avg_score`) y cantidad de attempts. Útil para la pantalla
+        de gerencia UCSP que compara desempeño entre instituciones.
+
+        Permiso requerido: `analytics.dashboard.read`.
       parameters:
         - in: query
           name: exam_type_code
           required: true
           schema: { type: string, enum: [vocacional, simulacro, habitos] }
+          example: "simulacro"
       responses:
         '200':
           description: Comparativo
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ColegioComparativo' }
+              example:
+                exam_type_code: "simulacro"
+                items:
+                  - school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                    school_name: "Colegio San Pablo"
+                    avg_score: 64.2
+                    attempts: 247
+                  - school_id: "4b8c5d22-aaaa-4bcd-9eef-1122334455aa"
+                    school_name: "Colegio La Salle"
+                    avg_score: 58.9
+                    attempts: 189
+                generated_at: "2026-05-09T16:00:00Z"
+        '400':
+          description: Falta `exam_type_code`
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "VALIDATION_ERROR"
+                message: "exam_type_code query param is required"
+                category: "VALIDATION_ERROR"
 
   /api/analytics/estudiante/{id}/historico:
     parameters: [{ $ref: '#/components/parameters/UserID' }]
@@ -2940,14 +4139,40 @@ paths:
       tags: [Analytics]
       summary: Histórico completo de attempts del estudiante
       description: |
-        Útil para que el estudiante (o sus padres) vean evolución temporal
-        de sus puntuaciones.
+        Devuelve TODOS los tests rendidos del estudiante a lo largo del
+        tiempo, ordenados cronológicamente. Útil para que el estudiante (o
+        sus padres) vean evolución temporal de sus puntuaciones.
+
+        Permiso requerido: `analytics.dashboard.read` o ser el propio
+        estudiante.
       responses:
         '200':
           description: Histórico
           content:
             application/json:
               schema: { $ref: '#/components/schemas/HistoricoEstudiante' }
+              example:
+                user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                items:
+                  - exam_type_code: "simulacro"
+                    exam_id: "ab12cd34-5678-49ab-cdef-1234567890ab"
+                    exam_name: "Simulacro UCSP 2026 - 1"
+                    score: 60
+                    max_score: 100
+                    submitted_at: "2026-03-10T10:00:00Z"
+                  - exam_type_code: "simulacro"
+                    exam_id: "cd34ef56-7890-49ab-cdef-1234567890cd"
+                    exam_name: "Simulacro UCSP 2026 - 2"
+                    score: 73
+                    max_score: 100
+                    submitted_at: "2026-04-12T09:42:00Z"
+                  - exam_type_code: "vocacional"
+                    exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                    exam_name: "Vocacional 2026 — Colegio San Pablo"
+                    score: 17
+                    max_score: 20
+                    submitted_at: "2026-05-09T15:18:42Z"
+                generated_at: "2026-05-09T16:00:00Z"
 
   /api/analytics/asesor/{id}/export.xlsx:
     parameters: [{ $ref: '#/components/parameters/UserID' }]
@@ -3005,6 +4230,11 @@ paths:
         provee `user_id`, además persistimos el record_id en la columna
         `users.hubspot_record_id` para evitar tener que buscar el contacto
         por DNI en sincronizaciones posteriores.
+
+        El campo `extra` permite mandar properties extra de HubSpot que no
+        formen parte del contrato base (ej: campos custom del cliente).
+
+        Permiso requerido: `hubspot.contact.write` (típicamente solo admins).
       requestBody:
         required: true
         content:
@@ -3043,6 +4273,9 @@ paths:
                 type: object
                 properties:
                   record_id: { type: string, description: "ID del Contact en HubSpot (no UUID)" }
+              example:
+                record_id: "12345678901"
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/hubspot/contacts/by-dni/{dni}:
     parameters:
@@ -3050,9 +4283,17 @@ paths:
         name: dni
         required: true
         schema: { type: string }
+        example: "70123456"
     get:
       tags: [HubSpot]
       summary: Buscar contact por DNI
+      description: |
+        Busca el `record_id` del Contact en HubSpot por DNI. Si el contact
+        no existe, devuelve `record_id: ""` (string vacío) y NO 404 — para
+        que el caller pueda decidir si crearlo via
+        `POST /api/hubspot/contacts`.
+
+        Permiso requerido: `hubspot.contact.read`.
       responses:
         '200':
           description: Record ID (vacío si no existe)
@@ -3062,6 +4303,8 @@ paths:
                 type: object
                 properties:
                   record_id: { type: string }
+              example:
+                record_id: "12345678901"
 
   /api/hubspot/otp:
     post:
@@ -3069,7 +4312,14 @@ paths:
       summary: Disparar webhook OTP
       description: |
         Escribe la propiedad `otp_estudiante` en el contact (si existe) y
-        dispara el Automation Webhook de HubSpot que envía el email al alumno.
+        dispara el Automation Webhook de HubSpot que envía el email al
+        alumno con el código.
+
+        **No hay flow inverso desde acá** — la verificación del OTP la hace
+        el endpoint `POST /api/auth/student/verify-otp` contra el cache
+        local. Este endpoint solo sirve para entregar el código al user.
+
+        Permiso requerido: `hubspot.otp.write` (uso interno del backend).
       requestBody:
         required: true
         content:
@@ -3082,7 +4332,17 @@ paths:
                 otp:   { type: string, description: "6 dígitos, generado server-side" }
             example: { email: "alumno@gmail.com", otp: "489201" }
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Webhook disparado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/hubspot/results:
     post:
@@ -3090,7 +4350,14 @@ paths:
       summary: Sync de resultado de examen al Contact
       description: |
         **Asíncrono** — encolado en BullMQ con backoff exponencial. La cola
-        deduplica por `attempt_id` (idempotente).
+        deduplica por `attempt_id` (idempotente). El caller recibe 200 OK
+        en cuanto se encola, sin esperar al resultado real del sync.
+
+        Si el sync falla repetidamente, el job aparece en
+        `GET /api/hubspot/failed` y se puede reintentar manualmente.
+
+        Permiso requerido: `hubspot.result.write` (típicamente lo dispara el
+        propio backend al finalizar un attempt).
       requestBody:
         required: true
         content:
@@ -3106,14 +4373,36 @@ paths:
                 attempt_id:         { type: string, format: uuid }
                 submitted_at:       { type: string, format: date-time }
                 contact_record_id:  { type: string, description: "Opcional. Si se provee, evita un search por DNI" }
+            example:
+              dni: "70123456"
+              exam_type_code: "simulacro"
+              score: 73
+              max_score: 100
+              attempt_id: "f3b9e07c-1234-4def-9876-abcdef012345"
+              submitted_at: "2026-05-09T15:18:42Z"
+              contact_record_id: "12345678901"
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Job encolado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/hubspot/schools:
     post:
       tags: [HubSpot]
       summary: Sync school como Custom Object
-      description: Asíncrono. Idempotente por `school_id`.
+      description: |
+        Asíncrono — encolado en BullMQ. Idempotente por `school_id`. Crea
+        o actualiza el Custom Object "Colegio" en HubSpot.
+
+        Permiso requerido: `hubspot.school.write`.
       requestBody:
         required: true
         content:
@@ -3126,13 +4415,33 @@ paths:
                 email:            { type: string }
                 nombre:           { type: string }
                 personal_a_cargo: { type: string }
+            example:
+              school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+              email: "contacto@colsanpablo.edu.pe"
+              nombre: "Colegio San Pablo"
+              personal_a_cargo: "Lic. Carlos Romero"
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Job encolado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/hubspot/asesores:
     post:
       tags: [HubSpot]
       summary: Sync asesor como Custom Object
+      description: |
+        Asíncrono. Idempotente por `asesor_user_id`. Crea o actualiza el
+        Custom Object "Asesor" en HubSpot con los datos del user.
+
+        Permiso requerido: `hubspot.asesor.write`.
       requestBody:
         required: true
         content:
@@ -3145,13 +4454,37 @@ paths:
                 email:          { type: string }
                 nombre:         { type: string }
                 bio:            { type: string }
+            example:
+              asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+              email: "asesor@ucsp.edu.pe"
+              nombre: "María Quispe"
+              bio: "Asesora académica con 8 años de experiencia"
       responses:
-        '200': { $ref: '#/components/responses/Empty' }
+        '200':
+          description: Job encolado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/hubspot/failed:
     get:
       tags: [HubSpot]
       summary: Listar jobs fallidos (admin)
+      description: |
+        Devuelve los jobs que agotaron sus reintentos automáticos en BullMQ
+        y quedaron en dead-letter. Para cada uno se ve la cola, el id, el
+        motivo de la falla y el payload original para poder reintentar.
+
+        Para reintentar uno, llamar a `POST /api/hubspot/retry` con `queue`
+        y `job_id` del item.
+
+        Permiso requerido: `hubspot.admin`.
       parameters:
         - in: query
           name: limit
@@ -3177,11 +4510,29 @@ paths:
                         failed_reason: { type: string }
                         payload:       { type: string, description: "JSON serializado del payload original" }
                         failed_at:     { type: string, format: date-time }
+              example:
+                items:
+                  - queue: "hubspot:sync-result"
+                    job_id: "1738"
+                    failed_reason: "HubSpot API 429: rate limit exceeded"
+                    payload: "{\"dni\":\"70123456\",\"attempt_id\":\"f3b9e07c-1234-4def-9876-abcdef012345\",\"score\":73}"
+                    failed_at: "2026-05-09T14:21:00Z"
+                  - queue: "hubspot:sync-school"
+                    job_id: "1739"
+                    failed_reason: "HubSpot API 400: invalid email format"
+                    payload: "{\"school_id\":\"3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c\",\"email\":\"\"}"
+                    failed_at: "2026-05-09T14:25:11Z"
 
   /api/hubspot/retry:
     post:
       tags: [HubSpot]
       summary: Reintentar un job fallido
+      description: |
+        Reencola un job que estaba en dead-letter. El `queue` y `job_id`
+        salen del listado de `GET /api/hubspot/failed`. Si el job ya no
+        existe (fue removido) responde con `ok: false`.
+
+        Permiso requerido: `hubspot.admin`.
       requestBody:
         required: true
         content:
@@ -3192,6 +4543,9 @@ paths:
               properties:
                 queue:  { type: string }
                 job_id: { type: string }
+            example:
+              queue: "hubspot:sync-result"
+              job_id: "1738"
       responses:
         '200':
           description: Resultado del retry
@@ -3201,6 +4555,9 @@ paths:
                 type: object
                 properties:
                   ok: { type: boolean }
+              example:
+                ok: true
+        '400': { $ref: '#/components/responses/ValidationError' }
 
 # ====================================================================
 # Components
