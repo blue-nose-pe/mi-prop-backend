@@ -124,7 +124,7 @@
       </h1>
       <div class="right">
         <div class="badges">
-          <span class="badge prod">v0.1.0</span>
+          <span class="badge prod" id="api-version-badge">v—</span>
           <span class="badge">UCSP / Blue Nose</span>
         </div>
         <button
@@ -190,6 +190,21 @@
           document.documentElement.setAttribute('data-theme', next);
           document.documentElement.classList.toggle('sl-theme-dark', e.matches);
         });
+      })();
+
+      // ============== Version badge ==============
+      // Lee version del openapi.yaml en runtime para evitar drift entre
+      // el badge y la spec.
+      (function () {
+        var badge = document.getElementById('api-version-badge');
+        if (!badge) return;
+        fetch('openapi.yaml', { cache: 'no-store' })
+          .then(function (r) { return r.text(); })
+          .then(function (txt) {
+            var m = txt.match(/^\s+version:\s*([^\s#]+)/m);
+            if (m) badge.textContent = 'v' + m[1];
+          })
+          .catch(function () { /* deja el placeholder */ });
       })();
     </script>
   </body>
