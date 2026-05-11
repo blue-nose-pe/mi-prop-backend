@@ -133,7 +133,7 @@ func main() {
 	tokenVerifier := jwtadapter.NewVerifier(verifier)
 
 	// ---------- 3. CORE — CQRS: commands y queries son piezas separadas ----------
-	userCmds := command.NewUserHandler(userRepo, cache, hasher, hubspotSync)
+	userCmds := command.NewUserHandler(userRepo, permRepo, cache, hasher, hubspotSync)
 	authCmds := command.NewAuthHandler(userRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier)
 	permCmds := command.NewPermissionHandler(userRepo, permRepo)
 	permGroupCmds := command.NewPermissionGroupHandler(permRepo)

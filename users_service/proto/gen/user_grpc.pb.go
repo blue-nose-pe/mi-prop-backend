@@ -628,7 +628,8 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	SchoolService_GetSchool_FullMethodName = "/users.v1.SchoolService/GetSchool"
+	SchoolService_GetSchool_FullMethodName   = "/users.v1.SchoolService/GetSchool"
+	SchoolService_ListSchools_FullMethodName = "/users.v1.SchoolService/ListSchools"
 )
 
 // SchoolServiceClient is the client API for SchoolService service.
@@ -640,6 +641,7 @@ const (
 // representante de colegio (flow administrativo aparte).
 type SchoolServiceClient interface {
 	GetSchool(ctx context.Context, in *GetSchoolRequest, opts ...grpc.CallOption) (*SchoolResponse, error)
+	ListSchools(ctx context.Context, in *ListSchoolsRequest, opts ...grpc.CallOption) (*ListSchoolsResponse, error)
 }
 
 type schoolServiceClient struct {
@@ -660,6 +662,16 @@ func (c *schoolServiceClient) GetSchool(ctx context.Context, in *GetSchoolReques
 	return out, nil
 }
 
+func (c *schoolServiceClient) ListSchools(ctx context.Context, in *ListSchoolsRequest, opts ...grpc.CallOption) (*ListSchoolsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSchoolsResponse)
+	err := c.cc.Invoke(ctx, SchoolService_ListSchools_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SchoolServiceServer is the server API for SchoolService service.
 // All implementations must embed UnimplementedSchoolServiceServer
 // for forward compatibility.
@@ -669,6 +681,7 @@ func (c *schoolServiceClient) GetSchool(ctx context.Context, in *GetSchoolReques
 // representante de colegio (flow administrativo aparte).
 type SchoolServiceServer interface {
 	GetSchool(context.Context, *GetSchoolRequest) (*SchoolResponse, error)
+	ListSchools(context.Context, *ListSchoolsRequest) (*ListSchoolsResponse, error)
 	mustEmbedUnimplementedSchoolServiceServer()
 }
 
@@ -681,6 +694,9 @@ type UnimplementedSchoolServiceServer struct{}
 
 func (UnimplementedSchoolServiceServer) GetSchool(context.Context, *GetSchoolRequest) (*SchoolResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSchool not implemented")
+}
+func (UnimplementedSchoolServiceServer) ListSchools(context.Context, *ListSchoolsRequest) (*ListSchoolsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSchools not implemented")
 }
 func (UnimplementedSchoolServiceServer) mustEmbedUnimplementedSchoolServiceServer() {}
 func (UnimplementedSchoolServiceServer) testEmbeddedByValue()                       {}
@@ -721,6 +737,24 @@ func _SchoolService_GetSchool_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SchoolService_ListSchools_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSchoolsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchoolServiceServer).ListSchools(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchoolService_ListSchools_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchoolServiceServer).ListSchools(ctx, req.(*ListSchoolsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SchoolService_ServiceDesc is the grpc.ServiceDesc for SchoolService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -731,6 +765,10 @@ var SchoolService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetSchool",
 			Handler:    _SchoolService_GetSchool_Handler,
+		},
+		{
+			MethodName: "ListSchools",
+			Handler:    _SchoolService_ListSchools_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

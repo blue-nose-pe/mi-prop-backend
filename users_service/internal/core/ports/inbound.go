@@ -170,12 +170,14 @@ type AssignmentSnapshot = AssignmentRecord
 // Viven aquí porque pertenecen al contrato del core, no a un transporte.
 
 type CreateUserInput struct {
-	Email          string
-	Password       string // texto plano; el core hashea via PasswordHasher
-	FirstName      string
-	LastName       string
-	DocumentNumber string
-	SchoolID       string // "" = sin colegio
+	Email             string
+	Password          string // texto plano; el core hashea via PasswordHasher
+	FirstName         string
+	LastName          string
+	DocumentNumber    string
+	Phone             string // opcional; se sincroniza a HubSpot
+	SchoolID          string // "" = sin colegio
+	PermissionGroupID uint32 // si >0, se asigna tras Save
 }
 
 type UpdateUserInput struct {
@@ -183,6 +185,7 @@ type UpdateUserInput struct {
 	FirstName      string
 	LastName       string
 	DocumentNumber string
+	Phone          string // "" = no tocar
 	SchoolID       string // "" = no tocar
 }
 

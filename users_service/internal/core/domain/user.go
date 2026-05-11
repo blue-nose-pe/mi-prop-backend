@@ -20,6 +20,7 @@ type User struct {
 	FirstName       string
 	LastName        string
 	DocumentNumber  string
+	Phone           string   // "" = no se cargo; se sincroniza a HubSpot
 	SchoolID        SchoolID // "" = no pertenece a un colegio
 	Active          bool
 	LastAccessAt    *time.Time

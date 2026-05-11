@@ -54,22 +54,23 @@ const userCols = `CONVERT(NVARCHAR(36), id),
 		updated_at,
 		ISNULL(hubspot_record_id, ''),
 		is_superadmin,
-		must_change_password`
+		must_change_password,
+		ISNULL(phone, '')`
 
 func (r *UserRepo) Save(ctx context.Context, u *domain.User) (domain.UserID, error) {
 	// La BD genera el UNIQUEIDENTIFIER vía DEFAULT NEWID(); lo recuperamos
 	// con OUTPUT INSERTED.id (equivalente a RETURNING en Postgres).
 	const q = `
-		INSERT INTO users (email, password_hash, first_name, last_name, document_number, school_id, active)
+		INSERT INTO users (email, password_hash, first_name, last_name, document_number, school_id, active, phone)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1, @p2, NULLIF(@p3, ''), NULLIF(@p4, ''), NULLIF(@p5, ''),
-		        IIF(@p6 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p6)), @p7)`
+		        IIF(@p6 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p6)), @p7, NULLIF(@p8, ''))`
 
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		string(u.Email), u.PasswordHash,
 		u.FirstName, u.LastName, u.DocumentNumber,
-		string(u.SchoolID), u.Active,
+		string(u.SchoolID), u.Active, u.Phone,
 	).Scan(&id)
 	if err != nil {
 		return "", mapDuplicate(err)
@@ -105,10 +106,11 @@ func (r *UserRepo) Update(ctx context.Context, u *domain.User) error {
 		   SET first_name      = NULLIF(@p1, ''),
 		       last_name       = NULLIF(@p2, ''),
 		       document_number = NULLIF(@p3, ''),
-		       school_id       = IIF(@p4 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p4))
-		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p5)`
+		       school_id       = IIF(@p4 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p4)),
+		       phone           = NULLIF(@p5, '')
+		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p6)`
 	res, err := r.db.ExecContext(ctx, q,
-		u.FirstName, u.LastName, u.DocumentNumber, string(u.SchoolID), string(u.ID))
+		u.FirstName, u.LastName, u.DocumentNumber, string(u.SchoolID), u.Phone, string(u.ID))
 	if err != nil {
 		return mapDuplicate(err)
 	}
@@ -180,11 +182,12 @@ func scanUser(row rowScanner) (*domain.User, error) {
 		hubspotID          string
 		isSuperadmin       bool
 		mustChangePassword bool
+		phone              string
 	)
 
 	err := row.Scan(&idStr, &emailStr, &u.PasswordHash, &firstName, &lastName,
 		&doc, &schoolID, &active, &lastAccess, &u.CreatedAt, &updatedAt, &hubspotID,
-		&isSuperadmin, &mustChangePassword)
+		&isSuperadmin, &mustChangePassword, &phone)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrUserNotFound
 	}
@@ -197,6 +200,7 @@ func scanUser(row rowScanner) (*domain.User, error) {
 	u.FirstName = firstName
 	u.LastName = lastName
 	u.DocumentNumber = doc
+	u.Phone = phone
 	u.SchoolID = domain.SchoolID(schoolID)
 	u.Active = active
 	u.HubspotRecordID = hubspotID

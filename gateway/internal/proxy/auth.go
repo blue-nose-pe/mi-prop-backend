@@ -206,6 +206,7 @@ func protoUserToJSON(u *usersgrpcpb.User) map[string]any {
 		"first_name":           u.GetFirstName(),
 		"last_name":            u.GetLastName(),
 		"document_number":      u.GetDocumentNumber(),
+		"phone":                u.GetPhone(),
 		"school_id":            u.GetSchoolId(),
 		"active":               u.GetActive(),
 		"last_access_at":       optionalTimestamp(u.GetLastAccessAt()),

@@ -37,7 +37,8 @@ service UserService {
 // gRPC: los colegios se crean implícitamente al promover un user a
 // representante de colegio (flow administrativo aparte).
 service SchoolService {
-  rpc GetSchool (GetSchoolRequest) returns (SchoolResponse);
+  rpc GetSchool   (GetSchoolRequest)   returns (SchoolResponse);
+  rpc ListSchools (ListSchoolsRequest) returns (ListSchoolsResponse);
 }
 
 // PermissionGroupService — administración de grupos de permisos (roles).
@@ -111,6 +112,17 @@ message RemovePermissionRequest {
 message GetSchoolRequest { string id = 1; }
 message SchoolResponse   { School school = 1; }
 
+message ListSchoolsRequest {
+  string search = 1;       // filtro por nombre (LIKE %search%), opcional
+  uint32 limit  = 2;       // 0 = default 100, max 1000
+  uint32 offset = 3;
+  bool   active_only = 4;  // si true, solo schools activos
+}
+message ListSchoolsResponse {
+  repeated School items = 1;
+  uint32 total = 2;        // total sin paginar (para la UI de paginacion)
+}
+
 message School {
   string id                = 1;
   string user_id           = 2;
@@ -166,15 +178,18 @@ message User {
   google.protobuf.Timestamp updated_at     = 10;
   bool   is_superadmin         = 11;
   bool   must_change_password  = 12;
+  string phone                 = 13;  // "" si no se cargo
 }
 
 message CreateUserRequest {
-  string email           = 1;
-  string password        = 2;
-  string first_name      = 3;
-  string last_name       = 4;
-  string document_number = 5;
-  string school_id       = 6;  // opcional
+  string email               = 1;
+  string password            = 2;
+  string first_name          = 3;
+  string last_name           = 4;
+  string document_number     = 5;
+  string school_id           = 6;  // opcional
+  string phone               = 7;  // opcional, se sincroniza a HubSpot
+  uint32 permission_group_id = 8;  // opcional, si >0 se asigna tras el create
 }
 
 message GetUserRequest        { string id = 1; }
@@ -186,6 +201,7 @@ message UpdateUserRequest {
   string last_name       = 3;
   string document_number = 4;
   string school_id       = 5;
+  string phone           = 6;
 }
 
 message DeactivateUserRequest { string id = 1; }

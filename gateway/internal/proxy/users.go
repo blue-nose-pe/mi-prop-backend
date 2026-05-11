@@ -47,6 +47,7 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/users/{id}/permissions/check", p.checkUserPermission)
 
 	// Schools
+	mux.HandleFunc("GET /api/schools", p.listSchools)
 	mux.HandleFunc("GET /api/schools/{id}", p.getSchool)
 }
 
@@ -66,28 +67,76 @@ func (p *Proxy) getSchool(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{Status: "error", Code: "SCHOOL_NOT_FOUND", Message: "school not found"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"school": map[string]any{
-			"id":                 s.GetId(),
-			"user_id":            s.GetUserId(),
-			"name":               s.GetName(),
-			"active":             s.GetActive(),
-			"hubspot_record_id":  s.GetHubspotRecordId(),
-			"created_at":         optionalTimestamp(s.GetCreatedAt()),
-			"updated_at":         optionalTimestamp(s.GetUpdatedAt()),
-		},
+	writeJSON(w, http.StatusOK, map[string]any{"school": protoSchoolToJSON(s)})
+}
+
+// listSchools - GET /api/schools?search=&limit=&offset=&active_only=
+// Devuelve {items: [...], total: N}. Pensado para llenar dropdowns y tablas.
+func (p *Proxy) listSchools(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	limit := parseUint32Query(q.Get("limit"), 100)
+	offset := parseUint32Query(q.Get("offset"), 0)
+	activeOnly := q.Get("active_only") == "true" || q.Get("active_only") == "1"
+
+	resp, err := p.cli.Schools.ListSchools(r.Context(), &usersgrpcpb.ListSchoolsRequest{
+		Search:     q.Get("search"),
+		Limit:      limit,
+		Offset:     offset,
+		ActiveOnly: activeOnly,
 	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, s := range resp.GetItems() {
+		items = append(items, protoSchoolToJSON(s))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"total": resp.GetTotal(),
+	})
+}
+
+func protoSchoolToJSON(s *usersgrpcpb.School) map[string]any {
+	if s == nil {
+		return nil
+	}
+	return map[string]any{
+		"id":                s.GetId(),
+		"user_id":           s.GetUserId(),
+		"name":              s.GetName(),
+		"active":            s.GetActive(),
+		"hubspot_record_id": s.GetHubspotRecordId(),
+		"created_at":        optionalTimestamp(s.GetCreatedAt()),
+		"updated_at":        optionalTimestamp(s.GetUpdatedAt()),
+	}
+}
+
+// parseUint32Query devuelve el valor del query string como uint32, o el
+// default si está vacío o es inválido.
+func parseUint32Query(s string, defVal uint32) uint32 {
+	if s == "" {
+		return defVal
+	}
+	n, err := strconv.ParseUint(s, 10, 32)
+	if err != nil {
+		return defVal
+	}
+	return uint32(n)
 }
 
 // ---------- CRUD ----------
 
 type createUserRequest struct {
-	Email          string `json:"email"`
-	Password       string `json:"password"`
-	FirstName      string `json:"first_name"`
-	LastName       string `json:"last_name"`
-	DocumentNumber string `json:"document_number"`
-	SchoolID       string `json:"school_id"`
+	Email             string `json:"email"`
+	Password          string `json:"password"`
+	FirstName         string `json:"first_name"`
+	LastName          string `json:"last_name"`
+	DocumentNumber    string `json:"document_number"`
+	Phone             string `json:"phone"`
+	SchoolID          string `json:"school_id"`
+	PermissionGroupID uint32 `json:"permission_group_id"`
 }
 
 func (p *Proxy) createUser(w http.ResponseWriter, r *http.Request) {
@@ -97,12 +146,14 @@ func (p *Proxy) createUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := p.cli.Users.CreateUser(r.Context(), &usersgrpcpb.CreateUserRequest{
-		Email:          in.Email,
-		Password:       in.Password,
-		FirstName:      in.FirstName,
-		LastName:       in.LastName,
-		DocumentNumber: in.DocumentNumber,
-		SchoolId:       in.SchoolID,
+		Email:             in.Email,
+		Password:          in.Password,
+		FirstName:         in.FirstName,
+		LastName:          in.LastName,
+		DocumentNumber:    in.DocumentNumber,
+		Phone:             in.Phone,
+		SchoolId:          in.SchoolID,
+		PermissionGroupId: in.PermissionGroupID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -124,6 +175,7 @@ type updateUserRequest struct {
 	FirstName      string `json:"first_name"`
 	LastName       string `json:"last_name"`
 	DocumentNumber string `json:"document_number"`
+	Phone          string `json:"phone"`
 	SchoolID       string `json:"school_id"`
 }
 
@@ -138,6 +190,7 @@ func (p *Proxy) updateUser(w http.ResponseWriter, r *http.Request) {
 		FirstName:      in.FirstName,
 		LastName:       in.LastName,
 		DocumentNumber: in.DocumentNumber,
+		Phone:          in.Phone,
 		SchoolId:       in.SchoolID,
 	})
 	if err != nil {

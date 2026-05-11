@@ -92,7 +92,16 @@ type PermissionRepository interface {
 
 type SchoolRepository interface {
 	FindByID(ctx context.Context, id domain.SchoolID) (*domain.School, error)
+	List(ctx context.Context, in ListSchoolsInput) ([]domain.School, uint32, error)
 	SetHubspotRecordID(ctx context.Context, id domain.SchoolID, recordID string) error
+}
+
+// ListSchoolsInput: filtros del listado paginado de colegios.
+type ListSchoolsInput struct {
+	Search     string // filtro por nombre (LIKE %search%)
+	Limit      uint32
+	Offset     uint32
+	ActiveOnly bool
 }
 
 // ---------- Cache ----------

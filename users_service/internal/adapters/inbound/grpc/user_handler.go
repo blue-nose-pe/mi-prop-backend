@@ -42,12 +42,14 @@ func NewUserHandler(
 
 func (h *UserHandler) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.UserResponse, error) {
 	u, err := h.userCmds.Create(ctx, ports.CreateUserInput{
-		Email:          req.GetEmail(),
-		Password:       req.GetPassword(),
-		FirstName:      req.GetFirstName(),
-		LastName:       req.GetLastName(),
-		DocumentNumber: req.GetDocumentNumber(),
-		SchoolID:       req.GetSchoolId(),
+		Email:             req.GetEmail(),
+		Password:          req.GetPassword(),
+		FirstName:         req.GetFirstName(),
+		LastName:          req.GetLastName(),
+		DocumentNumber:    req.GetDocumentNumber(),
+		Phone:             req.GetPhone(),
+		SchoolID:          req.GetSchoolId(),
+		PermissionGroupID: req.GetPermissionGroupId(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -64,6 +66,7 @@ func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest)
 		FirstName:      req.GetFirstName(),
 		LastName:       req.GetLastName(),
 		DocumentNumber: req.GetDocumentNumber(),
+		Phone:          req.GetPhone(),
 		SchoolID:       req.GetSchoolId(),
 	})
 	if err != nil {

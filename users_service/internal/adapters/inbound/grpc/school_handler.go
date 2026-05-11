@@ -32,6 +32,23 @@ func (h *SchoolHandler) GetSchool(ctx context.Context, req *pb.GetSchoolRequest)
 	return &pb.SchoolResponse{School: schoolToProto(s)}, nil
 }
 
+func (h *SchoolHandler) ListSchools(ctx context.Context, req *pb.ListSchoolsRequest) (*pb.ListSchoolsResponse, error) {
+	items, total, err := h.repo.List(ctx, ports.ListSchoolsInput{
+		Search:     req.GetSearch(),
+		Limit:      req.GetLimit(),
+		Offset:     req.GetOffset(),
+		ActiveOnly: req.GetActiveOnly(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	out := make([]*pb.School, 0, len(items))
+	for i := range items {
+		out = append(out, schoolToProto(&items[i]))
+	}
+	return &pb.ListSchoolsResponse{Items: out, Total: total}, nil
+}
+
 func schoolToProto(s *domain.School) *pb.School {
 	if s == nil {
 		return nil

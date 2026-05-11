@@ -22,6 +22,7 @@ func toProtoUser(u *domain.User) *pb.User {
 		FirstName:          u.FirstName,
 		LastName:           u.LastName,
 		DocumentNumber:     u.DocumentNumber,
+		Phone:              u.Phone,
 		SchoolId:           string(u.SchoolID),
 		Active:             u.Active,
 		LastAccessAt:       tsOrNil(u.LastAccessAt),

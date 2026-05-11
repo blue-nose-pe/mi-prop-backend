@@ -20,6 +20,7 @@ import (
 // Único responsable de las mutaciones sobre la entidad User.
 type UserHandler struct {
 	users   ports.UserRepository
+	perms   ports.PermissionRepository // para asignar grupo opcional en Create
 	cache   ports.UserCache
 	hasher  ports.PasswordHasher
 	hubspot ports.HubspotSyncer // opcional; si es nil, no se sincroniza
@@ -30,11 +31,12 @@ var _ ports.UserCommands = (*UserHandler)(nil)
 
 func NewUserHandler(
 	users ports.UserRepository,
+	perms ports.PermissionRepository,
 	cache ports.UserCache,
 	hasher ports.PasswordHasher,
 	hubspot ports.HubspotSyncer,
 ) *UserHandler {
-	return &UserHandler{users: users, cache: cache, hasher: hasher, hubspot: hubspot}
+	return &UserHandler{users: users, perms: perms, cache: cache, hasher: hasher, hubspot: hubspot}
 }
 
 // Create valida unicidad, hashea password e inserta el user.
@@ -76,6 +78,7 @@ func (h *UserHandler) Create(ctx context.Context, in ports.CreateUserInput) (*do
 		FirstName:      strings.TrimSpace(in.FirstName),
 		LastName:       strings.TrimSpace(in.LastName),
 		DocumentNumber: strings.TrimSpace(in.DocumentNumber),
+		Phone:          strings.TrimSpace(in.Phone),
 		SchoolID:       domain.SchoolID(strings.TrimSpace(in.SchoolID)),
 		Active:         true,
 		CreatedAt:      time.Now(),
@@ -86,6 +89,13 @@ func (h *UserHandler) Create(ctx context.Context, in ports.CreateUserInput) (*do
 		return nil, err
 	}
 	u.ID = id
+
+	// Asignación de grupo opcional en el mismo flow.
+	if in.PermissionGroupID > 0 {
+		if err := h.perms.AssignGroupToUser(ctx, id, in.PermissionGroupID); err != nil {
+			return nil, err
+		}
+	}
 
 	_ = h.cache.Set(ctx, u) // best-effort
 	h.syncToHubspotAsync(u)
@@ -129,6 +139,9 @@ func (h *UserHandler) Update(ctx context.Context, in ports.UpdateUserInput) (*do
 	}
 	if v := strings.TrimSpace(in.DocumentNumber); v != "" {
 		u.DocumentNumber = v
+	}
+	if v := strings.TrimSpace(in.Phone); v != "" {
+		u.Phone = v
 	}
 	if v := strings.TrimSpace(in.SchoolID); v != "" {
 		u.SchoolID = domain.SchoolID(v)
