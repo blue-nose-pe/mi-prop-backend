@@ -128,3 +128,21 @@ func (h *PermissionGroupHandler) ListPermissions(ctx context.Context, _ *pb.Empt
 	}
 	return &pb.ListPermissionsResponse{Items: items}, nil
 }
+
+func (h *PermissionGroupHandler) ListGroupUsers(ctx context.Context, req *pb.ListGroupUsersRequest) (*pb.ListGroupUsersResponse, error) {
+	users, total, err := h.qrys.ListUsersInGroup(ctx, ports.ListUsersInGroupQueryInput{
+		GroupID:    req.GetGroupId(),
+		Search:     req.GetSearch(),
+		Limit:      req.GetLimit(),
+		Offset:     req.GetOffset(),
+		ActiveOnly: req.GetActiveOnly(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	items := make([]*pb.User, 0, len(users))
+	for i := range users {
+		items = append(items, toProtoUser(&users[i]))
+	}
+	return &pb.ListGroupUsersResponse{Items: items, Total: total}, nil
+}

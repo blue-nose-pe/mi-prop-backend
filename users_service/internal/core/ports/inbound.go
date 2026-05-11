@@ -102,6 +102,17 @@ type PermissionGroupQueries interface {
 	Get(ctx context.Context, id uint32) (*domain.PermissionGroup, error)
 	List(ctx context.Context) ([]domain.PermissionGroup, error)
 	ListPermissions(ctx context.Context) ([]domain.Permission, error)
+	ListUsersInGroup(ctx context.Context, in ListUsersInGroupQueryInput) ([]domain.User, uint32, error)
+}
+
+// ListUsersInGroupQueryInput: idéntico al outbound pero vive acá para
+// no mezclar paquetes en el handler (el handler depende solo de ports).
+type ListUsersInGroupQueryInput struct {
+	GroupID    uint32
+	Search     string
+	Limit      uint32
+	Offset     uint32
+	ActiveOnly bool
 }
 
 // CreateGroupInput / UpdateGroupInput: los DTOs viajan por el contrato

@@ -27,7 +27,38 @@ func (p *Proxy) RegisterPermissionGroups(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/permission-groups/{id}", p.deletePermissionGroup)
 	mux.HandleFunc("POST /api/permission-groups/{id}/permissions/{permission_id}", p.addPermissionToGroup)
 	mux.HandleFunc("DELETE /api/permission-groups/{id}/permissions/{permission_id}", p.removePermissionFromGroup)
+	mux.HandleFunc("GET /api/permission-groups/{id}/users", p.listGroupUsers)
 	mux.HandleFunc("GET /api/permissions", p.listPermissions)
+}
+
+// listGroupUsers - GET /api/permission-groups/{id}/users?search=&limit=&offset=&active_only=
+// Lista paginada de users que pertenecen al grupo. El search matchea email,
+// first_name, last_name y document_number con LIKE %search%.
+func (p *Proxy) listGroupUsers(w http.ResponseWriter, r *http.Request) {
+	groupID, ok := parseUint32Path(w, r, "id")
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	resp, err := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{
+		GroupId:    groupID,
+		Search:     q.Get("search"),
+		Limit:      parseUint32Query(q.Get("limit"), 100),
+		Offset:     parseUint32Query(q.Get("offset"), 0),
+		ActiveOnly: q.Get("active_only") == "true" || q.Get("active_only") == "1",
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, u := range resp.GetItems() {
+		items = append(items, protoUserToJSON(u))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"total": resp.GetTotal(),
+	})
 }
 
 // ---------- DTOs ----------

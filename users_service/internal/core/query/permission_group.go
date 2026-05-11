@@ -33,3 +33,16 @@ func (h *PermissionGroupHandler) List(ctx context.Context) ([]domain.PermissionG
 func (h *PermissionGroupHandler) ListPermissions(ctx context.Context) ([]domain.Permission, error) {
 	return h.perms.ListPermissions(ctx)
 }
+
+func (h *PermissionGroupHandler) ListUsersInGroup(ctx context.Context, in ports.ListUsersInGroupQueryInput) ([]domain.User, uint32, error) {
+	if in.GroupID == 0 {
+		return nil, 0, apperr.NewValidation("MISSING_ID", "group id is required", "group_id")
+	}
+	return h.perms.ListUsersInGroup(ctx, ports.ListUsersInGroupInput{
+		GroupID:    in.GroupID,
+		Search:     in.Search,
+		Limit:      in.Limit,
+		Offset:     in.Offset,
+		ActiveOnly: in.ActiveOnly,
+	})
+}

@@ -784,6 +784,7 @@ const (
 	PermissionGroupService_AddPermission_FullMethodName    = "/users.v1.PermissionGroupService/AddPermission"
 	PermissionGroupService_RemovePermission_FullMethodName = "/users.v1.PermissionGroupService/RemovePermission"
 	PermissionGroupService_ListPermissions_FullMethodName  = "/users.v1.PermissionGroupService/ListPermissions"
+	PermissionGroupService_ListGroupUsers_FullMethodName   = "/users.v1.PermissionGroupService/ListGroupUsers"
 )
 
 // PermissionGroupServiceClient is the client API for PermissionGroupService service.
@@ -805,6 +806,7 @@ type PermissionGroupServiceClient interface {
 	AddPermission(ctx context.Context, in *AddPermissionRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	RemovePermission(ctx context.Context, in *RemovePermissionRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	ListPermissions(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*ListPermissionsResponse, error)
+	ListGroupUsers(ctx context.Context, in *ListGroupUsersRequest, opts ...grpc.CallOption) (*ListGroupUsersResponse, error)
 }
 
 type permissionGroupServiceClient struct {
@@ -895,6 +897,16 @@ func (c *permissionGroupServiceClient) ListPermissions(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *permissionGroupServiceClient) ListGroupUsers(ctx context.Context, in *ListGroupUsersRequest, opts ...grpc.CallOption) (*ListGroupUsersResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListGroupUsersResponse)
+	err := c.cc.Invoke(ctx, PermissionGroupService_ListGroupUsers_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // PermissionGroupServiceServer is the server API for PermissionGroupService service.
 // All implementations must embed UnimplementedPermissionGroupServiceServer
 // for forward compatibility.
@@ -914,6 +926,7 @@ type PermissionGroupServiceServer interface {
 	AddPermission(context.Context, *AddPermissionRequest) (*EmptyResponse, error)
 	RemovePermission(context.Context, *RemovePermissionRequest) (*EmptyResponse, error)
 	ListPermissions(context.Context, *EmptyRequest) (*ListPermissionsResponse, error)
+	ListGroupUsers(context.Context, *ListGroupUsersRequest) (*ListGroupUsersResponse, error)
 	mustEmbedUnimplementedPermissionGroupServiceServer()
 }
 
@@ -947,6 +960,9 @@ func (UnimplementedPermissionGroupServiceServer) RemovePermission(context.Contex
 }
 func (UnimplementedPermissionGroupServiceServer) ListPermissions(context.Context, *EmptyRequest) (*ListPermissionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListPermissions not implemented")
+}
+func (UnimplementedPermissionGroupServiceServer) ListGroupUsers(context.Context, *ListGroupUsersRequest) (*ListGroupUsersResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListGroupUsers not implemented")
 }
 func (UnimplementedPermissionGroupServiceServer) mustEmbedUnimplementedPermissionGroupServiceServer() {
 }
@@ -1114,6 +1130,24 @@ func _PermissionGroupService_ListPermissions_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _PermissionGroupService_ListGroupUsers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListGroupUsersRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(PermissionGroupServiceServer).ListGroupUsers(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: PermissionGroupService_ListGroupUsers_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(PermissionGroupServiceServer).ListGroupUsers(ctx, req.(*ListGroupUsersRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // PermissionGroupService_ServiceDesc is the grpc.ServiceDesc for PermissionGroupService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1152,6 +1186,10 @@ var PermissionGroupService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListPermissions",
 			Handler:    _PermissionGroupService_ListPermissions_Handler,
+		},
+		{
+			MethodName: "ListGroupUsers",
+			Handler:    _PermissionGroupService_ListGroupUsers_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

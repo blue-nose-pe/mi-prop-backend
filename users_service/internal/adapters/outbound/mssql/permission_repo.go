@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
 	mssql "github.com/microsoft/go-mssqldb"
@@ -477,6 +479,69 @@ func (r *PermissionRepo) GroupHasUsers(ctx context.Context, groupID uint32) (boo
 		`SELECT CASE WHEN EXISTS (SELECT 1 FROM user_permission_group WHERE permission_group_id = @p1) THEN 1 ELSE 0 END`,
 		groupID).Scan(&exists)
 	return exists == 1, err
+}
+
+// ListUsersInGroup devuelve los users asignados al grupo, con paginación
+// y búsqueda libre que matchea email, first_name, last_name o document_number.
+func (r *PermissionRepo) ListUsersInGroup(ctx context.Context, in ports.ListUsersInGroupInput) ([]domain.User, uint32, error) {
+	if in.Limit == 0 || in.Limit > 1000 {
+		in.Limit = 100
+	}
+	where := "WHERE upg.permission_group_id = @p1"
+	args := []any{in.GroupID}
+	idx := 2
+	if in.ActiveOnly {
+		where += " AND u.active = 1"
+	}
+	if in.Search != "" {
+		where += fmt.Sprintf(" AND (u.email LIKE @p%d OR u.first_name LIKE @p%d OR u.last_name LIKE @p%d OR u.document_number LIKE @p%d)", idx, idx, idx, idx)
+		args = append(args, "%"+in.Search+"%")
+		idx++
+	}
+
+	var total uint32
+	if err := r.db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM user_permission_group upg JOIN users u ON u.id = upg.user_id "+where, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	q := `SELECT CONVERT(NVARCHAR(36), u.id),
+		u.email,
+		u.password_hash,
+		ISNULL(u.first_name, ''),
+		ISNULL(u.last_name, ''),
+		ISNULL(u.document_number, ''),
+		ISNULL(CONVERT(NVARCHAR(36), u.school_id), ''),
+		u.active,
+		u.last_access_at,
+		u.created_at,
+		u.updated_at,
+		ISNULL(u.hubspot_record_id, ''),
+		u.is_superadmin,
+		u.must_change_password,
+		ISNULL(u.phone, '')
+	        FROM user_permission_group upg
+	        JOIN users u ON u.id = upg.user_id
+	        ` + where + `
+	       ORDER BY u.last_name ASC, u.first_name ASC, u.id ASC
+	      OFFSET @p` + strconv.Itoa(idx) + ` ROWS FETCH NEXT @p` + strconv.Itoa(idx+1) + ` ROWS ONLY`
+	args = append(args, in.Offset, in.Limit)
+
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	out := make([]domain.User, 0)
+	for rows.Next() {
+		u, err := scanUser(rows)
+		if err != nil {
+			return nil, 0, err
+		}
+		out = append(out, *u)
+	}
+	return out, total, rows.Err()
 }
 
 // mapPermGroupDuplicate traduce una violación de uk_permission_group_code

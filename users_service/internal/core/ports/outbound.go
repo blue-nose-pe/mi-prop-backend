@@ -86,6 +86,18 @@ type PermissionRepository interface {
 	ListPermissions(ctx context.Context) ([]domain.Permission, error)
 	PermissionExists(ctx context.Context, permissionID uint32) (bool, error)
 	GroupHasUsers(ctx context.Context, groupID uint32) (bool, error)
+
+	// Users dentro de un grupo, paginado y con search por email/first_name/last_name/document_number.
+	ListUsersInGroup(ctx context.Context, in ListUsersInGroupInput) ([]domain.User, uint32, error)
+}
+
+// ListUsersInGroupInput: filtros del listado de users por grupo.
+type ListUsersInGroupInput struct {
+	GroupID    uint32
+	Search     string // matchea email, first_name, last_name, document_number (LIKE %s%)
+	Limit      uint32 // default 100, máx 1000
+	Offset     uint32
+	ActiveOnly bool
 }
 
 // ---------- School ----------

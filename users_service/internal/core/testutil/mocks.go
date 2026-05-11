@@ -331,6 +331,10 @@ func (m *PermissionRepoMock) GroupHasUsers(_ context.Context, _ uint32) (bool, e
 	return false, nil
 }
 
+func (m *PermissionRepoMock) ListUsersInGroup(_ context.Context, _ ports.ListUsersInGroupInput) ([]domain.User, uint32, error) {
+	return nil, 0, nil
+}
+
 // =============== UserCache mock ===============
 
 type UserCacheMock struct {

@@ -46,4 +46,5 @@ var PermissionMap = map[string]string{
 	"/users.v1.PermissionGroupService/GetGroup":         "db_users.permission_group.read",
 	"/users.v1.PermissionGroupService/ListGroups":       "db_users.permission_group.read",
 	"/users.v1.PermissionGroupService/ListPermissions":  "db_users.permission.read",
+	"/users.v1.PermissionGroupService/ListGroupUsers":   "db_users.users.read",
 }

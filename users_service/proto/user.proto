@@ -56,6 +56,7 @@ service PermissionGroupService {
   rpc AddPermission   (AddPermissionRequest)     returns (EmptyResponse);
   rpc RemovePermission(RemovePermissionRequest)  returns (EmptyResponse);
   rpc ListPermissions (EmptyRequest)             returns (ListPermissionsResponse);
+  rpc ListGroupUsers  (ListGroupUsersRequest)    returns (ListGroupUsersResponse);
 }
 
 message PermissionGroup {
@@ -98,6 +99,18 @@ message GetGroupRequest    { uint32 id = 1; }
 message PermissionGroupResponse { PermissionGroup group = 1; }
 message ListGroupsResponse      { repeated PermissionGroup items = 1; }
 message ListPermissionsResponse { repeated Permission items = 1; }
+
+message ListGroupUsersRequest {
+  uint32 group_id    = 1;
+  string search      = 2;  // matchea email, first_name, last_name o document_number
+  uint32 limit       = 3;  // 0 = default 100, max 1000
+  uint32 offset      = 4;
+  bool   active_only = 5;
+}
+message ListGroupUsersResponse {
+  repeated User items = 1;
+  uint32 total = 2;
+}
 
 message AddPermissionRequest {
   uint32 group_id      = 1;

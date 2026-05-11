@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.8.1
+  version: 0.9.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -1989,6 +1989,87 @@ paths:
                 code: "PERMISSION_GROUP_HAS_USERS"
                 message: "permission group still has users assigned"
                 category: "CONFLICT"
+
+  /api/permission-groups/{id}/users:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: integer, format: int32 }
+        description: "ID numérico del grupo (1=student_permissions, 2=asesor_permissions, 3=coordinador_permissions, 4=admin_permissions, etc.)."
+    get:
+      tags: [Permissions]
+      summary: Listar users que pertenecen a un grupo
+      description: |
+        Devuelve la lista paginada de users asignados al grupo, ideal para
+        que el admin vea "todos los asesores", "todos los coordinadores",
+        etc. Soporta búsqueda libre (`search` matchea con LIKE `%s%` sobre
+        `email`, `first_name`, `last_name` y `document_number`) y filtro
+        `active_only=true` para esconder users desactivados.
+
+        El `total` de la respuesta es el total SIN paginar (útil para la UI
+        de paginación). Cada item del array `items` es un objeto User con
+        el mismo shape de `GET /api/users/{id}`.
+
+        Permiso requerido: `db_users.users.read`.
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+          description: "Substring case-insensitive contra email, first_name, last_name y document_number."
+          example: "carlos"
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: active_only
+          schema: { type: boolean, default: false }
+          description: "Si true, omite users con active=false."
+      responses:
+        '200':
+          description: Listado paginado de users del grupo.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  total: { type: integer, description: "Total sin paginar." }
+              example:
+                items:
+                  - id: "85d61d55-4452-433b-87c1-e33d48a8664e"
+                    email: "carlos.mendoza@ucsp.edu.pe"
+                    first_name: "Carlos"
+                    last_name: "Mendoza"
+                    document_number: "70111001"
+                    phone: "+51 999 111 001"
+                    school_id: ""
+                    active: true
+                    last_access_at: "2026-05-11T18:30:00Z"
+                    created_at: "2026-05-11T19:15:55Z"
+                    updated_at: null
+                    is_superadmin: false
+                    must_change_password: false
+                  - id: "e8dddacf-1cdc-49d7-b7e8-809edceafeb4"
+                    email: "lucia.vega@ucsp.edu.pe"
+                    first_name: "Lucia"
+                    last_name: "Vega"
+                    document_number: "70111002"
+                    phone: "+51 999 111 002"
+                    school_id: ""
+                    active: true
+                    last_access_at: null
+                    created_at: "2026-05-11T19:15:56Z"
+                    updated_at: null
+                    is_superadmin: false
+                    must_change_password: false
+                total: 2
+        '400': { $ref: '#/components/responses/ValidationError' }
 
   /api/permission-groups/{id}/permissions/{permission_id}:
     parameters:
