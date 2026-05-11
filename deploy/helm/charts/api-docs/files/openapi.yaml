@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.7.0
+  version: 0.7.1
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -39,7 +39,7 @@ info:
     - **JWT**: el secret HS256 es el MISMO en todos los microservicios. El
       gateway lo emite (login/refresh/student-otp); los demás servicios lo
       validan via interceptor gRPC.
-    - **Auth**: access token de 15 min + refresh token de 7 días con rotación.
+    - **Auth**: access token de 12 h + refresh token de 7 días con rotación.
       Cada `refresh` revoca el refresh anterior y emite uno nuevo.
     - **Superadmin inicial**: el chart Helm crea automáticamente un Secret
       `<release>-users-service-superadmin` con email + password aleatoria.
@@ -69,7 +69,7 @@ info:
     Authorization: Bearer <access_token>
     ```
 
-    El token se obtiene con `POST /api/auth/login`. Vence a los **15 minutos**.
+    El token se obtiene con `POST /api/auth/login`. Vence a las **12 horas**.
     Para renovarlo sin volver a pedir credenciales, usar `POST /api/auth/refresh`
     con el `refresh_token` (vence a los **7 días**).
 
@@ -214,7 +214,7 @@ info:
     {
       "user": { "id": "68BD...", "email": "...", "is_superadmin": true, "must_change_password": false, "active": true },
       "permissions": [],
-      "access_token": "eyJ...",   // 15 min
+      "access_token": "eyJ...",   // 12 h
       "refresh_token": "eyJ..."   // 7 días, rotativo
     }
     ```
@@ -579,7 +579,7 @@ tags:
   - name: Auth
     description: |
       Login, refresh, logout y flujo OTP de estudiante. Emite y rota JWT
-      (access 15 min HS256 + refresh 7 días con rotación).
+      (access 12 h HS256 + refresh 7 días con rotación).
 
       Rutas públicas (sin token): `login`, `refresh`, `student/request-otp`,
       `student/verify-otp`. La ruta `logout` requiere `Authorization: Bearer`
@@ -943,7 +943,7 @@ paths:
         revocado o no existe, devuelve 200 igual (no filtra info a un atacante).
 
         El access token sigue siendo criptográficamente válido hasta su `exp`
-        natural (15 min). El cliente debe descartarlo.
+        natural (12 h). El cliente debe descartarlo.
 
         **Requiere `Authorization: Bearer <access_token>`** del mismo usuario
         dueño del refresh token. Esto impide que un atacante con sólo un
@@ -4574,7 +4574,7 @@ components:
       bearerFormat: JWT
       description: |
         Access token JWT obtenido via `POST /api/auth/login`.
-        Vence a los 15 minutos — renovar con `POST /api/auth/refresh`.
+        Vence a las 12 horas — renovar con `POST /api/auth/refresh`.
 
   parameters:
     UserID:

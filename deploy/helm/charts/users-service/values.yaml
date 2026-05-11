@@ -16,7 +16,7 @@ database:
 # JWT
 jwt:
   issuer: miproposito.users
-  accessTTL: "15m"
+  accessTTL: "12h"
   refreshTTL: "168h"   # 7 días
 
 # Redis (cache de user lookup)
