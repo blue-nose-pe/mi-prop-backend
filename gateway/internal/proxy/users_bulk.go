@@ -24,6 +24,7 @@ type bulkUserItem struct {
 	FirstName      string `json:"first_name"`
 	LastName       string `json:"last_name"`
 	DocumentNumber string `json:"document_number"`
+	Phone          string `json:"phone"`
 	SchoolID       string `json:"school_id"`
 }
 
@@ -72,6 +73,7 @@ func (p *Proxy) bulkCreateUsers(w http.ResponseWriter, r *http.Request) {
 			FirstName:      it.FirstName,
 			LastName:       it.LastName,
 			DocumentNumber: it.DocumentNumber,
+			Phone:          it.Phone,
 			SchoolId:       it.SchoolID,
 		})
 		if err != nil {
@@ -174,6 +176,7 @@ func parseBulkCSV(body io.Reader) ([]bulkUserItem, error) {
 			FirstName:      get(row, "first_name"),
 			LastName:       get(row, "last_name"),
 			DocumentNumber: get(row, "document_number"),
+			Phone:          get(row, "phone"),
 			SchoolID:       get(row, "school_id"),
 		})
 	}

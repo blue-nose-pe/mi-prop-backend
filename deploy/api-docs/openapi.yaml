@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.8.0
+  version: 0.8.1
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -994,38 +994,80 @@ paths:
       tags: [Users]
       summary: Crear usuario
       description: |
-        Hashea la password con bcrypt y persiste el user. Falla con `409
-        EMAIL_TAKEN` o `409 DOCUMENT_TAKEN` si ya existe otro user con el
-        mismo email o DNI.
+        Hashea la password con bcrypt y persiste el user en `db_users.users`.
+        Falla con `409 EMAIL_TAKEN` o `409 DOCUMENT_TAKEN` si ya existe otro
+        user con el mismo email o DNI.
+
+        **Campos opcionales destacados**:
+        - `phone`: se persiste local y se sincroniza a HubSpot junto con el
+          resto del contacto.
+        - `school_id`: UUID del colegio (usar `GET /api/schools` para llenar
+          el dropdown).
+        - `permission_group_id`: si `>0`, asigna el grupo en la misma llamada
+          (evita un round-trip extra a `POST /api/users/{id}/permissions/groups`).
+          Útil para crear coordinadores/asesores/estudiantes con su grupo
+          predefinido (`student_permissions`, `asesor_permissions`,
+          `coordinador_permissions`).
 
         **Sync HubSpot automático**: tras crear el user con éxito el
         servicio dispara en background un `UpsertContact` al CRM HubSpot
-        con el email, DNI, nombre y apellido. Es fire-and-forget — si
-        HubSpot está caído el user queda creado de todos modos y se puede
-        forzar el sync después con `POST /api/hubspot/contacts`.
+        con el email, DNI, nombre, apellido y phone. Es fire-and-forget —
+        si HubSpot está caído el user queda creado de todos modos y se
+        puede forzar el sync después con `POST /api/hubspot/contacts`.
 
-        Permiso requerido: `db_users.users.write`.
+        Permisos requeridos: `db_users.users.write`. Si se usa
+        `permission_group_id`, también `db_users.user_permission_group.write`.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/CreateUserRequest' }
-            example:
-              email: "asesor.nuevo@ucsp.edu.pe"
-              password: "TempPass!123"
-              first_name: "María"
-              last_name: "Quispe"
-              document_number: "71234567"
-              school_id: ""
+            examples:
+              admin_user:
+                summary: Crear un asesor sin grupo (legacy flow)
+                value:
+                  email: "asesor.nuevo@ucsp.edu.pe"
+                  password: "TempPass!123"
+                  first_name: "María"
+                  last_name: "Quispe"
+                  document_number: "71234567"
+                  phone: "+51 999 111 222"
+                  school_id: ""
+              coordinador_con_grupo:
+                summary: Crear un coordinador y asignarle su grupo en 1 llamada
+                value:
+                  email: "coord.smartin@ucsp.edu.pe"
+                  password: "TempPass!123"
+                  first_name: "Carlos"
+                  last_name: "Mendoza"
+                  document_number: "70112233"
+                  phone: "+51 999 555 666"
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  permission_group_id: 3
       responses:
         '200':
-          description: Usuario creado
+          description: Usuario creado. Si se pasó `permission_group_id`, el grupo ya quedó asignado al user retornado.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   user: { $ref: '#/components/schemas/User' }
+              example:
+                user:
+                  id: "a117827b-67c0-4ddd-addf-4e3cb5c74618"
+                  email: "coord.smartin@ucsp.edu.pe"
+                  first_name: "Carlos"
+                  last_name: "Mendoza"
+                  document_number: "70112233"
+                  phone: "+51 999 555 666"
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  active: true
+                  last_access_at: null
+                  created_at: "2026-05-12T10:30:00Z"
+                  updated_at: null
+                  is_superadmin: false
+                  must_change_password: false
         '400': { $ref: '#/components/responses/ValidationError' }
         '409':
           description: Email o DNI ya existen
@@ -1052,13 +1094,15 @@ paths:
         header `Content-Type`:
 
         - `application/json`: body con un array `items` de hasta 1000 entradas.
-          Cada item tiene la misma forma que `POST /api/users`. Opcional:
-          `permission_group_id` numérico para asignar el mismo grupo a
-          todos los users creados (típicamente `1` para `student_permissions`).
+          Cada item tiene los mismos campos que `POST /api/users` (incluye
+          `phone` y `school_id` opcionales). Si se manda `permission_group_id`
+          a nivel raíz, se asigna a TODOS los users creados (típicamente `1`
+          para `student_permissions`).
 
         - `text/csv`: primera fila de header con columnas `email,password,
-          first_name,last_name,document_number,school_id`. El orden no
-          importa siempre que las columnas estén nombradas. Si querés
+          first_name,last_name,document_number,phone,school_id`. El orden
+          no importa siempre que las columnas estén nombradas; `email` y
+          `password` son obligatorias, el resto opcional. Si querés
           asignar grupo a todos, mandalo como query string:
           `?permission_group_id=1`.
 
@@ -1090,9 +1134,9 @@ paths:
             example:
               permission_group_id: 1
               items:
-                - { email: "alumno1@col.pe", password: "Temp1234!", first_name: "Ana",  last_name: "Quispe", document_number: "70000001", school_id: "" }
-                - { email: "alumno2@col.pe", password: "Temp1234!", first_name: "Luis", last_name: "Ramos",  document_number: "70000002", school_id: "" }
-                - { email: "alumno3@col.pe", password: "Temp1234!", first_name: "Sofía",last_name: "Ríos",   document_number: "70000003", school_id: "" }
+                - { email: "alumno1@col.pe", password: "Temp1234!", first_name: "Ana",  last_name: "Quispe", document_number: "70000001", phone: "+51 900 100 001", school_id: "" }
+                - { email: "alumno2@col.pe", password: "Temp1234!", first_name: "Luis", last_name: "Ramos",  document_number: "70000002", phone: "+51 900 100 002", school_id: "" }
+                - { email: "alumno3@col.pe", password: "Temp1234!", first_name: "Sofía",last_name: "Ríos",   document_number: "70000003", phone: "+51 900 100 003", school_id: "" }
           text/csv:
             schema:
               type: string
@@ -1100,12 +1144,12 @@ paths:
               description: |
                 CSV con header en primera fila. Columnas obligatorias:
                 `email`, `password`. Opcionales: `first_name`, `last_name`,
-                `document_number`, `school_id`.
+                `document_number`, `phone`, `school_id`.
             example: |
-              email,password,first_name,last_name,document_number,school_id
-              alumno1@col.pe,Temp1234!,Ana,Quispe,70000001,
-              alumno2@col.pe,Temp1234!,Luis,Ramos,70000002,
-              alumno3@col.pe,Temp1234!,Sofía,Ríos,70000003,
+              email,password,first_name,last_name,document_number,phone,school_id
+              alumno1@col.pe,Temp1234!,Ana,Quispe,70000001,+51 900 100 001,
+              alumno2@col.pe,Temp1234!,Luis,Ramos,70000002,+51 900 100 002,
+              alumno3@col.pe,Temp1234!,Sofía,Ríos,70000003,+51 900 100 003,
       responses:
         '200':
           description: |
@@ -1147,10 +1191,18 @@ paths:
                 errors:
                   - { index: 1, email: "alumno2@col.pe", code: "DOCUMENT_TAKEN", message: "document number already registered" }
         '400':
-          description: Body vacío, mayor a 1000 entradas, o CSV malformado.
+          description: |
+            Body inválido. Códigos posibles: `EMPTY_BULK` (items array vacío),
+            `BULK_TOO_LARGE` (más de 1000 items), `BAD_BODY` (JSON malformado
+            o CSV con header inválido).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "EMPTY_BULK"
+                message: "items must contain at least one entry"
+                category: "VALIDATION_ERROR"
 
   /api/users/{id}:
     parameters:
@@ -1192,10 +1244,22 @@ paths:
       tags: [Users]
       summary: Actualizar usuario (parcial)
       description: |
-        Actualiza solo los campos provistos no vacíos. Para limpiar un
-        campo, no lo mandes en el body (el server trata `""` como "no tocar").
+        Actualiza solo los campos provistos no vacíos. Para **no tocar** un
+        campo, no lo mandes en el body (o mandalo como `""` — el server
+        trata string vacío como "no tocar").
 
-        Permiso: `db_users.users.write`.
+        El campo `phone` se sincroniza a HubSpot junto con el resto en el
+        próximo `UpsertContact` (disparado automáticamente).
+
+        Esta ruta NO sirve para cambiar `email`, `password`, `is_superadmin`
+        ni `active`. Para esos:
+        - email: no se puede cambiar (es identificador estable).
+        - password: `POST /api/users/me/change-password` (el dueño) o
+          `POST /api/users/{id}/reset-password` (admin).
+        - active: `POST /api/users/{id}/deactivate` / `/reactivate`.
+        - is_superadmin: solo otro superadmin via canal interno (no expuesto).
+
+        Permiso requerido: `db_users.users.write`.
       requestBody:
         required: true
         content:
@@ -1214,13 +1278,28 @@ paths:
               phone: "+51 999 888 777"
       responses:
         '200':
-          description: User actualizado
+          description: User actualizado.
           content:
             application/json:
               schema:
                 type: object
                 properties:
                   user: { $ref: '#/components/schemas/User' }
+              example:
+                user:
+                  id: "a117827b-67c0-4ddd-addf-4e3cb5c74618"
+                  email: "coord.smartin@ucsp.edu.pe"
+                  first_name: "María Elena"
+                  last_name: "Quispe Ramos"
+                  document_number: "70112233"
+                  phone: "+51 999 888 777"
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  active: true
+                  last_access_at: "2026-05-12T11:05:00Z"
+                  created_at: "2026-05-12T10:30:00Z"
+                  updated_at: "2026-05-12T11:14:00Z"
+                  is_superadmin: false
+                  must_change_password: false
         '404': { $ref: '#/components/responses/NotFound' }
 
   /api/users/{id}/deactivate:
@@ -2009,7 +2088,17 @@ paths:
         paginación clásica `limit`/`offset`. El campo `total` de la respuesta
         es el total sin paginar, útil para la UI de paginación.
 
-        Permiso: `db_users.school.read`.
+        **De dónde salen los colegios**: la tabla `db_users.school` se llena
+        por dos vías:
+        1. Sync manual desde HubSpot via `POST /api/hubspot/schools`
+           (el admin empuja el custom object `colegios` del CRM).
+        2. Eventos del webhook de HubSpot (creación/edición en el CRM se
+           propaga al backend automáticamente).
+
+        Si el listado vuelve vacío significa que todavía no se sincronizó
+        ningún colegio desde HubSpot.
+
+        Permiso requerido: `db_users.school.read`.
       parameters:
         - in: query
           name: search
