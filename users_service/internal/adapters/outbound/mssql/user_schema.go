@@ -20,6 +20,7 @@ var userSearchSchema = SearchSchema{
 		"first_name":      {DBName: "first_name", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
 		"last_name":       {DBName: "last_name", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
 		"document_number": {DBName: "document_number", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
+		"phone":           {DBName: "phone", Type: SearchTypeString, Filterable: true, Sortable: false, Selectable: true},
 		"school_id":       {DBName: "school_id", Type: SearchTypeUUID, Filterable: true, Sortable: false, Selectable: true},
 		"active":          {DBName: "active", Type: SearchTypeBool, Filterable: true, Sortable: false, Selectable: true},
 		"last_access_at":  {DBName: "last_access_at", Type: SearchTypeTimestamp, Filterable: true, Sortable: true, Selectable: true},

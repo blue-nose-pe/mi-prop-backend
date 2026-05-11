@@ -232,10 +232,20 @@ func buildFilter(col SearchColumn, f search.Filter, args *[]any) (string, error)
 		if err := need(1); err != nil {
 			return "", err
 		}
+		// `EQ ""` en columnas no-string se interpreta como `IS NULL`
+		// (atajo equivalente a NOT_HAS_PROPERTY, para que el front
+		// pueda filtrar "sin colegio" / "sin school_id" sin mandar
+		// un UUID vacio que rompe el CAST en runtime).
+		if f.Values[0] == "" && col.Type != SearchTypeString {
+			return fmt.Sprintf("%s IS NULL", col.DBName), nil
+		}
 		return fmt.Sprintf("%s = %s", col.DBName, ph(f.Values[0])), nil
 	case search.OpNEQ:
 		if err := need(1); err != nil {
 			return "", err
+		}
+		if f.Values[0] == "" && col.Type != SearchTypeString {
+			return fmt.Sprintf("%s IS NOT NULL", col.DBName), nil
 		}
 		return fmt.Sprintf("%s <> %s", col.DBName, ph(f.Values[0])), nil
 	case search.OpLT:
