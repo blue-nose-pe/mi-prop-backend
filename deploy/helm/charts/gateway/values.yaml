@@ -31,8 +31,17 @@ upstreams:
   analyticsService:    "analytics-service:50056"
 
 cors:
+  # Lista de origins HTTP que el gateway acepta. Reemplazar por el dominio
+  # exacto del frontend en cada ambiente. Los `http://localhost:*` permiten
+  # que el dev del frontend pruebe contra este sandbox sin que CORS lo bloquee.
   allowedOrigins:
     - https://miproposito.ucsp.edu.pe
+    - http://localhost:4200
+    - http://localhost:4300
+    - http://localhost:3000
+    - http://localhost:5173
+    - http://localhost:8080
+    - http://127.0.0.1:4200
 
 rateLimit:
   enabled: true
