@@ -44,7 +44,7 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 
 	code := strings.TrimSpace(in.Code)
 	if code == "" {
-		code = randomCode(8)
+		code = autogenCode(in.ExamTypeID)
 	}
 
 	k := &domain.Key{
@@ -141,4 +141,22 @@ func randomCode(n int) string {
 		enc = enc[:n]
 	}
 	return strings.ToUpper(enc)
+}
+
+// autogenCode arma un código tipo `VO-XXXXXX`, `SI-XXXXXX`, `ES-XXXXXX`
+// según el exam_type_id (1=vocacional, 2=simulacro, 3=hábitos). Para
+// tipos desconocidos cae al fallback alfanumérico de 8 chars sin prefijo.
+func autogenCode(examTypeID int32) string {
+	var prefix string
+	switch examTypeID {
+	case 1:
+		prefix = "VO"
+	case 2:
+		prefix = "SI"
+	case 3:
+		prefix = "ES"
+	default:
+		return randomCode(8)
+	}
+	return prefix + "-" + randomCode(6)
 }
