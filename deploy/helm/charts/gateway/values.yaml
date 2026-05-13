@@ -36,6 +36,7 @@ cors:
   # que el dev del frontend pruebe contra este sandbox sin que CORS lo bloquee.
   allowedOrigins:
     - https://miproposito.ucsp.edu.pe
+    - http://15.156.100.140
     - http://localhost:4200
     - http://localhost:4300
     - http://localhost:3000
