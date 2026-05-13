@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.9.3
+  version: 0.9.4
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -2038,6 +2038,121 @@ paths:
                 code: "PERMISSION_GROUP_HAS_USERS"
                 message: "permission group still has users assigned"
                 category: "CONFLICT"
+
+  /api/students:
+    get:
+      tags: [Users]
+      summary: Listar/buscar estudiantes
+      description: |
+        Atajo semántico para listar todos los users que pertenecen al grupo
+        `student_permissions`. Equivale a `GET /api/permission-groups/1/users`
+        pero con un path más obvio para el frontend.
+
+        Soporta `search` (matchea email, first_name, last_name y
+        document_number con `LIKE %s%`), paginación (`limit`/`offset`) y
+        filtro `active_only`.
+
+        Permiso requerido: `db_users.users.read`.
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+          example: "alvarado"
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+        - in: query
+          name: active_only
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Listado paginado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  total: { type: integer }
+              example:
+                items:
+                  - { id: "ce5d01bd-2620-431a-920c-885bfc023dbe", email: "estudiante.alvarado@ucsp.edu.pe", first_name: "Pedro", last_name: "Alvarado", document_number: "70100001", phone: "", school_id: "", active: true, last_access_at: null, created_at: "2026-05-04T22:30:09Z", updated_at: null, is_superadmin: false, must_change_password: false }
+                total: 28
+
+  /api/asesores:
+    get:
+      tags: [Users]
+      summary: Listar/buscar asesores
+      description: |
+        Atajo semántico. Equivale a `GET /api/permission-groups/3/users`.
+        Mismos query params que `GET /api/students`.
+
+        Permiso requerido: `db_users.users.read`.
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: active_only
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Listado paginado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  total: { type: integer }
+
+  /api/coordinadores:
+    get:
+      tags: [Users]
+      summary: Listar/buscar coordinadores
+      description: |
+        Atajo semántico. Equivale a `GET /api/permission-groups/4/users`.
+        Mismos query params que `GET /api/students`.
+
+        Permiso requerido: `db_users.users.read`.
+      parameters:
+        - in: query
+          name: search
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, default: 0 }
+        - in: query
+          name: active_only
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: Listado paginado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  total: { type: integer }
 
   /api/permission-groups/{id}/users:
     parameters:

@@ -53,6 +53,53 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/schools", p.listSchools)
 	mux.HandleFunc("GET /api/schools/{id}", p.getSchool)
 	mux.HandleFunc("PATCH /api/schools/{id}", p.updateSchool)
+
+	// Atajos semánticos (rolean al endpoint de grupo subyacente con
+	// el id del grupo predefinido). Pensados para el front: más obvios
+	// que llamar a /api/permission-groups/N/users.
+	mux.HandleFunc("GET /api/students", p.listStudents)
+	mux.HandleFunc("GET /api/asesores", p.listAsesores)
+	mux.HandleFunc("GET /api/coordinadores", p.listCoordinadores)
+}
+
+// Atajo: GET /api/students = GET /api/permission-groups/1/users
+func (p *Proxy) listStudents(w http.ResponseWriter, r *http.Request) {
+	p.listUsersInGroup(w, r, 1)
+}
+
+// Atajo: GET /api/asesores = GET /api/permission-groups/3/users
+func (p *Proxy) listAsesores(w http.ResponseWriter, r *http.Request) {
+	p.listUsersInGroup(w, r, 3)
+}
+
+// Atajo: GET /api/coordinadores = GET /api/permission-groups/4/users
+func (p *Proxy) listCoordinadores(w http.ResponseWriter, r *http.Request) {
+	p.listUsersInGroup(w, r, 4)
+}
+
+// listUsersInGroup reusa el handler de listGroupUsers pero con el group_id
+// fijado por código (no por path param).
+func (p *Proxy) listUsersInGroup(w http.ResponseWriter, r *http.Request, groupID uint32) {
+	q := r.URL.Query()
+	resp, err := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{
+		GroupId:    groupID,
+		Search:     q.Get("search"),
+		Limit:      parseUint32Query(q.Get("limit"), 100),
+		Offset:     parseUint32Query(q.Get("offset"), 0),
+		ActiveOnly: q.Get("active_only") == "true" || q.Get("active_only") == "1",
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, u := range resp.GetItems() {
+		items = append(items, protoUserToJSON(u))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"total": resp.GetTotal(),
+	})
 }
 
 type createSchoolRequest struct {
