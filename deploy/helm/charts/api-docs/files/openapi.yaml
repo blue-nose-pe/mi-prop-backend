@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.9.1
+  version: 0.9.2
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -3334,42 +3334,87 @@ paths:
       tags: [Keys]
       summary: Generar una key
       description: |
-        Si `code` viene vacío, el server genera uno aleatorio (8 chars
-        alfanuméricos en base32). `mode='school'` requiere `school_id`
-        no vacío.
+        Crea una key de acceso para que estudiantes rindan un examen.
 
-        Permiso: `db_keys.key.write` (asesores generan, admin valida).
+        **Auto-generación del `code`**: si dejás el campo vacío, el server
+        arma un código con prefijo según `exam_type_id`:
+
+        - `1` (vocacional) → `VO-XXXXXX`
+        - `2` (simulacro)  → `SI-XXXXXX`
+        - `3` (estilos / hábitos) → `ES-XXXXXX`
+
+        Los 6 caracteres después del guión son alfanuméricos random
+        (base32). Útil para identificar el tipo de un vistazo en reportes.
+        Si pasás un `code` propio (ej. `"VOC-2026-A"`) se respeta tal cual
+        y la unicidad la enforza el UNIQUE de la tabla.
+
+        **Reglas de modo**:
+        - `mode="school"` requiere `school_id` no vacío.
+        - `mode="lan"` se usa para sesiones masivas sin colegio.
+
+        Permiso requerido: `db_keys.key.write` (asesores generan, admin valida).
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/GenerateKeyRequest' }
             examples:
-              key_de_colegio:
-                summary: Key para sesión de un colegio
+              key_vocacional_autogen:
+                summary: Vocacional, dejar que el server genere el code (recibe VO-XXXXXX)
                 value:
                   exam_type_id: 1
-                  school_id: "3a8f..."
-                  asesor_user_id: "7c11..."
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
                   mode: "school"
                   grade: "5to"
                   section: "A"
-                  valid_from: "2026-06-01T00:00:00Z"
+                  valid_from: "2026-06-01T08:00:00Z"
                   valid_to:   "2026-06-30T23:59:59Z"
                   max_uses: 30
-              key_lan:
-                summary: Key para sesión LAN masiva (sin colegio)
+              key_simulacro_lan:
+                summary: Simulacro LAN masivo, código custom
                 value:
+                  code: "SIM-LAN-2026-Q2"
                   exam_type_id: 2
-                  asesor_user_id: "7c11..."
+                  asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
                   mode: "lan"
+                  valid_from: "2026-07-01T08:00:00Z"
+                  valid_to:   "2026-07-01T18:00:00Z"
                   max_uses: 200
+              key_habitos_autogen:
+                summary: Estilos/hábitos, autogen (recibe ES-XXXXXX)
+                value:
+                  exam_type_id: 3
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  mode: "school"
+                  grade: "5to"
+                  valid_from: "2026-06-01T08:00:00Z"
+                  valid_to:   "2026-06-30T23:59:59Z"
+                  max_uses: 30
       responses:
         '200':
-          description: Key creada
+          description: Key creada. El `code` puede ser el que mandaste o el autogen con prefijo.
           content:
             application/json:
               schema: { type: object, properties: { key: { $ref: '#/components/schemas/Key' } } }
+              example:
+                key:
+                  id: "b65299b3-19e8-4540-9ae7-c99a73959205"
+                  code: "VO-HT74OL"
+                  exam_type_id: 1
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                  mode: "school"
+                  grade: "5to"
+                  section: "A"
+                  valid_from: "2026-06-01T08:00:00Z"
+                  valid_to:   "2026-06-30T23:59:59Z"
+                  max_uses: 30
+                  current_uses: 0
+                  active: true
+                  created_at: "2026-05-13T19:00:00Z"
+                  updated_at: null
         '400':
           description: Validación
           content:
