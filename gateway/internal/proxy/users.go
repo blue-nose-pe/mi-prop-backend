@@ -30,6 +30,8 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	// CRUD básico
 	mux.HandleFunc("POST /api/users", p.createUser)
 	mux.HandleFunc("POST /api/users/bulk", p.bulkCreateUsers)
+	mux.HandleFunc("GET /api/users/bulk/template.csv", p.bulkTemplateCSV)
+	mux.HandleFunc("GET /api/users/bulk/sample.csv", p.bulkSampleCSV)
 	mux.HandleFunc("GET /api/users/me", p.getMe)
 	mux.HandleFunc("POST /api/users/me/change-password", p.changeMyPassword)
 	mux.HandleFunc("GET /api/users/by-email", p.getUserByEmail)

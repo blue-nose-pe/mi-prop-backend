@@ -197,3 +197,32 @@ func grpcMessage(err error) string {
 	}
 	return err.Error()
 }
+
+// bulkTemplateCSV devuelve un CSV vacío (solo header) para que el admin
+// lo descargue, llene en Excel y vuelva a subir vía POST /api/users/bulk.
+func (p *Proxy) bulkTemplateCSV(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="users-bulk-template.csv"`)
+	_, _ = w.Write([]byte("email,password,first_name,last_name,document_number,phone,school_id\n"))
+}
+
+// bulkSampleCSV devuelve un CSV con datos ficticios para que el admin vea
+// cómo se ve un archivo real. Los emails son ejemplo.com (no chocan con
+// nada productivo). Reemplazar antes de subir.
+func (p *Proxy) bulkSampleCSV(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="users-bulk-sample.csv"`)
+	rows := [][]string{
+		{"email", "password", "first_name", "last_name", "document_number", "phone", "school_id"},
+		{"ana.quispe@example.com", "Temp1234!", "Ana", "Quispe", "70000001", "+51 900 100 001", ""},
+		{"luis.ramos@example.com", "Temp1234!", "Luis", "Ramos", "70000002", "+51 900 100 002", ""},
+		{"sofia.rios@example.com", "Temp1234!", "Sofia", "Rios", "70000003", "+51 900 100 003", ""},
+		{"diego.cardenas@example.com", "Temp1234!", "Diego", "Cardenas", "70000004", "+51 900 100 004", ""},
+		{"camila.flores@example.com", "Temp1234!", "Camila", "Flores", "70000005", "+51 900 100 005", ""},
+	}
+	wr := csv.NewWriter(w)
+	for _, r := range rows {
+		_ = wr.Write(r)
+	}
+	wr.Flush()
+}
