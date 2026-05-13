@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.9.0
+  version: 0.9.1
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -2160,6 +2160,54 @@ paths:
   # SCHOOLS (parte de users-service)
   # ──────────────────────────────────────────────────────────────────
   /api/schools:
+    post:
+      tags: [Schools]
+      summary: Crear colegio
+      description: |
+        Inserta un colegio nuevo en `db_users.school`. Requiere `name` y
+        `user_id` (el coordinador owner). El `hubspot_record_id` es opcional;
+        si no se carga ahora, se setea más tarde tras el sync con HubSpot.
+
+        Tip: el flow normal es crear primero al coordinador con
+        `POST /api/users` (sin `school_id`) y después crear el colegio
+        pasando el `user_id` del coordinador. Luego, opcionalmente, editar
+        el user con `PATCH /api/users/{id}` para setearle el `school_id` del
+        colegio recién creado.
+
+        Permiso requerido: `db_users.school.write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, user_id]
+              properties:
+                name:              { type: string, example: "Colegio San Pablo" }
+                user_id:           { type: string, format: uuid, description: "ID del coordinador dueño del colegio." }
+                hubspot_record_id: { type: string, description: "Opcional; '' si todavía no se sincronizó al CRM." }
+            example:
+              name: "Colegio San Pablo"
+              user_id: "d4326844-7b4a-4daf-b36e-9395dd92bcbc"
+      responses:
+        '200':
+          description: Colegio creado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  school: { $ref: '#/components/schemas/School' }
+              example:
+                school:
+                  id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  user_id: "d4326844-7b4a-4daf-b36e-9395dd92bcbc"
+                  name: "Colegio San Pablo"
+                  active: true
+                  hubspot_record_id: ""
+                  created_at: "2026-05-13T10:00:00Z"
+                  updated_at: null
+        '400': { $ref: '#/components/responses/ValidationError' }
     get:
       tags: [Schools]
       summary: Listar colegios (paginado, con búsqueda)
@@ -2264,6 +2312,36 @@ paths:
                 code: "SCHOOL_NOT_FOUND"
                 message: "school not found"
                 category: "NOT_FOUND"
+    patch:
+      tags: [Schools]
+      summary: Actualizar colegio (parcial)
+      description: |
+        Actualiza solo los campos provistos no vacíos. String vacío en
+        cualquier campo significa "no tocar".
+
+        Permiso: `db_users.school.write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:              { type: string }
+                user_id:           { type: string, format: uuid, description: "Cambiar el coordinador dueño. '' = no tocar." }
+                hubspot_record_id: { type: string }
+            example:
+              name: "Colegio San Pablo - sede norte"
+      responses:
+        '200':
+          description: Colegio actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  school: { $ref: '#/components/schemas/School' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ──────────────────────────────────────────────────────────────────
   # EXAMS

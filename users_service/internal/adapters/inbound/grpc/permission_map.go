@@ -36,6 +36,8 @@ var PermissionMap = map[string]string{
 	// schools
 	"/users.v1.SchoolService/GetSchool":             "db_users.school.read",
 	"/users.v1.SchoolService/ListSchools":           "db_users.school.read",
+	"/users.v1.SchoolService/CreateSchool":          "db_users.school.write",
+	"/users.v1.SchoolService/UpdateSchool":          "db_users.school.write",
 
 	// permission_group service (CRUD a runtime)
 	"/users.v1.PermissionGroupService/CreateGroup":      "db_users.permission_group.write",

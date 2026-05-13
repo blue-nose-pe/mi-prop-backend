@@ -106,6 +106,8 @@ type SchoolRepository interface {
 	FindByID(ctx context.Context, id domain.SchoolID) (*domain.School, error)
 	List(ctx context.Context, in ListSchoolsInput) ([]domain.School, uint32, error)
 	SetHubspotRecordID(ctx context.Context, id domain.SchoolID, recordID string) error
+	Create(ctx context.Context, s *domain.School) (domain.SchoolID, error)
+	Update(ctx context.Context, s *domain.School) error
 }
 
 // ListSchoolsInput: filtros del listado paginado de colegios.

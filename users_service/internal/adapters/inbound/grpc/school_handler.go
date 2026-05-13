@@ -2,6 +2,7 @@ package grpchandler
 
 import (
 	"context"
+	"time"
 
 	"users_service/internal/core/domain"
 	"users_service/internal/core/ports"
@@ -30,6 +31,48 @@ func (h *SchoolHandler) GetSchool(ctx context.Context, req *pb.GetSchoolRequest)
 		return nil, apperr.ToGRPC(ctx, err)
 	}
 	return &pb.SchoolResponse{School: schoolToProto(s)}, nil
+}
+
+func (h *SchoolHandler) CreateSchool(ctx context.Context, req *pb.CreateSchoolRequest) (*pb.SchoolResponse, error) {
+	if req.GetName() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_NAME", "name is required", "name"))
+	}
+	if req.GetUserId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_USER_ID", "user_id (coordinador owner) is required", "user_id"))
+	}
+	s := &domain.School{
+		Name:            req.GetName(),
+		UserID:          domain.UserID(req.GetUserId()),
+		Active:          true,
+		HubspotRecordID: req.GetHubspotRecordId(),
+		CreatedAt:       time.Now(),
+	}
+	id, err := h.repo.Create(ctx, s)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	s.ID = id
+	return &pb.SchoolResponse{School: schoolToProto(s)}, nil
+}
+
+func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRequest) (*pb.SchoolResponse, error) {
+	if req.GetId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
+	}
+	s := &domain.School{
+		ID:              domain.SchoolID(req.GetId()),
+		Name:            req.GetName(),
+		UserID:          domain.UserID(req.GetUserId()),
+		HubspotRecordID: req.GetHubspotRecordId(),
+	}
+	if err := h.repo.Update(ctx, s); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	updated, err := h.repo.FindByID(ctx, s.ID)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.SchoolResponse{School: schoolToProto(updated)}, nil
 }
 
 func (h *SchoolHandler) ListSchools(ctx context.Context, req *pb.ListSchoolsRequest) (*pb.ListSchoolsResponse, error) {

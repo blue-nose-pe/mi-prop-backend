@@ -37,8 +37,10 @@ service UserService {
 // gRPC: los colegios se crean implícitamente al promover un user a
 // representante de colegio (flow administrativo aparte).
 service SchoolService {
-  rpc GetSchool   (GetSchoolRequest)   returns (SchoolResponse);
-  rpc ListSchools (ListSchoolsRequest) returns (ListSchoolsResponse);
+  rpc GetSchool    (GetSchoolRequest)    returns (SchoolResponse);
+  rpc ListSchools  (ListSchoolsRequest)  returns (ListSchoolsResponse);
+  rpc CreateSchool (CreateSchoolRequest) returns (SchoolResponse);
+  rpc UpdateSchool (UpdateSchoolRequest) returns (SchoolResponse);
 }
 
 // PermissionGroupService — administración de grupos de permisos (roles).
@@ -134,6 +136,18 @@ message ListSchoolsRequest {
 message ListSchoolsResponse {
   repeated School items = 1;
   uint32 total = 2;        // total sin paginar (para la UI de paginacion)
+}
+
+message CreateSchoolRequest {
+  string name              = 1;
+  string user_id           = 2;  // user_id del coordinador owner (obligatorio)
+  string hubspot_record_id = 3;  // opcional, "" si todavia no se sincronizo
+}
+message UpdateSchoolRequest {
+  string id                = 1;
+  string name              = 2;  // "" = no tocar
+  string user_id           = 3;  // "" = no tocar
+  string hubspot_record_id = 4;  // "" = no tocar
 }
 
 message School {

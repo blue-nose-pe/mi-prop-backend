@@ -47,8 +47,59 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/users/{id}/permissions/check", p.checkUserPermission)
 
 	// Schools
+	mux.HandleFunc("POST /api/schools", p.createSchool)
 	mux.HandleFunc("GET /api/schools", p.listSchools)
 	mux.HandleFunc("GET /api/schools/{id}", p.getSchool)
+	mux.HandleFunc("PATCH /api/schools/{id}", p.updateSchool)
+}
+
+type createSchoolRequest struct {
+	Name            string `json:"name"`
+	UserID          string `json:"user_id"`
+	HubspotRecordID string `json:"hubspot_record_id"`
+}
+
+func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
+	var in createSchoolRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	resp, err := p.cli.Schools.CreateSchool(r.Context(), &usersgrpcpb.CreateSchoolRequest{
+		Name:            in.Name,
+		UserId:          in.UserID,
+		HubspotRecordId: in.HubspotRecordID,
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"school": protoSchoolToJSON(resp.GetSchool())})
+}
+
+type updateSchoolRequest struct {
+	Name            string `json:"name"`
+	UserID          string `json:"user_id"`
+	HubspotRecordID string `json:"hubspot_record_id"`
+}
+
+func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
+	var in updateSchoolRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	resp, err := p.cli.Schools.UpdateSchool(r.Context(), &usersgrpcpb.UpdateSchoolRequest{
+		Id:              r.PathValue("id"),
+		Name:            in.Name,
+		UserId:          in.UserID,
+		HubspotRecordId: in.HubspotRecordID,
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"school": protoSchoolToJSON(resp.GetSchool())})
 }
 
 func (p *Proxy) getSchool(w http.ResponseWriter, r *http.Request) {

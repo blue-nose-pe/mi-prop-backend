@@ -113,6 +113,43 @@ func (r *SchoolRepo) List(ctx context.Context, in ports.ListSchoolsInput) ([]dom
 	return out, total, rows.Err()
 }
 
+// Create persiste un colegio nuevo. La BD genera el UNIQUEIDENTIFIER vía
+// DEFAULT NEWID() y lo recuperamos con OUTPUT INSERTED.id.
+func (r *SchoolRepo) Create(ctx context.Context, s *domain.School) (domain.SchoolID, error) {
+	const q = `
+		INSERT INTO school (user_id, name, active, hubspot_record_id)
+		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
+		VALUES (CONVERT(UNIQUEIDENTIFIER, @p1), @p2, @p3, NULLIF(@p4, ''))`
+	var id string
+	err := r.db.QueryRowContext(ctx, q,
+		string(s.UserID), s.Name, s.Active, s.HubspotRecordID,
+	).Scan(&id)
+	if err != nil {
+		return "", err
+	}
+	return domain.SchoolID(id), nil
+}
+
+// Update aplica cambios parciales (campos vacíos no se tocan).
+func (r *SchoolRepo) Update(ctx context.Context, s *domain.School) error {
+	const q = `
+		UPDATE school
+		   SET name              = COALESCE(NULLIF(@p1, ''), name),
+		       user_id           = COALESCE(IIF(@p2 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p2)), user_id),
+		       hubspot_record_id = COALESCE(NULLIF(@p3, ''), hubspot_record_id)
+		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p4)`
+	res, err := r.db.ExecContext(ctx, q,
+		s.Name, string(s.UserID), s.HubspotRecordID, string(s.ID))
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return domain.ErrSchoolNotFound
+	}
+	return nil
+}
+
 // SetHubspotRecordID guarda el record_id que devuelve HubSpot al crear
 // un colegio (custom object o company). Lo invoca el hubspot-service vía
 // gRPC tras un sync exitoso.
