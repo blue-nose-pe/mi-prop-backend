@@ -28,3 +28,7 @@ func (h *AttemptHandler) ListByUser(ctx context.Context, userID domain.UserID) (
 func (h *AttemptHandler) ListByExam(ctx context.Context, examID domain.ExamID) ([]domain.ExamAttempt, error) {
 	return h.attempts.ListByExam(ctx, examID)
 }
+
+func (h *AttemptHandler) ListEnrichedAnswers(ctx context.Context, id domain.AttemptID) ([]domain.EnrichedAnswer, error) {
+	return h.attempts.ListEnrichedAnswers(ctx, id)
+}

@@ -14,6 +14,7 @@ service AnalyticsService {
   rpc GetHistoricoEstudiante  (GetHistoricoEstudianteRequest)  returns (HistoricoEstudianteResponse);
   rpc GetHistoricoColegio     (GetHistoricoColegioRequest)     returns (HistoricoColegioResponse);
   rpc GetColegiosHistorico    (GetColegiosHistoricoRequest)    returns (ColegiosHistoricoResponse);
+  rpc GetReporteEstudiante    (GetReporteEstudianteRequest)    returns (ReporteEstudianteResponse);
   rpc ExportAsesorXLSX        (ExportAsesorXLSXRequest)        returns (ExportXLSXResponse);
   rpc ExportColegioXLSX       (ExportColegioXLSXRequest)       returns (ExportXLSXResponse);
   rpc ExportComparativoXLSX   (ExportComparativoXLSXRequest)   returns (ExportXLSXResponse);
@@ -136,6 +137,60 @@ message ColegiosHistoricoResponse {
   string exam_type_code = 2;
   repeated ColegiosHistoricoRow items = 3;
   google.protobuf.Timestamp generated_at = 4;
+}
+
+// ----- Reporte estudiante (Tour Vocacional UCSP) -----
+message GetReporteEstudianteRequest {
+  string user_id    = 1;
+  string attempt_id = 2; // opcional; si "" se usa el ultimo attempt submitted
+}
+
+message CategoryStat {
+  string code       = 1; // R/I/A/S/E/C
+  string label      = 2; // "Realista", "Investigador"...
+  int32  points     = 3;
+  int32  max_points = 4;
+}
+
+message AreaInteresMatch {
+  string code            = 1;
+  string label           = 2;
+  string area_label      = 3; // "CALCULO", etc
+  string characteristics = 4;
+  repeated string careers = 5;
+  int32  points          = 6;
+  int32  max_points      = 7;
+}
+
+message AreasInteresSection {
+  bool   available                  = 1;
+  string reason                     = 2; // por que no esta disponible si !available
+  map<string, CategoryStat> scores  = 3;
+  repeated AreaInteresMatch top     = 4;
+}
+
+// ReportSection es el sobre para secciones con rubrica pendiente
+// (personalidad, apoyo familiar, proyecto de vida).
+message ReportSection {
+  bool   available = 1;
+  string reason    = 2;
+}
+
+message ReporteEstudianteResponse {
+  string user_id        = 1;
+  string student_name   = 2;
+  string attempt_id     = 3;
+  string exam_id        = 4;
+  string exam_name      = 5;
+  string exam_type_code = 6;
+  google.protobuf.Timestamp submitted_at = 7;
+  int32  score          = 8;
+  int32  max_score      = 9;
+  AreasInteresSection areas_interes   = 10;
+  ReportSection      personalidad     = 11; // placeholder hasta tener rubrica
+  ReportSection      apoyo_familiar   = 12; // idem
+  ReportSection      proyecto_de_vida = 13; // idem
+  google.protobuf.Timestamp generated_at = 14;
 }
 
 // ----- Exports -----

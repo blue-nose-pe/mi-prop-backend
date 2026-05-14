@@ -62,6 +62,10 @@ type AttemptRepository interface {
 	ListByExam(ctx context.Context, examID domain.ExamID) ([]domain.ExamAttempt, error)
 	UpsertAnswer(ctx context.Context, ans *domain.AttemptAnswer) error
 	ListAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.AttemptAnswer, error)
+	// ListEnrichedAnswers devuelve las respuestas del attempt con la pregunta
+	// y la opcion elegida pre-resueltas en un solo viaje a la DB. Pensado
+	// para reportes vocacionales que necesitan category + sort_order.
+	ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.EnrichedAnswer, error)
 	Finish(ctx context.Context, id domain.AttemptID, score, maxScore int32, when time.Time) error
 	CountActiveByExam(ctx context.Context, examID domain.ExamID) (int32, error)
 }

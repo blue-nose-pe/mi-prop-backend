@@ -130,6 +130,65 @@ func (h *AnalyticsHandler) GetHistoricoColegio(ctx context.Context, req *pb.GetH
 	}, nil
 }
 
+func (h *AnalyticsHandler) GetReporteEstudiante(ctx context.Context, req *pb.GetReporteEstudianteRequest) (*pb.ReporteEstudianteResponse, error) {
+	r, err := h.qrys.GetReporteEstudiante(ctx, ports.ReporteEstudianteInput{
+		UserID:    domain.UserID(req.GetUserId()),
+		AttemptID: domain.AttemptID(req.GetAttemptId()),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	out := &pb.ReporteEstudianteResponse{
+		UserId:       string(r.UserID),
+		StudentName:  r.StudentName,
+		AttemptId:    string(r.AttemptID),
+		ExamId:       string(r.ExamID),
+		ExamName:     r.ExamName,
+		ExamTypeCode: r.ExamTypeCode,
+		Score:        r.Score,
+		MaxScore:     r.MaxScore,
+		AreasInteres: toAreasInteres(r.AreasInteres),
+		Personalidad: &pb.ReportSection{Available: r.Personalidad.Available, Reason: r.Personalidad.Reason},
+		ApoyoFamiliar: &pb.ReportSection{Available: r.ApoyoFamiliar.Available, Reason: r.ApoyoFamiliar.Reason},
+		ProyectoDeVida: &pb.ReportSection{Available: r.ProyectoDeVida.Available, Reason: r.ProyectoDeVida.Reason},
+		GeneratedAt:  timestamppb.New(r.GeneratedAt),
+	}
+	if r.SubmittedAt != nil {
+		out.SubmittedAt = timestamppb.New(*r.SubmittedAt)
+	}
+	return out, nil
+}
+
+func toAreasInteres(s domain.AreasInteresSection) *pb.AreasInteresSection {
+	scores := make(map[string]*pb.CategoryStat, len(s.Scores))
+	for k, v := range s.Scores {
+		scores[k] = &pb.CategoryStat{
+			Code:      v.Code,
+			Label:     v.Label,
+			Points:    v.Points,
+			MaxPoints: v.MaxPoints,
+		}
+	}
+	top := make([]*pb.AreaInteresMatch, 0, len(s.Top))
+	for _, t := range s.Top {
+		top = append(top, &pb.AreaInteresMatch{
+			Code:            t.Code,
+			Label:           t.Label,
+			AreaLabel:       t.AreaLabel,
+			Characteristics: t.Characteristics,
+			Careers:         t.Careers,
+			Points:          t.Points,
+			MaxPoints:       t.MaxPoints,
+		})
+	}
+	return &pb.AreasInteresSection{
+		Available: s.Available,
+		Reason:    s.Reason,
+		Scores:    scores,
+		Top:       top,
+	}
+}
+
 func (h *AnalyticsHandler) GetColegiosHistorico(ctx context.Context, req *pb.GetColegiosHistoricoRequest) (*pb.ColegiosHistoricoResponse, error) {
 	d, err := h.qrys.GetColegiosHistorico(ctx, ports.ColegiosHistoricoInput{
 		Period:       req.GetPeriod(),

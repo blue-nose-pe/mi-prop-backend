@@ -25,6 +25,14 @@ type DashboardQueries interface {
 	// periodo solicitado + variacion vs anterior. Period "" o "current" toma
 	// el quarter actual; sino "YYYY-QN".
 	GetColegiosHistorico(ctx context.Context, in ColegiosHistoricoInput) (*domain.ColegiosHistoricoListing, error)
+	// GetReporteEstudiante consolida el "Tour Vocacional UCSP" del PDF.
+	// Si AttemptID == "", usa el ultimo attempt submitted del user.
+	GetReporteEstudiante(ctx context.Context, in ReporteEstudianteInput) (*domain.ReporteEstudiante, error)
+}
+
+type ReporteEstudianteInput struct {
+	UserID    domain.UserID
+	AttemptID domain.AttemptID
 }
 
 type HistoricoColegioInput struct {

@@ -8,10 +8,11 @@ package domain
 import "time"
 
 type (
-	UserID    string
-	SchoolID  string
-	ExamID    string
-	AttemptID string
+	UserID     string
+	SchoolID   string
+	ExamID     string
+	AttemptID  string
+	QuestionID string
 )
 
 // AsesorDashboard — vista agregada para un asesor.

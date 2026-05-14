@@ -40,12 +40,15 @@ service ExamQuestionService {
 }
 
 service AttemptService {
-  rpc StartAttempt   (StartAttemptRequest)  returns (AttemptResponse);
-  rpc Answer         (AnswerRequest)        returns (EmptyResponse);
-  rpc FinishAttempt  (FinishAttemptRequest) returns (AttemptResponse);
-  rpc GetAttempt     (GetAttemptRequest)    returns (AttemptResponse);
-  rpc ListByUser     (ListAttemptsByUserRequest) returns (ListAttemptsResponse);
-  rpc ListByExam     (ListAttemptsByExamRequest) returns (ListAttemptsResponse);
+  rpc StartAttempt        (StartAttemptRequest)         returns (AttemptResponse);
+  rpc Answer              (AnswerRequest)               returns (EmptyResponse);
+  rpc FinishAttempt       (FinishAttemptRequest)        returns (AttemptResponse);
+  rpc GetAttempt          (GetAttemptRequest)           returns (AttemptResponse);
+  rpc ListByUser          (ListAttemptsByUserRequest)   returns (ListAttemptsResponse);
+  rpc ListByExam          (ListAttemptsByExamRequest)   returns (ListAttemptsResponse);
+  // ListEnrichedAnswers: respuestas con metadata de pregunta/opcion en
+  // una sola llamada. Optimizado para reporting (evita N+1 al consumer).
+  rpc ListEnrichedAnswers (ListEnrichedAnswersRequest)  returns (ListEnrichedAnswersResponse);
 }
 
 // =============== Messages ===============
@@ -184,5 +187,18 @@ message ListAttemptsByUserRequest { string user_id = 1; }
 message ListAttemptsByExamRequest { string exam_id = 1; }
 message ListAttemptsResponse      { repeated Attempt items = 1; }
 message AttemptResponse           { Attempt attempt = 1; }
+
+message ListEnrichedAnswersRequest  { string attempt_id = 1; }
+message EnrichedAnswer {
+  string question_id        = 1;
+  string question_text      = 2;
+  string question_category  = 3; // R/I/A/S/E/C en exams vocacionales
+  string option_id          = 4;
+  string option_text        = 5;
+  int32  option_sort_order  = 6; // utilizable como peso Likert 0..N
+  bool   option_is_correct  = 7;
+  google.protobuf.Timestamp answered_at = 8;
+}
+message ListEnrichedAnswersResponse { repeated EnrichedAnswer items = 1; }
 
 message EmptyResponse {}

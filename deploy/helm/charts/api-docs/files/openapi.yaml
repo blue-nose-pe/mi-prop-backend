@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.11.0
+  version: 0.12.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -4827,6 +4827,127 @@ paths:
                 message: "exam_type_code query param is required"
                 category: "VALIDATION_ERROR"
 
+  /api/analytics/estudiante/{id}/reporte:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Analytics]
+      summary: Reporte "Tour Vocacional UCSP" consolidado del estudiante
+      description: |
+        Devuelve el reporte vocacional consolidado de un estudiante, listo
+        para imprimir o renderizar como la hoja que Flor comparte con los
+        participantes. Es la versión digital y al-día del PDF que hoy se
+        arma manualmente.
+
+        Si no se manda `attempt_id`, el servidor toma el último attempt
+        **submitted** del usuario.
+
+        ### Cobertura actual
+
+        Para evitar cocinar números sin rúbrica oficial, las secciones del
+        reporte se devuelven con un flag `available`:
+
+        | Sección                | `available` | Cómo se computa hoy |
+        |------------------------|-------------|---------------------|
+        | `areas_interes`        | `true`      | RIASEC sobre las respuestas del attempt: cuenta `sort_order` (peso Likert) por categoría de pregunta y mapea la top a un área + carreras sugeridas. |
+        | `personalidad`         | `false`     | Pendiente: cuestionario y rúbrica de 4 temperamentos (Colérico/Sanguíneo/Melancólico/Flemático). |
+        | `apoyo_familiar`       | `false`     | Pendiente: cuestionario familiar + rúbrica 0..5 estrellas. |
+        | `proyecto_de_vida`     | `false`     | Pendiente: cuestionario de 5 ejes (autoconocimiento / información / preparación / presupuesto / vocación). |
+
+        Cuando UCSP entregue las rúbricas, las 3 secciones que están en
+        `false` se rellenan sin cambiar este contrato.
+
+        Permiso requerido: `analytics.dashboard.read` o ser el propio
+        estudiante.
+      parameters:
+        - in: query
+          name: attempt_id
+          schema: { type: string, format: uuid }
+          description: |
+            Opcional. Si se omite, el server toma el último attempt
+            `submitted` del usuario. Útil cuando el estudiante rindió
+            varias versiones del test y querés un reporte específico.
+      responses:
+        '200':
+          description: Reporte
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReporteEstudiante' }
+              example:
+                user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                student_name: "Albeyron Missael Cahuana Puma"
+                attempt_id: "b0db134b-e321-40c2-a040-b140109fed84"
+                exam_id: "e3024a97-3f7b-428e-91f8-2b090b186ed8"
+                exam_name: "Test Vocacional Demo"
+                exam_type_code: "vocacional"
+                submitted_at: "2026-05-09T12:48:04Z"
+                score: 8
+                max_score: 12
+                areas_interes:
+                  available: true
+                  reason: ""
+                  scores:
+                    R: { code: "R", label: "Realista",     points: 2, max_points: 6 }
+                    I: { code: "I", label: "Investigador", points: 6, max_points: 6 }
+                    A: { code: "A", label: "Artistico",    points: 1, max_points: 6 }
+                    S: { code: "S", label: "Social",       points: 3, max_points: 6 }
+                    E: { code: "E", label: "Emprendedor",  points: 4, max_points: 6 }
+                    C: { code: "C", label: "Convencional", points: 5, max_points: 6 }
+                  top:
+                    - code: "I"
+                      label: "Investigador"
+                      area_label: "CALCULO"
+                      characteristics: "Gusto de trabajar con conceptos abstractos, con numeros y problemas matematicos."
+                      careers: ["Matematica", "Economia", "Ingenieria Geologica", "Telecomunicaciones", "Ingenieria de Minas", "Ingenieria Civil"]
+                      points: 6
+                      max_points: 6
+                    - code: "C"
+                      label: "Convencional"
+                      area_label: "ORGANIZACION Y SISTEMAS"
+                      characteristics: "Gusto por organizar informacion, seguir procedimientos y trabajar con datos estructurados."
+                      careers: ["Contabilidad", "Auditoria", "Administracion"]
+                      points: 5
+                      max_points: 6
+                personalidad:
+                  available: false
+                  reason: "Personality scoring requires a separate questionnaire and rubric from UCSP (4-temperaments model). To be wired when the rubric is provided."
+                apoyo_familiar:
+                  available: false
+                  reason: "Family-support score requires a separate questionnaire and a 0..5 rubric. To be wired when the rubric is provided."
+                proyecto_de_vida:
+                  available: false
+                  reason: "5-axis Life Project requires its own questionnaire and rubric."
+                generated_at: "2026-05-14T07:30:00Z"
+        '400':
+          description: Validación
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "MISSING_USER_ID"
+                message: "user_id is required"
+                category: "VALIDATION_ERROR"
+        '403':
+          description: El attempt no pertenece al user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "ATTEMPT_NOT_OWNED"
+                message: "attempt does not belong to this user"
+                category: "PERMISSION_DENIED"
+        '404':
+          description: No hay attempt submitted del usuario
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "NO_SUBMITTED_ATTEMPT"
+                message: "user has no submitted attempts to build a report from"
+                category: "NOT_FOUND"
+
   /api/analytics/estudiante/{id}/historico:
     parameters: [{ $ref: '#/components/parameters/UserID' }]
     get:
@@ -5870,4 +5991,68 @@ components:
         items:
           type: array
           items: { $ref: '#/components/schemas/ColegiosHistoricoRow' }
+        generated_at:   { type: string, format: date-time }
+
+    CategoryStat:
+      type: object
+      properties:
+        code:       { type: string, description: "Código RIASEC: R/I/A/S/E/C" }
+        label:      { type: string, description: "Nombre del eje (Realista, Investigador...)" }
+        points:     { type: integer, format: int32 }
+        max_points: { type: integer, format: int32, description: "Máximo alcanzable en esta categoría dado el exam" }
+
+    AreaInteresMatch:
+      type: object
+      properties:
+        code:            { type: string }
+        label:           { type: string }
+        area_label:      { type: string, description: "Etiqueta del área que se imprime grande (p.ej. 'CALCULO')" }
+        characteristics: { type: string, description: "Descripción del área para mostrar al estudiante" }
+        careers:
+          type: array
+          items: { type: string }
+        points:     { type: integer, format: int32 }
+        max_points: { type: integer, format: int32 }
+
+    AreasInteresSection:
+      type: object
+      properties:
+        available: { type: boolean }
+        reason:    { type: string, description: "Por qué no está disponible si available=false" }
+        scores:
+          type: object
+          additionalProperties: { $ref: '#/components/schemas/CategoryStat' }
+          description: "Mapa codigo RIASEC -> stats. Una entrada por categoría con datos."
+        top:
+          type: array
+          items: { $ref: '#/components/schemas/AreaInteresMatch' }
+          description: "Top 1-3 áreas por puntaje, listas para imprimir."
+
+    ReportSection:
+      type: object
+      description: |
+        Sobre genérico para secciones del reporte cuyo cálculo aún depende
+        de una rúbrica externa de UCSP (personalidad, apoyo familiar,
+        proyecto de vida). Cuando se entreguen las reglas, esto se
+        reemplaza por un schema concreto sin cambiar el endpoint.
+      properties:
+        available: { type: boolean }
+        reason:    { type: string }
+
+    ReporteEstudiante:
+      type: object
+      properties:
+        user_id:        { type: string, format: uuid }
+        student_name:   { type: string }
+        attempt_id:     { type: string, format: uuid }
+        exam_id:        { type: string, format: uuid }
+        exam_name:      { type: string }
+        exam_type_code: { type: string }
+        submitted_at:   { type: string, format: date-time, nullable: true }
+        score:          { type: integer, format: int32 }
+        max_score:      { type: integer, format: int32 }
+        areas_interes:    { $ref: '#/components/schemas/AreasInteresSection' }
+        personalidad:     { $ref: '#/components/schemas/ReportSection' }
+        apoyo_familiar:   { $ref: '#/components/schemas/ReportSection' }
+        proyecto_de_vida: { $ref: '#/components/schemas/ReportSection' }
         generated_at:   { type: string, format: date-time }

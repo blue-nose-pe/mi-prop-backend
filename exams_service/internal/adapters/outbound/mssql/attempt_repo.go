@@ -137,6 +137,48 @@ func (r *AttemptRepo) ListAnswers(ctx context.Context, attemptID domain.AttemptI
 	return out, rows.Err()
 }
 
+func (r *AttemptRepo) ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.EnrichedAnswer, error) {
+	const q = `
+		SELECT CONVERT(NVARCHAR(36), aa.question_id),
+		       q.text,
+		       ISNULL(q.category, ''),
+		       CONVERT(NVARCHAR(36), aa.question_option_id),
+		       qo.text,
+		       qo.sort_order,
+		       qo.is_correct,
+		       aa.answered_at
+		  FROM attempt_answer aa
+		  JOIN question        q  ON q.id  = aa.question_id
+		  JOIN question_option qo ON qo.id = aa.question_option_id
+		 WHERE aa.exam_attempt_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		 ORDER BY q.text`
+	rows, err := r.db.QueryContext(ctx, q, string(attemptID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []domain.EnrichedAnswer
+	for rows.Next() {
+		var (
+			a          domain.EnrichedAnswer
+			questionID string
+			optionID   string
+		)
+		if err := rows.Scan(
+			&questionID, &a.QuestionText, &a.QuestionCategory,
+			&optionID, &a.OptionText, &a.OptionSortOrder, &a.OptionIsCorrect,
+			&a.AnsweredAt,
+		); err != nil {
+			return nil, err
+		}
+		a.QuestionID = domain.QuestionID(questionID)
+		a.OptionID = domain.OptionID(optionID)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
 func (r *AttemptRepo) Finish(ctx context.Context, id domain.AttemptID, score, maxScore int32, when time.Time) error {
 	const q = `
 		UPDATE exam_attempt

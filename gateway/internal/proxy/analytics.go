@@ -28,6 +28,7 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/dashboard", p.getEstudianteDashboard)
 	mux.HandleFunc("GET /api/analytics/comparativo", p.getComparativo)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/historico", p.getEstudianteHistorico)
+	mux.HandleFunc("GET /api/analytics/estudiante/{id}/reporte", p.getReporteEstudiante)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/historico", p.getColegioHistorico)
 	mux.HandleFunc("GET /api/analytics/colegios/historico", p.getColegiosHistorico)
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/export.xlsx", p.exportAsesorXLSX)
@@ -169,6 +170,69 @@ func (p *Proxy) getColegioHistorico(w http.ResponseWriter, r *http.Request) {
 		"exam_type_code": resp.GetExamTypeCode(),
 		"items":          items,
 		"generated_at":   optionalTimestamp(resp.GetGeneratedAt()),
+	})
+}
+
+// getReporteEstudiante — GET /api/analytics/estudiante/{id}/reporte
+// Query params:
+//   - attempt_id (opcional; si vacio, usa el ultimo attempt submitted del user)
+func (p *Proxy) getReporteEstudiante(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Analytics.GetReporteEstudiante(r.Context(), &analyticsgrpcpb.GetReporteEstudianteRequest{
+		UserId:    r.PathValue("id"),
+		AttemptId: r.URL.Query().Get("attempt_id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	areas := resp.GetAreasInteres()
+	scores := map[string]any{}
+	for k, v := range areas.GetScores() {
+		scores[k] = map[string]any{
+			"code":       v.GetCode(),
+			"label":      v.GetLabel(),
+			"points":     v.GetPoints(),
+			"max_points": v.GetMaxPoints(),
+		}
+	}
+	top := make([]map[string]any, 0, len(areas.GetTop()))
+	for _, t := range areas.GetTop() {
+		top = append(top, map[string]any{
+			"code":            t.GetCode(),
+			"label":           t.GetLabel(),
+			"area_label":      t.GetAreaLabel(),
+			"characteristics": t.GetCharacteristics(),
+			"careers":         t.GetCareers(),
+			"points":          t.GetPoints(),
+			"max_points":      t.GetMaxPoints(),
+		})
+	}
+	section := func(s *analyticsgrpcpb.ReportSection) map[string]any {
+		return map[string]any{
+			"available": s.GetAvailable(),
+			"reason":    s.GetReason(),
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"user_id":        resp.GetUserId(),
+		"student_name":   resp.GetStudentName(),
+		"attempt_id":     resp.GetAttemptId(),
+		"exam_id":        resp.GetExamId(),
+		"exam_name":      resp.GetExamName(),
+		"exam_type_code": resp.GetExamTypeCode(),
+		"submitted_at":   optionalTimestamp(resp.GetSubmittedAt()),
+		"score":          resp.GetScore(),
+		"max_score":      resp.GetMaxScore(),
+		"areas_interes": map[string]any{
+			"available": areas.GetAvailable(),
+			"reason":    areas.GetReason(),
+			"scores":    scores,
+			"top":       top,
+		},
+		"personalidad":     section(resp.GetPersonalidad()),
+		"apoyo_familiar":   section(resp.GetApoyoFamiliar()),
+		"proyecto_de_vida": section(resp.GetProyectoDeVida()),
+		"generated_at":     optionalTimestamp(resp.GetGeneratedAt()),
 	})
 }
 

@@ -91,6 +91,20 @@ type AttemptAnswer struct {
 	AnsweredAt time.Time
 }
 
+// EnrichedAnswer hidrata una respuesta con metadata de la pregunta y la
+// opcion elegida. Diseñado para reporting: evita el N+1 del consumer
+// (sino tendria que hacer GetQuestion + GetOption por cada answer).
+type EnrichedAnswer struct {
+	QuestionID       QuestionID
+	QuestionText     string
+	QuestionCategory string // p.ej. R/I/A/S/E/C para vocacional (RIASEC)
+	OptionID         OptionID
+	OptionText       string
+	OptionSortOrder  int32 // usable como peso Likert (Nada=0..Mucho=3)
+	OptionIsCorrect  bool
+	AnsweredAt       time.Time
+}
+
 // IsOpen retorna true si el exam acepta nuevos attempts (publicado,
 // activo y dentro de la ventana temporal).
 func (e Exam) IsOpen(now time.Time) bool {

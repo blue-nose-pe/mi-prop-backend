@@ -88,6 +88,45 @@ func (g *GrpcExams) ListAttemptsByColegio(_ context.Context, schoolID domain.Sch
 	return nil, nil
 }
 
+func (g *GrpcExams) GetAttempt(ctx context.Context, id domain.AttemptID) (*ports.UpstreamAttempt, error) {
+	resp, err := g.attempts.GetAttempt(forwardAuth(ctx), &examspb.GetAttemptRequest{AttemptId: string(id)})
+	if err != nil {
+		return nil, err
+	}
+	items := mapAttempts([]*examspb.Attempt{resp.GetAttempt()})
+	if len(items) == 0 {
+		return nil, fmt.Errorf("exams_service returned empty attempt for id=%s", id)
+	}
+	return &items[0], nil
+}
+
+func (g *GrpcExams) ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]ports.UpstreamEnrichedAnswer, error) {
+	resp, err := g.attempts.ListEnrichedAnswers(forwardAuth(ctx), &examspb.ListEnrichedAnswersRequest{AttemptId: string(attemptID)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ports.UpstreamEnrichedAnswer, 0, len(resp.GetItems()))
+	for _, a := range resp.GetItems() {
+		if a == nil {
+			continue
+		}
+		ea := ports.UpstreamEnrichedAnswer{
+			QuestionID:       domain.QuestionID(a.GetQuestionId()),
+			QuestionText:     a.GetQuestionText(),
+			QuestionCategory: a.GetQuestionCategory(),
+			OptionID:         a.GetOptionId(),
+			OptionText:       a.GetOptionText(),
+			OptionSortOrder:  a.GetOptionSortOrder(),
+			OptionIsCorrect:  a.GetOptionIsCorrect(),
+		}
+		if t := a.GetAnsweredAt(); t != nil {
+			ea.AnsweredAt = t.AsTime()
+		}
+		out = append(out, ea)
+	}
+	return out, nil
+}
+
 func (g *GrpcExams) GetExam(ctx context.Context, id domain.ExamID) (*ports.UpstreamExam, error) {
 	resp, err := g.exams.GetExam(forwardAuth(ctx), &examspb.GetExamRequest{Id: string(id)})
 	if err != nil {

@@ -56,6 +56,12 @@ func (NoopExams) ListAttemptsByColegio(_ context.Context, _ domain.SchoolID) ([]
 func (NoopExams) GetExam(_ context.Context, id domain.ExamID) (*ports.UpstreamExam, error) {
 	return &ports.UpstreamExam{ID: id, ExamTypeCode: "vocacional"}, nil
 }
+func (NoopExams) GetAttempt(_ context.Context, id domain.AttemptID) (*ports.UpstreamAttempt, error) {
+	return &ports.UpstreamAttempt{ID: id}, nil
+}
+func (NoopExams) ListEnrichedAnswers(_ context.Context, _ domain.AttemptID) ([]ports.UpstreamEnrichedAnswer, error) {
+	return nil, nil
+}
 
 type NoopKeys struct{}
 

@@ -25,6 +25,19 @@ type ExamsClient interface {
 	ListAttemptsByExam(ctx context.Context, examID domain.ExamID) ([]UpstreamAttempt, error)
 	ListAttemptsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]UpstreamAttempt, error)
 	GetExam(ctx context.Context, id domain.ExamID) (*UpstreamExam, error)
+	GetAttempt(ctx context.Context, id domain.AttemptID) (*UpstreamAttempt, error)
+	ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]UpstreamEnrichedAnswer, error)
+}
+
+type UpstreamEnrichedAnswer struct {
+	QuestionID       domain.QuestionID
+	QuestionText     string
+	QuestionCategory string
+	OptionID         string
+	OptionText       string
+	OptionSortOrder  int32
+	OptionIsCorrect  bool
+	AnsweredAt       time.Time
 }
 
 type KeysClient interface {
