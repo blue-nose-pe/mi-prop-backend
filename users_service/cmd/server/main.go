@@ -81,6 +81,7 @@ func main() {
 	userRepo := mssqladapter.NewUserRepo(db)
 	permRepo := mssqladapter.NewPermissionRepo(db)
 	schoolRepo := mssqladapter.NewSchoolRepo(db)
+	visitaRepo := mssqladapter.NewVisitaRepo(db)
 	refreshRepo := mssqladapter.NewRefreshTokenRepo(db)
 	assignmentRepo := mssqladapter.NewAssignmentRepo(db)
 	otpRepo := mssqladapter.NewOTPRepo(db)
@@ -193,6 +194,7 @@ func main() {
 	pb.RegisterUserServiceServer(s, userHandler)
 	pb.RegisterAuthServiceServer(s, authHandler)
 	pb.RegisterSchoolServiceServer(s, grpchandler.NewSchoolHandler(schoolRepo))
+	pb.RegisterVisitaServiceServer(s, grpchandler.NewVisitaHandler(visitaRepo))
 	pb.RegisterPermissionGroupServiceServer(s, permGroupHandler)
 
 	// Health check (usado por readiness/liveness de Kubernetes).
@@ -200,6 +202,8 @@ func main() {
 	healthpb.RegisterHealthServer(s, hs)
 	hs.SetServingStatus("users.v1.UserService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("users.v1.AuthService", healthpb.HealthCheckResponse_SERVING)
+	hs.SetServingStatus("users.v1.SchoolService", healthpb.HealthCheckResponse_SERVING)
+	hs.SetServingStatus("users.v1.VisitaService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("users.v1.PermissionGroupService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)
 

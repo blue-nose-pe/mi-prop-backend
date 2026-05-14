@@ -77,14 +77,35 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 	}
 	finalize(stats)
 
+	// Visitas: best-effort. Si users-service falla acá, el resto del
+	// dashboard sigue siendo util — no rompemos el response.
+	completedVisits, _ := h.users.CountVisitasByAsesor(ctx, asesorID, "completed")
+	scheduledVisits, _ := h.users.CountVisitasByAsesor(ctx, asesorID, "scheduled")
+
+	// Pendientes: reutilizamos GetAsesorPendientes para no duplicar
+	// logica. Best-effort: si falla, total queda en 0.
+	var pendingTotal, pendingAffected int32
+	if pend, perr := h.GetAsesorPendientes(ctx, asesorID); perr == nil && pend != nil {
+		pendingTotal = pend.TotalPending
+		for _, p := range pend.Students {
+			if len(p.PendingExams) > 0 {
+				pendingAffected++
+			}
+		}
+	}
+
 	out := &domain.AsesorDashboard{
-		AsesorID:      asesorID,
-		AsesorName:    fullName(asesor),
-		TotalColegios: int32(len(colegios)),
-		TotalKeys:     int32(len(keys)),
-		TotalAttempts: totalAttempts,
-		ByExamType:    materialize(stats),
-		GeneratedAt:   time.Now().UTC(),
+		AsesorID:         asesorID,
+		AsesorName:       fullName(asesor),
+		TotalColegios:    int32(len(colegios)),
+		TotalKeys:        int32(len(keys)),
+		TotalAttempts:    totalAttempts,
+		CompletedVisits:  completedVisits,
+		ScheduledVisits:  scheduledVisits,
+		PendingTests:     pendingTotal,
+		AffectedStudents: pendingAffected,
+		ByExamType:       materialize(stats),
+		GeneratedAt:      time.Now().UTC(),
 	}
 
 	if h.cache != nil {

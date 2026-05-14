@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.12.0
+  version: 0.13.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -600,6 +600,12 @@ tags:
 
   - name: Schools
     description: Colegios. Cada `school` está atado a un `user.id` (`schools_as_users`).
+
+  - name: Visitas
+    description: |
+      Visitas (presenciales o remotas) de un asesor a un colegio. Estados:
+      `scheduled`, `completed`, `cancelled`, `no_show`. El dashboard del
+      asesor cuenta las `completed` para la métrica de "visitas realizadas".
 
   - name: Exams
     description: |
@@ -4591,13 +4597,21 @@ paths:
       tags: [Analytics]
       summary: Dashboard de un asesor
       description: |
-        Agrega: total colegios asignados, total keys generadas, total
-        attempts, métricas por tipo de examen (`vocacional`, `simulacro`,
-        `habitos`). El mapa `by_exam_type` puede traer 0..N entradas según
-        los exam_type que el asesor tenga registrados.
+        Agrega métricas operativas del asesor: colegios asignados, keys,
+        attempts, visitas, tests pendientes y métricas por tipo de examen
+        (`vocacional`, `simulacro`, `habitos`).
 
-        Cacheado en Redis (TTL 5 min). Permiso requerido:
-        `analytics.dashboard.read` o ser el propio asesor.
+        Cuerpo principal:
+        - `total_colegios` / `total_keys` / `total_attempts`: contadores
+          básicos (igual que v1).
+        - `completed_visits` / `scheduled_visits`: cantidad de visitas
+          completed y scheduled del asesor (ver `/api/visitas`).
+        - `pending_tests` / `affected_students`: resumen del endpoint
+          `/api/analytics/asesor/{id}/pendientes` para evitar dos llamadas
+          en la pantalla principal.
+        - `by_exam_type`: stats por tipo de examen (puede traer 0..N entradas).
+
+        Permiso requerido: `analytics.dashboard.read` o ser el propio asesor.
       responses:
         '200':
           description: Dashboard
@@ -4610,6 +4624,10 @@ paths:
                 total_colegios: 4
                 total_keys: 27
                 total_attempts: 542
+                completed_visits: 18
+                scheduled_visits: 3
+                pending_tests: 26
+                affected_students: 12
                 by_exam_type:
                   vocacional:
                     attempts: 210
@@ -4826,6 +4844,214 @@ paths:
                 code: "VALIDATION_ERROR"
                 message: "exam_type_code query param is required"
                 category: "VALIDATION_ERROR"
+
+  /api/analytics/asesor/{id}/pendientes:
+    parameters: [{ $ref: '#/components/parameters/UserID' }]
+    get:
+      tags: [Analytics]
+      summary: Tests pendientes del asesor (por rendir)
+      description: |
+        Lista los **tests publicados y activos** que estudiantes de los
+        colegios del asesor todavía no han rendido (no tienen un attempt
+        con `submitted_at`).
+
+        Agregación: para cada colegio asignado al asesor, se intersecta
+        el catálogo de exams publicados aplicables (school-specific +
+        abiertos) con el conjunto de exams que cada estudiante ya rindió.
+        Lo que falta = pendiente.
+
+        El response trae:
+        - `by_exam_type`: contador agregado por tipo (`vocacional`,
+          `simulacro`, `habitos`) — útil para los chips/contadores arriba
+          de la pantalla.
+        - `students`: solo aparece el estudiante si tiene **al menos un
+          pendiente**. Cada entry incluye su nombre, colegio y lista
+          completa de exams pendientes con nombre y código legible.
+
+        Permiso requerido: `analytics.dashboard.read` o ser el propio
+        asesor.
+      responses:
+        '200':
+          description: Pendientes
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AsesorPendientes' }
+              example:
+                asesor_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                asesor_name: "María Quispe"
+                total_pending: 26
+                total_students: 187
+                by_exam_type:
+                  - { exam_type_code: "vocacional", pending_attempts: 15, affected_students: 10 }
+                  - { exam_type_code: "simulacro",  pending_attempts: 8,  affected_students: 6 }
+                  - { exam_type_code: "habitos",    pending_attempts: 3,  affected_students: 3 }
+                students:
+                  - user_id: "256b28ef-f035-4056-a5e7-5232650986f4"
+                    student_name: "Juan Pérez"
+                    school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                    school_name: "Colegio San Pablo"
+                    pending_exams:
+                      - { exam_id: "e3024a97-3f7b-428e-91f8-2b090b186ed8", exam_name: "Test Vocacional Demo", exam_type_code: "vocacional", exam_code: "VOCC-2026-V1" }
+                generated_at: "2026-05-14T16:00:00Z"
+        '400': { $ref: '#/components/responses/ValidationError' }
+
+  /api/visitas:
+    post:
+      tags: [Visitas]
+      summary: Crear visita
+      description: |
+        Registra una visita (presencial o remota) del asesor a un colegio.
+
+        `status` es opcional al crear (default `scheduled`). Si la visita se
+        crea ya completada, mandar también `completed_at` y `status:
+        "completed"`. Para el flujo típico se crea como `scheduled`, y luego
+        un PATCH marca `status: "completed"` + `completed_at`.
+
+        Permiso requerido: `db_users.school.write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [asesor_user_id, school_id, scheduled_at]
+              properties:
+                asesor_user_id: { type: string, format: uuid }
+                school_id:      { type: string, format: uuid }
+                scheduled_at:   { type: string, format: date-time }
+                status:
+                  type: string
+                  enum: [scheduled, completed, cancelled, no_show]
+                  default: scheduled
+                completed_at:   { type: string, format: date-time, description: "Solo si la visita ya ocurrió al crearla." }
+                notes:          { type: string }
+            example:
+              asesor_user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+              school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+              scheduled_at: "2026-05-20T09:00:00Z"
+              notes: "Coordinar con Coord. Pérez en la entrada."
+      responses:
+        '200':
+          description: Creada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visita: { $ref: '#/components/schemas/Visita' }
+    get:
+      tags: [Visitas]
+      summary: Listar visitas (paginado, con filtros)
+      description: |
+        Lista paginada. Filtros opcionales por query string. Devuelve
+        `total` (count sin paginar) + `items` (ordenados por
+        `scheduled_at` desc).
+
+        Permiso requerido: `db_users.school.read`.
+      parameters:
+        - in: query
+          name: asesor_user_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: school_id
+          schema: { type: string, format: uuid }
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [scheduled, completed, cancelled, no_show]
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+          description: "Inclusive: scheduled_at >= from."
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+          description: "Exclusive: scheduled_at < to."
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 1000, default: 100 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Listado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Visita' }
+                  total: { type: integer, format: int32 }
+
+  /api/visitas/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [Visitas]
+      summary: Obtener una visita por ID
+      description: |
+        Permiso requerido: `db_users.school.read`.
+      responses:
+        '200':
+          description: Visita
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visita: { $ref: '#/components/schemas/Visita' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Visitas]
+      summary: Actualizar visita (parcial)
+      description: |
+        Convención de la API:
+        - `status`, `notes`: `""` = no tocar.
+        - `scheduled_at`: zero-value o ausente = no tocar.
+        - `completed_at`:
+          - ausente / zero-value = **no tocar**
+          - `"1900-01-01T00:00:00Z"` = **limpiar a null** (deshacer la
+            marca de completada)
+          - cualquier otro timestamp = setear ese valor
+
+        Flujo típico: el asesor vuelve de la visita y manda
+        `{ "status": "completed", "completed_at": "<ahora>" }`.
+
+        Permiso requerido: `db_users.school.write`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: ["", scheduled, completed, cancelled, no_show]
+                notes:        { type: string }
+                scheduled_at: { type: string, format: date-time }
+                completed_at: { type: string, format: date-time }
+            example:
+              status: "completed"
+              completed_at: "2026-05-20T11:30:00Z"
+              notes: "Reunión con 4to y 5to. Pendiente envío de keys."
+      responses:
+        '200':
+          description: Actualizada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  visita: { $ref: '#/components/schemas/Visita' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   /api/analytics/estudiante/{id}/reporte:
     parameters: [{ $ref: '#/components/parameters/UserID' }]
@@ -5881,14 +6107,75 @@ components:
     AsesorDashboard:
       type: object
       properties:
-        asesor_id:      { type: string, format: uuid }
-        asesor_name:    { type: string }
-        total_colegios: { type: integer, format: int32 }
-        total_keys:     { type: integer, format: int32 }
-        total_attempts: { type: integer, format: int32 }
+        asesor_id:         { type: string, format: uuid }
+        asesor_name:       { type: string }
+        total_colegios:    { type: integer, format: int32, description: "Colegios donde el asesor es responsable vigente." }
+        total_keys:        { type: integer, format: int32 }
+        total_attempts:    { type: integer, format: int32 }
+        completed_visits:  { type: integer, format: int32, description: "Visitas con status=completed del asesor." }
+        scheduled_visits:  { type: integer, format: int32, description: "Visitas con status=scheduled (próximas)." }
+        pending_tests:     { type: integer, format: int32, description: "Suma cross-estudiantes de tests publicados sin attempt submitted." }
+        affected_students: { type: integer, format: int32, description: "Estudiantes con al menos un test pendiente." }
         by_exam_type:
           type: object
           additionalProperties: { $ref: '#/components/schemas/ExamTypeStats' }
+        generated_at:      { type: string, format: date-time }
+
+    Visita:
+      type: object
+      properties:
+        id:             { type: string, format: uuid }
+        asesor_user_id: { type: string, format: uuid }
+        school_id:      { type: string, format: uuid }
+        scheduled_at:   { type: string, format: date-time }
+        completed_at:   { type: string, format: date-time, nullable: true, description: "null si todavía no se completó." }
+        status:
+          type: string
+          enum: [scheduled, completed, cancelled, no_show]
+        notes:          { type: string }
+        created_at:     { type: string, format: date-time }
+        updated_at:     { type: string, format: date-time, nullable: true }
+
+    PendingExam:
+      type: object
+      properties:
+        exam_id:        { type: string, format: uuid }
+        exam_name:      { type: string }
+        exam_type_code: { type: string, enum: [vocacional, simulacro, habitos] }
+        exam_code:      { type: string }
+
+    PendingStudent:
+      type: object
+      properties:
+        user_id:      { type: string, format: uuid }
+        student_name: { type: string }
+        school_id:    { type: string, format: uuid }
+        school_name:  { type: string }
+        pending_exams:
+          type: array
+          items: { $ref: '#/components/schemas/PendingExam' }
+
+    PendingExamTypeCount:
+      type: object
+      properties:
+        exam_type_code:    { type: string }
+        pending_attempts:  { type: integer, format: int32, description: "Suma cross-estudiantes de tests pendientes del tipo." }
+        affected_students: { type: integer, format: int32, description: "Estudiantes con al menos un pendiente del tipo." }
+
+    AsesorPendientes:
+      type: object
+      properties:
+        asesor_id:      { type: string, format: uuid }
+        asesor_name:    { type: string }
+        total_pending:  { type: integer, format: int32 }
+        total_students: { type: integer, format: int32, description: "Total de estudiantes evaluados (todos los de los colegios del asesor)." }
+        by_exam_type:
+          type: array
+          items: { $ref: '#/components/schemas/PendingExamTypeCount' }
+        students:
+          type: array
+          items: { $ref: '#/components/schemas/PendingStudent' }
+          description: "Solo incluye estudiantes con >=1 pendiente."
         generated_at:   { type: string, format: date-time }
 
     ColegioDashboard:

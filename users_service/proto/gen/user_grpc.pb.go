@@ -628,10 +628,11 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	SchoolService_GetSchool_FullMethodName    = "/users.v1.SchoolService/GetSchool"
-	SchoolService_ListSchools_FullMethodName  = "/users.v1.SchoolService/ListSchools"
-	SchoolService_CreateSchool_FullMethodName = "/users.v1.SchoolService/CreateSchool"
-	SchoolService_UpdateSchool_FullMethodName = "/users.v1.SchoolService/UpdateSchool"
+	SchoolService_GetSchool_FullMethodName           = "/users.v1.SchoolService/GetSchool"
+	SchoolService_ListSchools_FullMethodName         = "/users.v1.SchoolService/ListSchools"
+	SchoolService_CreateSchool_FullMethodName        = "/users.v1.SchoolService/CreateSchool"
+	SchoolService_UpdateSchool_FullMethodName        = "/users.v1.SchoolService/UpdateSchool"
+	SchoolService_ListSchoolsByAsesor_FullMethodName = "/users.v1.SchoolService/ListSchoolsByAsesor"
 )
 
 // SchoolServiceClient is the client API for SchoolService service.
@@ -646,6 +647,9 @@ type SchoolServiceClient interface {
 	ListSchools(ctx context.Context, in *ListSchoolsRequest, opts ...grpc.CallOption) (*ListSchoolsResponse, error)
 	CreateSchool(ctx context.Context, in *CreateSchoolRequest, opts ...grpc.CallOption) (*SchoolResponse, error)
 	UpdateSchool(ctx context.Context, in *UpdateSchoolRequest, opts ...grpc.CallOption) (*SchoolResponse, error)
+	// ListSchoolsByAsesor: colegios donde el asesor es el responsable vigente
+	// (assignment kind=asesor_de_colegio, valid_to IS NULL).
+	ListSchoolsByAsesor(ctx context.Context, in *ListSchoolsByAsesorRequest, opts ...grpc.CallOption) (*ListSchoolsResponse, error)
 }
 
 type schoolServiceClient struct {
@@ -696,6 +700,16 @@ func (c *schoolServiceClient) UpdateSchool(ctx context.Context, in *UpdateSchool
 	return out, nil
 }
 
+func (c *schoolServiceClient) ListSchoolsByAsesor(ctx context.Context, in *ListSchoolsByAsesorRequest, opts ...grpc.CallOption) (*ListSchoolsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListSchoolsResponse)
+	err := c.cc.Invoke(ctx, SchoolService_ListSchoolsByAsesor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SchoolServiceServer is the server API for SchoolService service.
 // All implementations must embed UnimplementedSchoolServiceServer
 // for forward compatibility.
@@ -708,6 +722,9 @@ type SchoolServiceServer interface {
 	ListSchools(context.Context, *ListSchoolsRequest) (*ListSchoolsResponse, error)
 	CreateSchool(context.Context, *CreateSchoolRequest) (*SchoolResponse, error)
 	UpdateSchool(context.Context, *UpdateSchoolRequest) (*SchoolResponse, error)
+	// ListSchoolsByAsesor: colegios donde el asesor es el responsable vigente
+	// (assignment kind=asesor_de_colegio, valid_to IS NULL).
+	ListSchoolsByAsesor(context.Context, *ListSchoolsByAsesorRequest) (*ListSchoolsResponse, error)
 	mustEmbedUnimplementedSchoolServiceServer()
 }
 
@@ -729,6 +746,9 @@ func (UnimplementedSchoolServiceServer) CreateSchool(context.Context, *CreateSch
 }
 func (UnimplementedSchoolServiceServer) UpdateSchool(context.Context, *UpdateSchoolRequest) (*SchoolResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateSchool not implemented")
+}
+func (UnimplementedSchoolServiceServer) ListSchoolsByAsesor(context.Context, *ListSchoolsByAsesorRequest) (*ListSchoolsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListSchoolsByAsesor not implemented")
 }
 func (UnimplementedSchoolServiceServer) mustEmbedUnimplementedSchoolServiceServer() {}
 func (UnimplementedSchoolServiceServer) testEmbeddedByValue()                       {}
@@ -823,6 +843,24 @@ func _SchoolService_UpdateSchool_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SchoolService_ListSchoolsByAsesor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListSchoolsByAsesorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchoolServiceServer).ListSchoolsByAsesor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchoolService_ListSchoolsByAsesor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchoolServiceServer).ListSchoolsByAsesor(ctx, req.(*ListSchoolsByAsesorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SchoolService_ServiceDesc is the grpc.ServiceDesc for SchoolService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -845,6 +883,234 @@ var SchoolService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateSchool",
 			Handler:    _SchoolService_UpdateSchool_Handler,
+		},
+		{
+			MethodName: "ListSchoolsByAsesor",
+			Handler:    _SchoolService_ListSchoolsByAsesor_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "user.proto",
+}
+
+const (
+	VisitaService_CreateVisita_FullMethodName = "/users.v1.VisitaService/CreateVisita"
+	VisitaService_UpdateVisita_FullMethodName = "/users.v1.VisitaService/UpdateVisita"
+	VisitaService_GetVisita_FullMethodName    = "/users.v1.VisitaService/GetVisita"
+	VisitaService_ListVisitas_FullMethodName  = "/users.v1.VisitaService/ListVisitas"
+)
+
+// VisitaServiceClient is the client API for VisitaService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// VisitaService — CRUD de visitas (presenciales o remotas) que un asesor
+// hace a un colegio. Mantenido como entidad operativa del modulo P1
+// reimplementada en P2.
+type VisitaServiceClient interface {
+	CreateVisita(ctx context.Context, in *CreateVisitaRequest, opts ...grpc.CallOption) (*VisitaResponse, error)
+	UpdateVisita(ctx context.Context, in *UpdateVisitaRequest, opts ...grpc.CallOption) (*VisitaResponse, error)
+	GetVisita(ctx context.Context, in *GetVisitaRequest, opts ...grpc.CallOption) (*VisitaResponse, error)
+	ListVisitas(ctx context.Context, in *ListVisitasRequest, opts ...grpc.CallOption) (*ListVisitasResponse, error)
+}
+
+type visitaServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewVisitaServiceClient(cc grpc.ClientConnInterface) VisitaServiceClient {
+	return &visitaServiceClient{cc}
+}
+
+func (c *visitaServiceClient) CreateVisita(ctx context.Context, in *CreateVisitaRequest, opts ...grpc.CallOption) (*VisitaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VisitaResponse)
+	err := c.cc.Invoke(ctx, VisitaService_CreateVisita_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *visitaServiceClient) UpdateVisita(ctx context.Context, in *UpdateVisitaRequest, opts ...grpc.CallOption) (*VisitaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VisitaResponse)
+	err := c.cc.Invoke(ctx, VisitaService_UpdateVisita_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *visitaServiceClient) GetVisita(ctx context.Context, in *GetVisitaRequest, opts ...grpc.CallOption) (*VisitaResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(VisitaResponse)
+	err := c.cc.Invoke(ctx, VisitaService_GetVisita_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *visitaServiceClient) ListVisitas(ctx context.Context, in *ListVisitasRequest, opts ...grpc.CallOption) (*ListVisitasResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListVisitasResponse)
+	err := c.cc.Invoke(ctx, VisitaService_ListVisitas_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// VisitaServiceServer is the server API for VisitaService service.
+// All implementations must embed UnimplementedVisitaServiceServer
+// for forward compatibility.
+//
+// VisitaService — CRUD de visitas (presenciales o remotas) que un asesor
+// hace a un colegio. Mantenido como entidad operativa del modulo P1
+// reimplementada en P2.
+type VisitaServiceServer interface {
+	CreateVisita(context.Context, *CreateVisitaRequest) (*VisitaResponse, error)
+	UpdateVisita(context.Context, *UpdateVisitaRequest) (*VisitaResponse, error)
+	GetVisita(context.Context, *GetVisitaRequest) (*VisitaResponse, error)
+	ListVisitas(context.Context, *ListVisitasRequest) (*ListVisitasResponse, error)
+	mustEmbedUnimplementedVisitaServiceServer()
+}
+
+// UnimplementedVisitaServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedVisitaServiceServer struct{}
+
+func (UnimplementedVisitaServiceServer) CreateVisita(context.Context, *CreateVisitaRequest) (*VisitaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateVisita not implemented")
+}
+func (UnimplementedVisitaServiceServer) UpdateVisita(context.Context, *UpdateVisitaRequest) (*VisitaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateVisita not implemented")
+}
+func (UnimplementedVisitaServiceServer) GetVisita(context.Context, *GetVisitaRequest) (*VisitaResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetVisita not implemented")
+}
+func (UnimplementedVisitaServiceServer) ListVisitas(context.Context, *ListVisitasRequest) (*ListVisitasResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListVisitas not implemented")
+}
+func (UnimplementedVisitaServiceServer) mustEmbedUnimplementedVisitaServiceServer() {}
+func (UnimplementedVisitaServiceServer) testEmbeddedByValue()                       {}
+
+// UnsafeVisitaServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to VisitaServiceServer will
+// result in compilation errors.
+type UnsafeVisitaServiceServer interface {
+	mustEmbedUnimplementedVisitaServiceServer()
+}
+
+func RegisterVisitaServiceServer(s grpc.ServiceRegistrar, srv VisitaServiceServer) {
+	// If the following call pancis, it indicates UnimplementedVisitaServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&VisitaService_ServiceDesc, srv)
+}
+
+func _VisitaService_CreateVisita_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateVisitaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VisitaServiceServer).CreateVisita(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VisitaService_CreateVisita_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VisitaServiceServer).CreateVisita(ctx, req.(*CreateVisitaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VisitaService_UpdateVisita_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateVisitaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VisitaServiceServer).UpdateVisita(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VisitaService_UpdateVisita_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VisitaServiceServer).UpdateVisita(ctx, req.(*UpdateVisitaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VisitaService_GetVisita_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetVisitaRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VisitaServiceServer).GetVisita(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VisitaService_GetVisita_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VisitaServiceServer).GetVisita(ctx, req.(*GetVisitaRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _VisitaService_ListVisitas_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListVisitasRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(VisitaServiceServer).ListVisitas(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: VisitaService_ListVisitas_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(VisitaServiceServer).ListVisitas(ctx, req.(*ListVisitasRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// VisitaService_ServiceDesc is the grpc.ServiceDesc for VisitaService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var VisitaService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "users.v1.VisitaService",
+	HandlerType: (*VisitaServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateVisita",
+			Handler:    _VisitaService_CreateVisita_Handler,
+		},
+		{
+			MethodName: "UpdateVisita",
+			Handler:    _VisitaService_UpdateVisita_Handler,
+		},
+		{
+			MethodName: "GetVisita",
+			Handler:    _VisitaService_GetVisita_Handler,
+		},
+		{
+			MethodName: "ListVisitas",
+			Handler:    _VisitaService_ListVisitas_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

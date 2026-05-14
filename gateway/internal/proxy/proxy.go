@@ -38,6 +38,7 @@ func (p *Proxy) RegisterAll(mux *http.ServeMux) {
 	p.RegisterAuth(mux)
 	p.RegisterHealth(mux)
 	p.RegisterUsers(mux)
+	p.RegisterVisitas(mux)
 	p.RegisterPermissionGroups(mux)
 	p.RegisterExams(mux)
 	p.RegisterKeys(mux)

@@ -36,8 +36,15 @@ var PermissionMap = map[string]string{
 	// schools
 	"/users.v1.SchoolService/GetSchool":             "db_users.school.read",
 	"/users.v1.SchoolService/ListSchools":           "db_users.school.read",
+	"/users.v1.SchoolService/ListSchoolsByAsesor":   "db_users.school.read",
 	"/users.v1.SchoolService/CreateSchool":          "db_users.school.write",
 	"/users.v1.SchoolService/UpdateSchool":          "db_users.school.write",
+
+	// visitas (operacional, asesor)
+	"/users.v1.VisitaService/CreateVisita": "db_users.school.write",
+	"/users.v1.VisitaService/UpdateVisita": "db_users.school.write",
+	"/users.v1.VisitaService/GetVisita":    "db_users.school.read",
+	"/users.v1.VisitaService/ListVisitas":  "db_users.school.read",
 
 	// permission_group service (CRUD a runtime)
 	"/users.v1.PermissionGroupService/CreateGroup":      "db_users.permission_group.write",

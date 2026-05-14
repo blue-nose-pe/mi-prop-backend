@@ -164,6 +164,51 @@ func (r *SchoolRepo) Update(ctx context.Context, s *domain.School) error {
 	return nil
 }
 
+// ListByAsesor: JOIN con assignment para resolver colegios del asesor en
+// un solo viaje a la DB. assignment.target_user_id apunta al usuario
+// coordinador del colegio; school.user_id = ese mismo coordinator.
+func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.School, error) {
+	const q = `
+		SELECT CONVERT(NVARCHAR(36), s.id),
+		       ISNULL(CONVERT(NVARCHAR(36), s.user_id), ''),
+		       s.name, ISNULL(s.city, ''), ISNULL(s.category, ''),
+		       s.active, s.created_at, s.updated_at,
+		       ISNULL(s.hubspot_record_id, '')
+		  FROM school s
+		  JOIN assignment a ON a.target_user_id = s.user_id
+		 WHERE a.source_user_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		   AND a.kind = 'asesor_de_colegio'
+		   AND a.valid_to IS NULL
+		 ORDER BY s.name`
+	rows, err := r.db.QueryContext(ctx, q, string(asesorID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.School, 0)
+	for rows.Next() {
+		var (
+			s         domain.School
+			idStr     string
+			userIDStr string
+			updatedAt sql.NullTime
+			hubspotID string
+		)
+		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID); err != nil {
+			return nil, err
+		}
+		s.ID = domain.SchoolID(idStr)
+		s.UserID = domain.UserID(userIDStr)
+		s.HubspotRecordID = hubspotID
+		if updatedAt.Valid {
+			t := updatedAt.Time
+			s.UpdatedAt = &t
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // SetHubspotRecordID guarda el record_id que devuelve HubSpot al crear
 // un colegio (custom object o company). Lo invoca el hubspot-service vía
 // gRPC tras un sync exitoso.

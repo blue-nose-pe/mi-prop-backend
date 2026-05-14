@@ -22,6 +22,7 @@ import (
 	"analytics_service/internal/core/ports"
 
 	examspb "exams_service/proto/gen"
+	examspbcommon "exams_service/proto/gen/common"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -145,11 +146,70 @@ func (g *GrpcExams) GetExam(ctx context.Context, id domain.ExamID) (*ports.Upstr
 	// Por ahora dejamos el code vacío; el core debe tolerarlo.
 	return &ports.UpstreamExam{
 		ID:           domain.ExamID(e.GetId()),
-		ExamTypeCode: "", // best-effort: ver comentario arriba
+		ExamTypeCode: examTypeCodeFromID(e.GetExamTypeId()),
+		Code:         e.GetCode(),
 		Name:         e.GetName(),
 		SchoolID:     domain.SchoolID(e.GetSchoolId()),
 		Version:      e.GetVersion(),
 	}, nil
+}
+
+// examTypeCodeFromID mapea el exam_type_id que devuelve exams_service a un
+// code string. Sembramos 3 tipos via 008_seed_exam_types.sql con IDs
+// IDENTITY (1, 2, 3), asi que el mapeo es estable mientras nadie altere
+// el seed. Si el ID no coincide devolvemos "" para que el caller no asuma.
+func examTypeCodeFromID(id int32) string {
+	switch id {
+	case 1:
+		return "vocacional"
+	case 2:
+		return "simulacro"
+	case 3:
+		return "habitos"
+	}
+	return ""
+}
+
+// ListActivePublishedExams llama a SearchExams filtrando por active=true y
+// published=true. Si schoolID != "", incluye exams cuyo school_id sea ese
+// O exams sin school (school_id IS NULL, "exams abiertos").
+func (g *GrpcExams) ListActivePublishedExams(ctx context.Context, schoolID domain.SchoolID) ([]ports.UpstreamExam, error) {
+	filters := []*examspbcommon.Filter{
+		{PropertyName: "active", Operator: examspbcommon.FilterOperator_EQ, Values: []string{"true"}},
+		{PropertyName: "published", Operator: examspbcommon.FilterOperator_EQ, Values: []string{"true"}},
+	}
+	req := &examspbcommon.SearchRequest{
+		FilterGroups: []*examspbcommon.FilterGroup{{Filters: filters}},
+		Properties:   []string{"exam_type_id", "school_id", "name", "code", "version"},
+		Limit:        500,
+	}
+	resp, err := g.exams.SearchExams(forwardAuth(ctx), req)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ports.UpstreamExam, 0, len(resp.GetResults()))
+	for _, r := range resp.GetResults() {
+		props := r.GetProperties().AsMap()
+		sid := asString(props["school_id"])
+		if schoolID != "" {
+			// Filtra in-process: deja exams del colegio O exams sin colegio.
+			if sid != "" && sid != string(schoolID) {
+				continue
+			}
+		}
+		var typeID int32
+		if v, ok := props["exam_type_id"].(float64); ok {
+			typeID = int32(v)
+		}
+		out = append(out, ports.UpstreamExam{
+			ID:           domain.ExamID(r.GetId()),
+			ExamTypeCode: examTypeCodeFromID(typeID),
+			Code:         asString(props["code"]),
+			Name:         asString(props["name"]),
+			SchoolID:     domain.SchoolID(sid),
+		})
+	}
+	return out, nil
 }
 
 func mapAttempts(items []*examspb.Attempt) []ports.UpstreamAttempt {

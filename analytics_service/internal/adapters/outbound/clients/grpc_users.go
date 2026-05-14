@@ -17,7 +17,6 @@ package clients
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"analytics_service/internal/core/domain"
@@ -36,6 +35,7 @@ type GrpcUsers struct {
 	conn    *grpc.ClientConn
 	cli     userspb.UserServiceClient
 	schools userspb.SchoolServiceClient
+	visitas userspb.VisitaServiceClient
 }
 
 var _ ports.UsersClient = (*GrpcUsers)(nil)
@@ -59,7 +59,26 @@ func NewGrpcUsers(addr string) (*GrpcUsers, error) {
 		conn:    conn,
 		cli:     userspb.NewUserServiceClient(conn),
 		schools: userspb.NewSchoolServiceClient(conn),
+		visitas: userspb.NewVisitaServiceClient(conn),
 	}, nil
+}
+
+// CountVisitasByAsesor llama a ListVisitas con limit=1 y devuelve el campo
+// total. Es eficiente: el server hace solo COUNT(*) antes de aplicar
+// limit/offset.
+func (g *GrpcUsers) CountVisitasByAsesor(ctx context.Context, asesorID domain.UserID, status string) (int32, error) {
+	if asesorID == "" {
+		return 0, nil
+	}
+	resp, err := g.visitas.ListVisitas(forwardAuth(ctx), &userspb.ListVisitasRequest{
+		AsesorUserId: string(asesorID),
+		Status:       status,
+		Limit:        1,
+	})
+	if err != nil {
+		return 0, err
+	}
+	return int32(resp.GetTotal()), nil
 }
 
 func (g *GrpcUsers) Close() error {
@@ -133,11 +152,27 @@ func (g *GrpcUsers) ListSchools(ctx context.Context, activeOnly bool) ([]ports.U
 	return out, nil
 }
 
-// ListAssignedColegios — NoOp. AssignmentService existe en el core de
-// users_service pero no se expuso como RPC. Devolver vacío.
-func (g *GrpcUsers) ListAssignedColegios(_ context.Context, asesorID domain.UserID) ([]ports.UpstreamSchool, error) {
-	log.Printf("[grpc_users] ListAssignedColegios: NoOp (AssignmentService no publicado) asesor=%s", asesorID)
-	return nil, nil
+func (g *GrpcUsers) ListAssignedColegios(ctx context.Context, asesorID domain.UserID) ([]ports.UpstreamSchool, error) {
+	if asesorID == "" {
+		return nil, nil
+	}
+	resp, err := g.schools.ListSchoolsByAsesor(forwardAuth(ctx), &userspb.ListSchoolsByAsesorRequest{
+		AsesorId: string(asesorID),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ports.UpstreamSchool, 0, len(resp.GetItems()))
+	for _, s := range resp.GetItems() {
+		out = append(out, ports.UpstreamSchool{
+			ID:       domain.SchoolID(s.GetId()),
+			Name:     s.GetName(),
+			City:     s.GetCity(),
+			Category: s.GetCategory(),
+			Active:   s.GetActive(),
+		})
+	}
+	return out, nil
 }
 
 // ListEstudiantesEnColegio usa SearchUsers (HubSpot-style) filtrando por

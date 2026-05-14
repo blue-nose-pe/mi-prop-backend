@@ -108,6 +108,10 @@ type SchoolRepository interface {
 	SetHubspotRecordID(ctx context.Context, id domain.SchoolID, recordID string) error
 	Create(ctx context.Context, s *domain.School) (domain.SchoolID, error)
 	Update(ctx context.Context, s *domain.School) error
+	// ListByAsesor devuelve los colegios donde el user dado es el asesor
+	// vigente (assignment kind=asesor_de_colegio, valid_to IS NULL). Una
+	// sola query con JOIN para evitar round-trips entre analytics y users.
+	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.School, error)
 }
 
 // ListSchoolsInput: filtros del listado paginado de colegios.
@@ -247,6 +251,26 @@ type AssignmentRepository interface {
 	// ListHistory retorna todas las asignaciones (vigentes e históricas)
 	// para un (kind, target), ordenadas por valid_from DESC.
 	ListHistory(ctx context.Context, kind AssignmentKind, target domain.UserID) ([]AssignmentRecord, error)
+}
+
+// ---------- Visita ----------
+
+type VisitaRepository interface {
+	Create(ctx context.Context, v *domain.Visita) (domain.VisitaID, error)
+	Update(ctx context.Context, v *domain.Visita) error
+	FindByID(ctx context.Context, id domain.VisitaID) (*domain.Visita, error)
+	List(ctx context.Context, in ListVisitasInput) ([]domain.Visita, uint32, error)
+	CountByAsesorStatus(ctx context.Context, asesorID domain.UserID, status domain.VisitaStatus) (int32, error)
+}
+
+type ListVisitasInput struct {
+	AsesorUserID domain.UserID
+	SchoolID     domain.SchoolID
+	Status       domain.VisitaStatus
+	From         *time.Time // scheduled_at >= From (si !nil)
+	To           *time.Time // scheduled_at <  To   (si !nil)
+	Limit        uint32
+	Offset       uint32
 }
 
 // ---------- OTP (login estudiante) ----------

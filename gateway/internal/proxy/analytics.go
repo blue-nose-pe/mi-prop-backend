@@ -29,6 +29,7 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/comparativo", p.getComparativo)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/historico", p.getEstudianteHistorico)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/reporte", p.getReporteEstudiante)
+	mux.HandleFunc("GET /api/analytics/asesor/{id}/pendientes", p.getAsesorPendientes)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/historico", p.getColegioHistorico)
 	mux.HandleFunc("GET /api/analytics/colegios/historico", p.getColegiosHistorico)
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/export.xlsx", p.exportAsesorXLSX)
@@ -47,13 +48,17 @@ func (p *Proxy) getAsesorDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"asesor_id":      resp.GetAsesorId(),
-		"asesor_name":    resp.GetAsesorName(),
-		"total_colegios": resp.GetTotalColegios(),
-		"total_keys":     resp.GetTotalKeys(),
-		"total_attempts": resp.GetTotalAttempts(),
-		"by_exam_type":   examTypeStatsToJSON(resp.GetByExamType()),
-		"generated_at":   optionalTimestamp(resp.GetGeneratedAt()),
+		"asesor_id":         resp.GetAsesorId(),
+		"asesor_name":       resp.GetAsesorName(),
+		"total_colegios":    resp.GetTotalColegios(),
+		"total_keys":        resp.GetTotalKeys(),
+		"total_attempts":    resp.GetTotalAttempts(),
+		"completed_visits":  resp.GetCompletedVisits(),
+		"scheduled_visits":  resp.GetScheduledVisits(),
+		"pending_tests":     resp.GetPendingTests(),
+		"affected_students": resp.GetAffectedStudents(),
+		"by_exam_type":      examTypeStatsToJSON(resp.GetByExamType()),
+		"generated_at":      optionalTimestamp(resp.GetGeneratedAt()),
 	})
 }
 
@@ -169,6 +174,55 @@ func (p *Proxy) getColegioHistorico(w http.ResponseWriter, r *http.Request) {
 		"category":       resp.GetCategory(),
 		"exam_type_code": resp.GetExamTypeCode(),
 		"items":          items,
+		"generated_at":   optionalTimestamp(resp.GetGeneratedAt()),
+	})
+}
+
+// getAsesorPendientes — GET /api/analytics/asesor/{id}/pendientes
+// Lista tests publicados+activos que estudiantes de los colegios del
+// asesor todavia no han rendido.
+func (p *Proxy) getAsesorPendientes(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Analytics.GetAsesorPendientes(r.Context(), &analyticsgrpcpb.GetAsesorPendientesRequest{
+		AsesorId: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	byType := make([]map[string]any, 0, len(resp.GetByExamType()))
+	for _, e := range resp.GetByExamType() {
+		byType = append(byType, map[string]any{
+			"exam_type_code":    e.GetExamTypeCode(),
+			"pending_attempts":  e.GetPendingAttempts(),
+			"affected_students": e.GetAffectedStudents(),
+		})
+	}
+	students := make([]map[string]any, 0, len(resp.GetStudents()))
+	for _, s := range resp.GetStudents() {
+		exams := make([]map[string]any, 0, len(s.GetPendingExams()))
+		for _, p := range s.GetPendingExams() {
+			exams = append(exams, map[string]any{
+				"exam_id":        p.GetExamId(),
+				"exam_name":      p.GetExamName(),
+				"exam_type_code": p.GetExamTypeCode(),
+				"exam_code":      p.GetExamCode(),
+			})
+		}
+		students = append(students, map[string]any{
+			"user_id":       s.GetUserId(),
+			"student_name":  s.GetStudentName(),
+			"school_id":     s.GetSchoolId(),
+			"school_name":   s.GetSchoolName(),
+			"pending_exams": exams,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"asesor_id":      resp.GetAsesorId(),
+		"asesor_name":    resp.GetAsesorName(),
+		"total_pending":  resp.GetTotalPending(),
+		"total_students": resp.GetTotalStudents(),
+		"by_exam_type":   byType,
+		"students":       students,
 		"generated_at":   optionalTimestamp(resp.GetGeneratedAt()),
 	})
 }

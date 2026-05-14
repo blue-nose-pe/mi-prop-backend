@@ -28,6 +28,9 @@ type DashboardQueries interface {
 	// GetReporteEstudiante consolida el "Tour Vocacional UCSP" del PDF.
 	// Si AttemptID == "", usa el ultimo attempt submitted del user.
 	GetReporteEstudiante(ctx context.Context, in ReporteEstudianteInput) (*domain.ReporteEstudiante, error)
+	// GetAsesorPendientes lista los tests pendientes por rendir de los
+	// estudiantes de los colegios del asesor.
+	GetAsesorPendientes(ctx context.Context, asesorID domain.UserID) (*domain.AsesorPendientes, error)
 }
 
 type ReporteEstudianteInput struct {

@@ -39,6 +39,9 @@ func (NoopUsers) ListAssignedColegios(_ context.Context, _ domain.UserID) ([]por
 func (NoopUsers) ListEstudiantesEnColegio(_ context.Context, _ domain.SchoolID) ([]ports.UpstreamUser, error) {
 	return nil, nil
 }
+func (NoopUsers) CountVisitasByAsesor(_ context.Context, _ domain.UserID, _ string) (int32, error) {
+	return 0, nil
+}
 
 type NoopExams struct{}
 
@@ -60,6 +63,9 @@ func (NoopExams) GetAttempt(_ context.Context, id domain.AttemptID) (*ports.Upst
 	return &ports.UpstreamAttempt{ID: id}, nil
 }
 func (NoopExams) ListEnrichedAnswers(_ context.Context, _ domain.AttemptID) ([]ports.UpstreamEnrichedAnswer, error) {
+	return nil, nil
+}
+func (NoopExams) ListActivePublishedExams(_ context.Context, _ domain.SchoolID) ([]ports.UpstreamExam, error) {
 	return nil, nil
 }
 

@@ -27,13 +27,17 @@ func (h *AnalyticsHandler) GetAsesorDashboard(ctx context.Context, req *pb.GetAs
 		return nil, apperr.ToGRPC(ctx, err)
 	}
 	return &pb.AsesorDashboardResponse{
-		AsesorId:      string(d.AsesorID),
-		AsesorName:    d.AsesorName,
-		TotalColegios: d.TotalColegios,
-		TotalKeys:     d.TotalKeys,
-		TotalAttempts: d.TotalAttempts,
-		ByExamType:    toExamTypeStats(d.ByExamType),
-		GeneratedAt:   timestamppb.New(d.GeneratedAt),
+		AsesorId:         string(d.AsesorID),
+		AsesorName:       d.AsesorName,
+		TotalColegios:    d.TotalColegios,
+		TotalKeys:        d.TotalKeys,
+		TotalAttempts:    d.TotalAttempts,
+		CompletedVisits:  d.CompletedVisits,
+		ScheduledVisits:  d.ScheduledVisits,
+		PendingTests:     d.PendingTests,
+		AffectedStudents: d.AffectedStudents,
+		ByExamType:       toExamTypeStats(d.ByExamType),
+		GeneratedAt:      timestamppb.New(d.GeneratedAt),
 	}, nil
 }
 
@@ -127,6 +131,49 @@ func (h *AnalyticsHandler) GetHistoricoColegio(ctx context.Context, req *pb.GetH
 		ExamTypeCode: d.ExamTypeCode,
 		Items:        items,
 		GeneratedAt:  timestamppb.New(d.GeneratedAt),
+	}, nil
+}
+
+func (h *AnalyticsHandler) GetAsesorPendientes(ctx context.Context, req *pb.GetAsesorPendientesRequest) (*pb.AsesorPendientesResponse, error) {
+	d, err := h.qrys.GetAsesorPendientes(ctx, domain.UserID(req.GetAsesorId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	byType := make([]*pb.PendingExamTypeCount, 0, len(d.ByExamType))
+	for _, e := range d.ByExamType {
+		byType = append(byType, &pb.PendingExamTypeCount{
+			ExamTypeCode:     e.ExamTypeCode,
+			PendingAttempts:  e.PendingAttempts,
+			AffectedStudents: e.AffectedStudents,
+		})
+	}
+	students := make([]*pb.PendingStudent, 0, len(d.Students))
+	for _, s := range d.Students {
+		pes := make([]*pb.PendingExam, 0, len(s.PendingExams))
+		for _, p := range s.PendingExams {
+			pes = append(pes, &pb.PendingExam{
+				ExamId:       string(p.ExamID),
+				ExamName:     p.ExamName,
+				ExamTypeCode: p.ExamTypeCode,
+				ExamCode:     p.ExamCode,
+			})
+		}
+		students = append(students, &pb.PendingStudent{
+			UserId:       string(s.UserID),
+			StudentName:  s.StudentName,
+			SchoolId:     string(s.SchoolID),
+			SchoolName:   s.SchoolName,
+			PendingExams: pes,
+		})
+	}
+	return &pb.AsesorPendientesResponse{
+		AsesorId:      string(d.AsesorID),
+		AsesorName:    d.AsesorName,
+		TotalPending:  d.TotalPending,
+		TotalStudents: d.TotalStudents,
+		ByExamType:    byType,
+		Students:      students,
+		GeneratedAt:   timestamppb.New(d.GeneratedAt),
 	}, nil
 }
 

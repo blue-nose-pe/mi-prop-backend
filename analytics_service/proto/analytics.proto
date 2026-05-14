@@ -15,6 +15,7 @@ service AnalyticsService {
   rpc GetHistoricoColegio     (GetHistoricoColegioRequest)     returns (HistoricoColegioResponse);
   rpc GetColegiosHistorico    (GetColegiosHistoricoRequest)    returns (ColegiosHistoricoResponse);
   rpc GetReporteEstudiante    (GetReporteEstudianteRequest)    returns (ReporteEstudianteResponse);
+  rpc GetAsesorPendientes     (GetAsesorPendientesRequest)     returns (AsesorPendientesResponse);
   rpc ExportAsesorXLSX        (ExportAsesorXLSXRequest)        returns (ExportXLSXResponse);
   rpc ExportColegioXLSX       (ExportColegioXLSXRequest)       returns (ExportXLSXResponse);
   rpc ExportComparativoXLSX   (ExportComparativoXLSXRequest)   returns (ExportXLSXResponse);
@@ -29,13 +30,17 @@ message ExamTypeStats {
 // ----- Asesor -----
 message GetAsesorDashboardRequest { string asesor_id = 1; }
 message AsesorDashboardResponse {
-  string asesor_id      = 1;
-  string asesor_name    = 2;
-  int32  total_colegios = 3;
-  int32  total_keys     = 4;
-  int32  total_attempts = 5;
+  string asesor_id         = 1;
+  string asesor_name       = 2;
+  int32  total_colegios    = 3;
+  int32  total_keys        = 4;
+  int32  total_attempts    = 5;
   map<string, ExamTypeStats> by_exam_type = 6;
   google.protobuf.Timestamp generated_at = 7;
+  int32  completed_visits  = 8;  // visitas con status=completed del asesor
+  int32  scheduled_visits  = 9;  // visitas con status=scheduled (proximas)
+  int32  pending_tests     = 10; // suma cross-estudiantes de tests pendientes
+  int32  affected_students = 11; // estudiantes con al menos un test pendiente
 }
 
 // ----- Colegio -----
@@ -174,6 +179,44 @@ message AreasInteresSection {
 message ReportSection {
   bool   available = 1;
   string reason    = 2;
+}
+
+// ----- Pendientes del asesor -----
+// "tests pendientes" = exams publicados+activos que un estudiante del
+// colegio del asesor NO ha rendido (no tiene attempt submitted).
+message GetAsesorPendientesRequest {
+  string asesor_id = 1;
+}
+
+message PendingExam {
+  string exam_id        = 1;
+  string exam_name      = 2;
+  string exam_type_code = 3; // "vocacional" | "simulacro" | "habitos" | ""
+  string exam_code      = 4; // codigo legible (VOCC-2026-V1...)
+}
+
+message PendingStudent {
+  string user_id      = 1;
+  string student_name = 2;
+  string school_id    = 3;
+  string school_name  = 4;
+  repeated PendingExam pending_exams = 5;
+}
+
+message PendingExamTypeCount {
+  string exam_type_code   = 1;
+  int32  pending_attempts = 2; // suma cross-estudiantes de tests pendientes
+  int32  affected_students = 3; // cantidad de estudiantes con al menos un pendiente del tipo
+}
+
+message AsesorPendientesResponse {
+  string asesor_id      = 1;
+  string asesor_name    = 2;
+  int32  total_pending  = 3; // suma total cross-estudiantes
+  int32  total_students = 4; // total de estudiantes evaluados (de todos los colegios del asesor)
+  repeated PendingExamTypeCount by_exam_type = 5;
+  repeated PendingStudent students = 6; // solo incluye estudiantes con >0 pendientes
+  google.protobuf.Timestamp generated_at = 7;
 }
 
 message ReporteEstudianteResponse {

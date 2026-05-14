@@ -18,6 +18,9 @@ type UsersClient interface {
 	ListSchools(ctx context.Context, activeOnly bool) ([]UpstreamSchool, error)
 	ListAssignedColegios(ctx context.Context, asesorID domain.UserID) ([]UpstreamSchool, error)
 	ListEstudiantesEnColegio(ctx context.Context, schoolID domain.SchoolID) ([]UpstreamUser, error)
+	// CountVisitasByAsesor cuenta visitas del asesor con el status dado.
+	// status "" cuenta todas las visitas del asesor.
+	CountVisitasByAsesor(ctx context.Context, asesorID domain.UserID, status string) (int32, error)
 }
 
 type ExamsClient interface {
@@ -27,6 +30,11 @@ type ExamsClient interface {
 	GetExam(ctx context.Context, id domain.ExamID) (*UpstreamExam, error)
 	GetAttempt(ctx context.Context, id domain.AttemptID) (*UpstreamAttempt, error)
 	ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]UpstreamEnrichedAnswer, error)
+	// ListActivePublishedExams lista los exams activos y publicados del
+	// catalogo (active=true, published=true), opcionalmente filtrados por
+	// school_id (incluye exams sin school = exams abiertos a todos los
+	// colegios). Usa SearchExams del exams_service.
+	ListActivePublishedExams(ctx context.Context, schoolID domain.SchoolID) ([]UpstreamExam, error)
 }
 
 type UpstreamEnrichedAnswer struct {
@@ -78,6 +86,7 @@ type UpstreamAttempt struct {
 type UpstreamExam struct {
 	ID           domain.ExamID
 	ExamTypeCode string
+	Code         string // codigo legible (VOCC-2026-V1...)
 	Name         string
 	SchoolID     domain.SchoolID
 	Version      int32

@@ -85,6 +85,21 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 	return &pb.SchoolResponse{School: schoolToProto(updated)}, nil
 }
 
+func (h *SchoolHandler) ListSchoolsByAsesor(ctx context.Context, req *pb.ListSchoolsByAsesorRequest) (*pb.ListSchoolsResponse, error) {
+	if req.GetAsesorId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ASESOR_ID", "asesor_id is required", "asesor_id"))
+	}
+	items, err := h.repo.ListByAsesor(ctx, domain.UserID(req.GetAsesorId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	out := make([]*pb.School, 0, len(items))
+	for i := range items {
+		out = append(out, schoolToProto(&items[i]))
+	}
+	return &pb.ListSchoolsResponse{Items: out, Total: uint32(len(out))}, nil
+}
+
 func (h *SchoolHandler) ListSchools(ctx context.Context, req *pb.ListSchoolsRequest) (*pb.ListSchoolsResponse, error) {
 	items, total, err := h.repo.List(ctx, ports.ListSchoolsInput{
 		Search:     req.GetSearch(),

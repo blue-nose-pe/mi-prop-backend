@@ -10,6 +10,7 @@ var (
 	// ----- Not found -----
 	ErrUserNotFound       = apperr.NewNotFound("USER_NOT_FOUND", "user not found")
 	ErrSchoolNotFound     = apperr.NewNotFound("SCHOOL_NOT_FOUND", "school not found")
+	ErrVisitaNotFound     = apperr.NewNotFound("VISITA_NOT_FOUND", "visita not found")
 	ErrPermissionNotFound = apperr.NewNotFound("PERMISSION_NOT_FOUND", "permission not found")
 	ErrPermGroupNotFound  = apperr.NewNotFound("PERMISSION_GROUP_NOT_FOUND", "permission group not found")
 
@@ -20,8 +21,9 @@ var (
 	ErrPermGroupHasUsers  = apperr.NewConflict("PERMISSION_GROUP_HAS_USERS", "cannot delete: group has users assigned", "id")
 
 	// ----- Validation -----
-	ErrInvalidEmail = apperr.NewValidation("INVALID_EMAIL", "email format is invalid", "email")
-	ErrWeakPassword = apperr.NewValidation("WEAK_PASSWORD", "password must have at least 8 characters", "password")
+	ErrInvalidEmail        = apperr.NewValidation("INVALID_EMAIL", "email format is invalid", "email")
+	ErrWeakPassword        = apperr.NewValidation("WEAK_PASSWORD", "password must have at least 8 characters", "password")
+	ErrInvalidVisitaStatus = apperr.NewValidation("INVALID_VISITA_STATUS", "status must be one of: scheduled, completed, cancelled, no_show", "status")
 
 	// ----- Auth -----
 	ErrInvalidPassword     = apperr.NewUnauthenticated("INVALID_CREDENTIALS", "email or password is incorrect")

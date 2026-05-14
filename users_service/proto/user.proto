@@ -37,10 +37,23 @@ service UserService {
 // gRPC: los colegios se crean implícitamente al promover un user a
 // representante de colegio (flow administrativo aparte).
 service SchoolService {
-  rpc GetSchool    (GetSchoolRequest)    returns (SchoolResponse);
-  rpc ListSchools  (ListSchoolsRequest)  returns (ListSchoolsResponse);
-  rpc CreateSchool (CreateSchoolRequest) returns (SchoolResponse);
-  rpc UpdateSchool (UpdateSchoolRequest) returns (SchoolResponse);
+  rpc GetSchool      (GetSchoolRequest)      returns (SchoolResponse);
+  rpc ListSchools    (ListSchoolsRequest)    returns (ListSchoolsResponse);
+  rpc CreateSchool   (CreateSchoolRequest)   returns (SchoolResponse);
+  rpc UpdateSchool   (UpdateSchoolRequest)   returns (SchoolResponse);
+  // ListSchoolsByAsesor: colegios donde el asesor es el responsable vigente
+  // (assignment kind=asesor_de_colegio, valid_to IS NULL).
+  rpc ListSchoolsByAsesor (ListSchoolsByAsesorRequest) returns (ListSchoolsResponse);
+}
+
+// VisitaService — CRUD de visitas (presenciales o remotas) que un asesor
+// hace a un colegio. Mantenido como entidad operativa del modulo P1
+// reimplementada en P2.
+service VisitaService {
+  rpc CreateVisita (CreateVisitaRequest) returns (VisitaResponse);
+  rpc UpdateVisita (UpdateVisitaRequest) returns (VisitaResponse);
+  rpc GetVisita    (GetVisitaRequest)    returns (VisitaResponse);
+  rpc ListVisitas  (ListVisitasRequest)  returns (ListVisitasResponse);
 }
 
 // PermissionGroupService — administración de grupos de permisos (roles).
@@ -136,6 +149,10 @@ message ListSchoolsRequest {
 message ListSchoolsResponse {
   repeated School items = 1;
   uint32 total = 2;        // total sin paginar (para la UI de paginacion)
+}
+
+message ListSchoolsByAsesorRequest {
+  string asesor_id = 1;
 }
 
 message CreateSchoolRequest {
@@ -318,4 +335,57 @@ message ResetPasswordResponse {
   // al user. El user verá must_change_password=true y será forzado a
   // cambiarla en su primer login.
   string temp_password = 1;
+}
+
+// ---------- Visita ----------
+
+message Visita {
+  string id              = 1;
+  string asesor_user_id  = 2;
+  string school_id       = 3;
+  google.protobuf.Timestamp scheduled_at = 4;
+  google.protobuf.Timestamp completed_at = 5; // nil si no completada
+  string status          = 6;  // scheduled | completed | cancelled | no_show
+  string notes           = 7;
+  google.protobuf.Timestamp created_at = 8;
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+message CreateVisitaRequest {
+  string asesor_user_id = 1;
+  string school_id      = 2;
+  google.protobuf.Timestamp scheduled_at = 3;
+  string status         = 4; // opcional, default "scheduled"
+  string notes          = 5;
+  google.protobuf.Timestamp completed_at = 6; // opcional (si se crea ya completada)
+}
+
+message UpdateVisitaRequest {
+  string id            = 1;
+  string status        = 2; // "" = no tocar
+  string notes         = 3; // "" = no tocar (no se puede vaciar con esta API)
+  google.protobuf.Timestamp scheduled_at = 4; // nil/zero = no tocar
+  // completed_at:
+  //   * no enviado / zero        = no tocar
+  //   * "1900-01-01T00:00:00Z"   = sentinel para LIMPIAR a NULL
+  //   * cualquier otro timestamp = setear ese valor
+  google.protobuf.Timestamp completed_at = 5;
+}
+
+message GetVisitaRequest   { string id = 1; }
+message VisitaResponse     { Visita visita = 1; }
+
+message ListVisitasRequest {
+  string asesor_user_id = 1; // opcional
+  string school_id      = 2; // opcional
+  string status         = 3; // opcional
+  google.protobuf.Timestamp from = 4; // opcional, scheduled_at >= from
+  google.protobuf.Timestamp to   = 5; // opcional, scheduled_at < to
+  uint32 limit          = 6;
+  uint32 offset         = 7;
+}
+
+message ListVisitasResponse {
+  repeated Visita items = 1;
+  uint32 total          = 2;
 }

@@ -17,13 +17,17 @@ type (
 
 // AsesorDashboard — vista agregada para un asesor.
 type AsesorDashboard struct {
-	AsesorID      UserID
-	AsesorName    string
-	TotalColegios int32
-	TotalKeys     int32
-	TotalAttempts int32
-	ByExamType    map[string]ExamTypeStats // "vocacional" | "simulacro" | "habitos"
-	GeneratedAt   time.Time
+	AsesorID         UserID
+	AsesorName       string
+	TotalColegios    int32
+	TotalKeys        int32
+	TotalAttempts    int32
+	CompletedVisits  int32 // count(visitas) del asesor con status=completed
+	ScheduledVisits  int32 // count(visitas) con status=scheduled (proximas)
+	PendingTests     int32 // suma cross-estudiantes de tests pendientes por rendir
+	AffectedStudents int32 // estudiantes con al menos un test pendiente
+	ByExamType       map[string]ExamTypeStats // "vocacional" | "simulacro" | "habitos"
+	GeneratedAt      time.Time
 }
 
 type ExamTypeStats struct {
@@ -101,6 +105,40 @@ type HistoricoColegioPoint struct {
 	Attempts     int32
 	VariationPct float64 // contra el punto anterior; ignorar si HasPrevious=false
 	HasPrevious  bool    // true => el punto previo existia y tenia attempts validos
+}
+
+// AsesorPendientes — tests pendientes por rendir agregados a nivel asesor.
+// "Pendiente" = exam publicado+activo que un estudiante de algun colegio
+// del asesor no ha rendido (no tiene attempt submitted).
+type AsesorPendientes struct {
+	AsesorID        UserID
+	AsesorName      string
+	TotalPending    int32
+	TotalStudents   int32 // evaluados (la suma de todos los students de los colegios)
+	ByExamType      []PendingExamTypeCount
+	Students        []PendingStudent // solo incluye los que tienen >=1 pendiente
+	GeneratedAt     time.Time
+}
+
+type PendingExamTypeCount struct {
+	ExamTypeCode     string
+	PendingAttempts  int32 // suma cross-estudiantes
+	AffectedStudents int32 // estudiantes con >=1 pendiente del tipo
+}
+
+type PendingStudent struct {
+	UserID       UserID
+	StudentName  string
+	SchoolID     SchoolID
+	SchoolName   string
+	PendingExams []PendingExam
+}
+
+type PendingExam struct {
+	ExamID       ExamID
+	ExamName     string
+	ExamTypeCode string
+	ExamCode     string
 }
 
 // ColegiosHistoricoListing — fila por colegio con la metrica del periodo
