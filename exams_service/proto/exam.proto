@@ -15,6 +15,7 @@ service ExamService {
   rpc GetExam        (GetExamRequest)       returns (ExamResponse);
   rpc PublishExam    (PublishExamRequest)   returns (EmptyResponse);
   rpc DeactivateExam (DeactivateExamRequest)returns (EmptyResponse);
+  rpc ReactivateExam (ReactivateExamRequest)returns (EmptyResponse);
   rpc CloneExam      (CloneExamRequest)     returns (ExamResponse);
   rpc SearchExams    (common.v1.SearchRequest) returns (common.v1.SearchResponse);
 }
@@ -127,6 +128,7 @@ message UpdateExamRequest {
 message GetExamRequest        { string id = 1; }
 message PublishExamRequest    { string id = 1; }
 message DeactivateExamRequest { string id = 1; }
+message ReactivateExamRequest { string id = 1; }
 message CloneExamRequest      { string id = 1; }
 message ExamResponse          { Exam exam = 1; }
 

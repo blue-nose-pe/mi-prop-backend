@@ -75,6 +75,13 @@ func (h *ExamHandler) DeactivateExam(ctx context.Context, req *pb.DeactivateExam
 	return &pb.EmptyResponse{}, nil
 }
 
+func (h *ExamHandler) ReactivateExam(ctx context.Context, req *pb.ReactivateExamRequest) (*pb.EmptyResponse, error) {
+	if err := h.cmds.Reactivate(ctx, domain.ExamID(req.GetId())); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
 func (h *ExamHandler) CloneExam(ctx context.Context, req *pb.CloneExamRequest) (*pb.ExamResponse, error) {
 	e, err := h.cmds.Clone(ctx, domain.ExamID(req.GetId()))
 	if err != nil {

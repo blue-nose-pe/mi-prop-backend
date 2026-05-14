@@ -25,6 +25,7 @@ const (
 	ExamService_GetExam_FullMethodName        = "/exams.v1.ExamService/GetExam"
 	ExamService_PublishExam_FullMethodName    = "/exams.v1.ExamService/PublishExam"
 	ExamService_DeactivateExam_FullMethodName = "/exams.v1.ExamService/DeactivateExam"
+	ExamService_ReactivateExam_FullMethodName = "/exams.v1.ExamService/ReactivateExam"
 	ExamService_CloneExam_FullMethodName      = "/exams.v1.ExamService/CloneExam"
 	ExamService_SearchExams_FullMethodName    = "/exams.v1.ExamService/SearchExams"
 )
@@ -38,6 +39,7 @@ type ExamServiceClient interface {
 	GetExam(ctx context.Context, in *GetExamRequest, opts ...grpc.CallOption) (*ExamResponse, error)
 	PublishExam(ctx context.Context, in *PublishExamRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	DeactivateExam(ctx context.Context, in *DeactivateExamRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	ReactivateExam(ctx context.Context, in *ReactivateExamRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	CloneExam(ctx context.Context, in *CloneExamRequest, opts ...grpc.CallOption) (*ExamResponse, error)
 	SearchExams(ctx context.Context, in *common.SearchRequest, opts ...grpc.CallOption) (*common.SearchResponse, error)
 }
@@ -100,6 +102,16 @@ func (c *examServiceClient) DeactivateExam(ctx context.Context, in *DeactivateEx
 	return out, nil
 }
 
+func (c *examServiceClient) ReactivateExam(ctx context.Context, in *ReactivateExamRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, ExamService_ReactivateExam_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *examServiceClient) CloneExam(ctx context.Context, in *CloneExamRequest, opts ...grpc.CallOption) (*ExamResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ExamResponse)
@@ -129,6 +141,7 @@ type ExamServiceServer interface {
 	GetExam(context.Context, *GetExamRequest) (*ExamResponse, error)
 	PublishExam(context.Context, *PublishExamRequest) (*EmptyResponse, error)
 	DeactivateExam(context.Context, *DeactivateExamRequest) (*EmptyResponse, error)
+	ReactivateExam(context.Context, *ReactivateExamRequest) (*EmptyResponse, error)
 	CloneExam(context.Context, *CloneExamRequest) (*ExamResponse, error)
 	SearchExams(context.Context, *common.SearchRequest) (*common.SearchResponse, error)
 	mustEmbedUnimplementedExamServiceServer()
@@ -155,6 +168,9 @@ func (UnimplementedExamServiceServer) PublishExam(context.Context, *PublishExamR
 }
 func (UnimplementedExamServiceServer) DeactivateExam(context.Context, *DeactivateExamRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateExam not implemented")
+}
+func (UnimplementedExamServiceServer) ReactivateExam(context.Context, *ReactivateExamRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReactivateExam not implemented")
 }
 func (UnimplementedExamServiceServer) CloneExam(context.Context, *CloneExamRequest) (*ExamResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CloneExam not implemented")
@@ -273,6 +289,24 @@ func _ExamService_DeactivateExam_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _ExamService_ReactivateExam_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReactivateExamRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ExamServiceServer).ReactivateExam(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: ExamService_ReactivateExam_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ExamServiceServer).ReactivateExam(ctx, req.(*ReactivateExamRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _ExamService_CloneExam_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CloneExamRequest)
 	if err := dec(in); err != nil {
@@ -335,6 +369,10 @@ var ExamService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateExam",
 			Handler:    _ExamService_DeactivateExam_Handler,
+		},
+		{
+			MethodName: "ReactivateExam",
+			Handler:    _ExamService_ReactivateExam_Handler,
 		},
 		{
 			MethodName: "CloneExam",

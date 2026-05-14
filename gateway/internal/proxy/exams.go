@@ -48,6 +48,7 @@ func (p *Proxy) RegisterExams(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/exams/{id}", p.updateExam)
 	mux.HandleFunc("POST /api/exams/{id}/publish", p.publishExam)
 	mux.HandleFunc("POST /api/exams/{id}/deactivate", p.deactivateExam)
+	mux.HandleFunc("POST /api/exams/{id}/reactivate", p.reactivateExam)
 	mux.HandleFunc("POST /api/exams/{id}/clone", p.cloneExam)
 
 	// Questions
@@ -180,6 +181,14 @@ func (p *Proxy) publishExam(w http.ResponseWriter, r *http.Request) {
 
 func (p *Proxy) deactivateExam(w http.ResponseWriter, r *http.Request) {
 	if _, err := p.cli.Exams.DeactivateExam(r.Context(), &examsgrpcpb.DeactivateExamRequest{Id: r.PathValue("id")}); err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func (p *Proxy) reactivateExam(w http.ResponseWriter, r *http.Request) {
+	if _, err := p.cli.Exams.ReactivateExam(r.Context(), &examsgrpcpb.ReactivateExamRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
 	}

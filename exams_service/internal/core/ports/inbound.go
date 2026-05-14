@@ -15,6 +15,10 @@ type ExamCommands interface {
 	Update(ctx context.Context, in UpdateExamInput) (*domain.Exam, error)
 	Publish(ctx context.Context, id domain.ExamID) error
 	Deactivate(ctx context.Context, id domain.ExamID) error
+	// Reactivate vuelve un exam a active=true. Idempotente. No revive
+	// estado de publicacion: si el exam estaba published al desactivarse,
+	// queda published; si estaba draft, queda draft.
+	Reactivate(ctx context.Context, id domain.ExamID) error
 	// Clone crea una nueva versión del exam (inmutable después de publicar).
 	// Copia todas sus exam_question. Devuelve el nuevo ExamID.
 	Clone(ctx context.Context, id domain.ExamID) (*domain.Exam, error)

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.10.0
+  version: 0.10.1
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -2708,15 +2708,42 @@ paths:
     parameters: [{ $ref: '#/components/parameters/ExamID' }]
     post:
       tags: [Exams]
-      summary: Desactivar exam (no borra)
+      summary: Desactivar exam (pausar)
       description: |
         Pone `active=false`. Los attempts existentes se preservan; los nuevos
         no podrán iniciar contra este exam. Idempotente.
+
+        En la UI esto corresponde al estado **paused**. Para volver al estado
+        anterior, usar `POST /api/exams/{id}/reactivate`.
 
         Permiso requerido: `db_exams.exam.write`.
       responses:
         '200':
           description: Exam desactivado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+              example:
+                status: "ok"
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/exams/{id}/reactivate:
+    parameters: [{ $ref: '#/components/parameters/ExamID' }]
+    post:
+      tags: [Exams]
+      summary: Reactivar exam (deshacer pausar)
+      description: |
+        Pone `active=true`. Inverso simétrico de `/deactivate`. No cambia el
+        flag `published`: si el exam estaba publicado al pausarse, queda
+        publicado al reactivarse; si era draft, queda draft. Idempotente.
+
+        Permiso requerido: `db_exams.exam.write`.
+      responses:
+        '200':
+          description: Exam reactivado
           content:
             application/json:
               schema:

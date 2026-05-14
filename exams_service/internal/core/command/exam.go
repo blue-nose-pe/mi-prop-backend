@@ -208,6 +208,10 @@ func (h *ExamHandler) Deactivate(ctx context.Context, id domain.ExamID) error {
 	return h.exams.SetActive(ctx, id, false)
 }
 
+func (h *ExamHandler) Reactivate(ctx context.Context, id domain.ExamID) error {
+	return h.exams.SetActive(ctx, id, true)
+}
+
 // Clone genera una nueva versión del exam (parent_exam_id = id), copiando
 // todas sus exam_question. La version del clon es max(version) de toda la
 // familia + 1, asi cada clon (incluyendo clones del mismo src) obtiene una
