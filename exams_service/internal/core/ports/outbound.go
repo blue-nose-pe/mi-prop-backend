@@ -25,6 +25,10 @@ type ExamRepository interface {
 	// MaxVersionInFamily devuelve la version mas alta dentro de la familia
 	// (raiz + todos los descendientes via parent_exam_id) del exam dado.
 	MaxVersionInFamily(ctx context.Context, id domain.ExamID) (int32, error)
+	// ExistsByCode chequea si el codigo legible ya esta en uso. La unicidad
+	// tambien la garantiza el indice en DB, pero esto evita el roundtrip de
+	// error al autogenerar.
+	ExistsByCode(ctx context.Context, code string) (bool, error)
 }
 
 type QuestionRepository interface {

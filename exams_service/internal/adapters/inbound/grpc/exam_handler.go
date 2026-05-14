@@ -26,6 +26,7 @@ func (h *ExamHandler) CreateExam(ctx context.Context, req *pb.CreateExamRequest)
 	e, err := h.cmds.Create(ctx, ports.CreateExamInput{
 		ExamTypeCode:    req.GetExamTypeCode(),
 		SchoolID:        domain.SchoolID(req.GetSchoolId()),
+		Code:            req.GetCode(),
 		Name:            req.GetName(),
 		StartAt:         req.GetStartAt().AsTime(),
 		EndAt:           req.GetEndAt().AsTime(),
@@ -40,6 +41,7 @@ func (h *ExamHandler) CreateExam(ctx context.Context, req *pb.CreateExamRequest)
 func (h *ExamHandler) UpdateExam(ctx context.Context, req *pb.UpdateExamRequest) (*pb.ExamResponse, error) {
 	e, err := h.cmds.Update(ctx, ports.UpdateExamInput{
 		ID:              domain.ExamID(req.GetId()),
+		Code:            req.GetCode(),
 		Name:            req.GetName(),
 		StartAt:         req.GetStartAt().AsTime(),
 		EndAt:           req.GetEndAt().AsTime(),

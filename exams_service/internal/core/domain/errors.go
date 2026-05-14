@@ -13,6 +13,7 @@ var (
 
 	// Conflict
 	ErrExamTypeCodeTaken          = apperr.NewConflict("EXAM_TYPE_CODE_TAKEN", "exam type code already exists", "code")
+	ErrExamCodeTaken              = apperr.NewConflict("EXAM_CODE_TAKEN", "exam code already exists", "code")
 	ErrExamQuestionAlreadyLinked  = apperr.NewConflict("EXAM_QUESTION_ALREADY_LINKED", "question is already linked to this exam", "question_id")
 	ErrAnswerOptionMismatch       = apperr.NewValidation("OPTION_NOT_IN_QUESTION", "selected option does not belong to the question", "option_id")
 

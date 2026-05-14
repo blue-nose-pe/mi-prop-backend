@@ -83,6 +83,7 @@ func (p *Proxy) RegisterExams(mux *http.ServeMux) {
 type createExamRequest struct {
 	ExamTypeCode    string `json:"exam_type_code"`
 	SchoolID        string `json:"school_id"`
+	Code            string `json:"code"`
 	Name            string `json:"name"`
 	StartAt         string `json:"start_at"`
 	EndAt           string `json:"end_at"`
@@ -108,6 +109,7 @@ func (p *Proxy) createExam(w http.ResponseWriter, r *http.Request) {
 	resp, err := p.cli.Exams.CreateExam(r.Context(), &examsgrpcpb.CreateExamRequest{
 		ExamTypeCode:    in.ExamTypeCode,
 		SchoolId:        in.SchoolID,
+		Code:            in.Code,
 		Name:            in.Name,
 		StartAt:         startAt,
 		EndAt:           endAt,
@@ -130,6 +132,7 @@ func (p *Proxy) getExam(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateExamRequest struct {
+	Code            string `json:"code"`
 	Name            string `json:"name"`
 	StartAt         string `json:"start_at"`
 	EndAt           string `json:"end_at"`
@@ -154,6 +157,7 @@ func (p *Proxy) updateExam(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := p.cli.Exams.UpdateExam(r.Context(), &examsgrpcpb.UpdateExamRequest{
 		Id:              r.PathValue("id"),
+		Code:            in.Code,
 		Name:            in.Name,
 		StartAt:         startAt,
 		EndAt:           endAt,
@@ -548,6 +552,7 @@ func protoExamToJSON(e *examsgrpcpb.Exam) map[string]any {
 		"school_id":        e.GetSchoolId(),
 		"parent_exam_id":   e.GetParentExamId(),
 		"version":          e.GetVersion(),
+		"code":             e.GetCode(),
 		"name":             e.GetName(),
 		"start_at":         optionalTimestamp(e.GetStartAt()),
 		"end_at":           optionalTimestamp(e.GetEndAt()),

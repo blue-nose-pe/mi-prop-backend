@@ -33,6 +33,7 @@ type Exam struct {
 	SchoolID        SchoolID // "" = exam abierto, no atado a colegio
 	ParentExamID    ExamID   // "" = primera versión
 	Version         int32
+	Code            string // identificador legible (unico). Autogen si el cliente no lo manda.
 	Name            string
 	StartAt         time.Time
 	EndAt           time.Time

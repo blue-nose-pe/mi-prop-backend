@@ -28,6 +28,7 @@ type ExamQueries interface {
 type CreateExamInput struct {
 	ExamTypeCode    string // "vocacional" | "simulacro" | "habitos"
 	SchoolID        domain.SchoolID
+	Code            string // opcional. Si llega vacio, el handler autogenera.
 	Name            string
 	StartAt         time.Time
 	EndAt           time.Time
@@ -36,6 +37,7 @@ type CreateExamInput struct {
 
 type UpdateExamInput struct {
 	ID              domain.ExamID
+	Code            string // opcional. Si llega vacio, el codigo actual no cambia.
 	Name            string
 	StartAt         time.Time
 	EndAt           time.Time

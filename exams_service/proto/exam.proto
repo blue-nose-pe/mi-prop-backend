@@ -63,6 +63,9 @@ message Exam {
   bool   active            = 11;
   google.protobuf.Timestamp created_at = 12;
   google.protobuf.Timestamp updated_at = 13;
+  // Codigo legible (p.ej. "VOCC-2026-V3"). Unico. El servidor lo autogenera
+  // si el cliente no lo manda en CreateExam.
+  string code              = 14;
 }
 
 message Question {
@@ -108,6 +111,9 @@ message CreateExamRequest {
   google.protobuf.Timestamp start_at = 4;
   google.protobuf.Timestamp end_at   = 5;
   int32  max_participants  = 6;
+  // Opcional. Si llega vacio, el servidor autogenera un codigo unico
+  // usando el formato "{PREFIX}-{YYYY}-V1" (PREFIX por exam_type).
+  string code              = 7;
 }
 message UpdateExamRequest {
   string id              = 1;
@@ -115,6 +121,8 @@ message UpdateExamRequest {
   google.protobuf.Timestamp start_at = 3;
   google.protobuf.Timestamp end_at   = 4;
   int32  max_participants = 5;
+  // Opcional. Si llega vacio, el codigo actual no se modifica.
+  string code            = 6;
 }
 message GetExamRequest        { string id = 1; }
 message PublishExamRequest    { string id = 1; }

@@ -34,8 +34,10 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 // writeGRPCError mapea un error gRPC del upstream a HTTP equivalente
-// + JSON envelope estándar HubSpot-style. Códigos basados en
-// google.golang.org/grpc/codes.
+// + JSON envelope estándar HubSpot-style. Si el upstream adjunta su
+// commonpb.ErrorResponse en los Details (lo hace apperr.ToGRPC), se
+// prefiere el code especifico de la app (p.ej. EXAM_CODE_TAKEN) sobre
+// la categoria generica (CONFLICT).
 func writeGRPCError(w http.ResponseWriter, err error) {
 	st, ok := status.FromError(err)
 	if !ok {
@@ -45,11 +47,43 @@ func writeGRPCError(w http.ResponseWriter, err error) {
 		return
 	}
 	httpCode, ourCode := mapCode(st.Code())
+	if appCode := appCodeFromDetails(st); appCode != "" {
+		ourCode = appCode
+	}
 	writeJSON(w, httpCode, errorBody{
 		Status:  "error",
 		Message: st.Message(),
 		Code:    ourCode,
 	})
+}
+
+// appCodeFromDetails extrae el primer code de application-level desde el
+// commonpb.ErrorResponse que apperr.ToGRPC adjunta como detail. Como cada
+// servicio define su propio paquete commonpb (mismo schema, distinto type),
+// usamos protojson para parsear sin acoplarnos a un servicio concreto.
+func appCodeFromDetails(st *status.Status) string {
+	for _, d := range st.Details() {
+		msg, ok := d.(proto.Message)
+		if !ok {
+			continue
+		}
+		raw, err := protojson.Marshal(msg)
+		if err != nil {
+			continue
+		}
+		var payload struct {
+			Errors []struct {
+				Code string `json:"code"`
+			} `json:"errors"`
+		}
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			continue
+		}
+		if len(payload.Errors) > 0 && payload.Errors[0].Code != "" {
+			return payload.Errors[0].Code
+		}
+	}
+	return ""
 }
 
 type errorBody struct {

@@ -25,6 +25,7 @@ const examCols = `CONVERT(NVARCHAR(36), id),
 		ISNULL(CONVERT(NVARCHAR(36), school_id), ''),
 		ISNULL(CONVERT(NVARCHAR(36), parent_exam_id), ''),
 		version,
+		code,
 		name,
 		start_at,
 		end_at,
@@ -36,19 +37,20 @@ const examCols = `CONVERT(NVARCHAR(36), id),
 
 func (r *ExamRepo) Save(ctx context.Context, e *domain.Exam) (domain.ExamID, error) {
 	const q = `
-		INSERT INTO exam (exam_type_id, school_id, parent_exam_id, version,
+		INSERT INTO exam (exam_type_id, school_id, parent_exam_id, version, code,
 		                  name, start_at, end_at, max_participants, published, active)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1,
 		        IIF(@p2 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p2)),
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)),
-		        @p4, @p5, @p6, @p7, @p8, @p9, @p10)`
+		        @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		e.ExamTypeID,
 		string(e.SchoolID),
 		string(e.ParentExamID),
 		e.Version,
+		e.Code,
 		e.Name,
 		e.StartAt,
 		e.EndAt,
@@ -65,9 +67,10 @@ func (r *ExamRepo) Save(ctx context.Context, e *domain.Exam) (domain.ExamID, err
 func (r *ExamRepo) Update(ctx context.Context, e *domain.Exam) error {
 	const q = `
 		UPDATE exam
-		   SET name = @p1, start_at = @p2, end_at = @p3, max_participants = @p4
-		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p5)`
-	res, err := r.db.ExecContext(ctx, q, e.Name, e.StartAt, e.EndAt, e.MaxParticipants, string(e.ID))
+		   SET name = @p1, start_at = @p2, end_at = @p3,
+		       max_participants = @p4, code = @p5
+		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p6)`
+	res, err := r.db.ExecContext(ctx, q, e.Name, e.StartAt, e.EndAt, e.MaxParticipants, e.Code, string(e.ID))
 	if err != nil {
 		return err
 	}
@@ -90,7 +93,7 @@ func (r *ExamRepo) FindByID(ctx context.Context, id domain.ExamID) (*domain.Exam
 		updatedAt sql.NullTime
 	)
 	err := row.Scan(
-		&idStr, &e.ExamTypeID, &schoolID, &parentID, &e.Version,
+		&idStr, &e.ExamTypeID, &schoolID, &parentID, &e.Version, &e.Code,
 		&e.Name, &e.StartAt, &e.EndAt, &e.MaxParticipants,
 		&e.Published, &e.Active, &e.CreatedAt, &updatedAt,
 	)
@@ -154,6 +157,16 @@ func (r *ExamRepo) MaxVersionInFamily(ctx context.Context, id domain.ExamID) (in
 		return 0, err
 	}
 	return v, nil
+}
+
+func (r *ExamRepo) ExistsByCode(ctx context.Context, code string) (bool, error) {
+	var n int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM exam WHERE code = @p1`, code).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
 }
 
 func (r *ExamRepo) SetPublished(ctx context.Context, id domain.ExamID, published bool) error {

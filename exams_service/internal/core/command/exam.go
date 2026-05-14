@@ -2,11 +2,81 @@ package command
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"regexp"
 	"strings"
+	"time"
 
 	"exams_service/internal/core/domain"
 	"exams_service/internal/core/ports"
 )
+
+// prefijo por exam_type. Si se agregan nuevos tipos en la DB hay que mapearlos
+// aca para que el autogen produzca codigos legibles. Si no hay match, se usa
+// "EXAM" como fallback.
+var examCodePrefix = map[string]string{
+	"vocacional": "VOCC",
+	"simulacro":  "SIME",
+	"habitos":    "ESTI",
+}
+
+// versionSuffix detecta "...-V{n}" al final del codigo, para que al clonar
+// V1 -> V2 -> V3 se reemplace el sufijo en vez de acumularlo.
+var versionSuffix = regexp.MustCompile(`-[vV]\d+$`)
+
+func examCodePrefixFor(typeCode string) string {
+	if p, ok := examCodePrefix[strings.ToLower(strings.TrimSpace(typeCode))]; ok {
+		return p
+	}
+	return "EXAM"
+}
+
+// generateExamCode arma "{PREFIX}-{YYYY}-V{version}" y, si ya existe, le
+// agrega un sufijo hex aleatorio para asegurar unicidad. Se intenta a lo
+// sumo 5 veces; un error de la DB en el penultimo intento se propaga.
+func generateExamCode(ctx context.Context, repo ports.ExamRepository, typeCode string, version int32) (string, error) {
+	base := fmt.Sprintf("%s-%d-V%d", examCodePrefixFor(typeCode), time.Now().UTC().Year(), version)
+	if exists, err := repo.ExistsByCode(ctx, base); err != nil {
+		return "", err
+	} else if !exists {
+		return base, nil
+	}
+	for i := 0; i < 5; i++ {
+		var b [3]byte
+		if _, err := rand.Read(b[:]); err != nil {
+			return "", err
+		}
+		candidate := fmt.Sprintf("%s-%s", base, strings.ToUpper(hex.EncodeToString(b[:])))
+		if exists, err := repo.ExistsByCode(ctx, candidate); err != nil {
+			return "", err
+		} else if !exists {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("could not allocate a unique exam code after retries")
+}
+
+// nextCloneCode toma el codigo del exam padre y reemplaza/agrega el sufijo
+// "-V{n}" con la nueva version del clon. Si el resultado ya esta en uso
+// (raro pero posible: alguien creo un exam suelto con ese codigo), cae al
+// autogen estandar con sufijo aleatorio.
+func nextCloneCode(ctx context.Context, repo ports.ExamRepository, parentCode, parentTypeCode string, newVersion int32) (string, error) {
+	base := strings.TrimSpace(parentCode)
+	base = versionSuffix.ReplaceAllString(base, "")
+	if base == "" {
+		base = fmt.Sprintf("%s-%d", examCodePrefixFor(parentTypeCode), time.Now().UTC().Year())
+	}
+	candidate := fmt.Sprintf("%s-V%d", base, newVersion)
+	if exists, err := repo.ExistsByCode(ctx, candidate); err != nil {
+		return "", err
+	} else if !exists {
+		return candidate, nil
+	}
+	// Colision: dejar que generateExamCode maneje el sufijo aleatorio.
+	return generateExamCode(ctx, repo, parentTypeCode, newVersion)
+}
 
 // ExamHandler implementa ports.ExamCommands. Mutaciones sobre exam.
 //
@@ -46,9 +116,24 @@ func (h *ExamHandler) Create(ctx context.Context, in ports.CreateExamInput) (*do
 		return nil, err
 	}
 
+	code := strings.TrimSpace(in.Code)
+	if code == "" {
+		code, err = generateExamCode(ctx, h.exams, t.Code, 1)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		if exists, err := h.exams.ExistsByCode(ctx, code); err != nil {
+			return nil, err
+		} else if exists {
+			return nil, domain.ErrExamCodeTaken
+		}
+	}
+
 	e := &domain.Exam{
 		ExamTypeID:      t.ID,
 		SchoolID:        in.SchoolID,
+		Code:            code,
 		Name:            strings.TrimSpace(in.Name),
 		StartAt:         in.StartAt,
 		EndAt:           in.EndAt,
@@ -76,6 +161,16 @@ func (h *ExamHandler) Update(ctx context.Context, in ports.UpdateExamInput) (*do
 	}
 	if v := strings.TrimSpace(in.Name); v != "" {
 		e.Name = v
+	}
+	if v := strings.TrimSpace(in.Code); v != "" && v != e.Code {
+		exists, err := h.exams.ExistsByCode(ctx, v)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, domain.ErrExamCodeTaken
+		}
+		e.Code = v
 	}
 	if !in.StartAt.IsZero() {
 		e.StartAt = in.StartAt
@@ -127,11 +222,23 @@ func (h *ExamHandler) Clone(ctx context.Context, id domain.ExamID) (*domain.Exam
 	if err != nil {
 		return nil, err
 	}
+	newVersion := maxVer + 1
+
+	t, err := h.types.FindByID(ctx, src.ExamTypeID)
+	if err != nil {
+		return nil, err
+	}
+	cloneCode, err := nextCloneCode(ctx, h.exams, src.Code, t.Code, newVersion)
+	if err != nil {
+		return nil, err
+	}
+
 	clone := &domain.Exam{
 		ExamTypeID:      src.ExamTypeID,
 		SchoolID:        src.SchoolID,
 		ParentExamID:    src.ID,
-		Version:         maxVer + 1,
+		Version:         newVersion,
+		Code:            cloneCode,
 		Name:            src.Name,
 		StartAt:         src.StartAt,
 		EndAt:           src.EndAt,

@@ -17,6 +17,7 @@ func toProtoExam(e *domain.Exam) *pb.Exam {
 		SchoolId:        string(e.SchoolID),
 		ParentExamId:    string(e.ParentExamID),
 		Version:         e.Version,
+		Code:            e.Code,
 		Name:            e.Name,
 		StartAt:         timestamppb.New(e.StartAt),
 		EndAt:           timestamppb.New(e.EndAt),

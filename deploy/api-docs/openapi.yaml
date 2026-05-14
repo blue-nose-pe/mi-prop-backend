@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.9.4
+  version: 0.10.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -2520,18 +2520,44 @@ paths:
 
         Una vez publicado, el exam queda inmutable: para "editar" preguntas
         hay que `Clone` (genera nueva versión con `parent_exam_id`).
+
+        ### Campo `code`
+
+        - **Opcional**. Si no lo mandás, el servidor autogenera uno único en
+          base al `exam_type_code` y al año actual. Ejemplos:
+            * `vocacional` → `VOCC-2026-V1`
+            * `simulacro`  → `SIME-2026-V1`
+            * `habitos`    → `ESTI-2026-V1`
+        - Si lo mandás vos, debe ser único. Si ya existe, devuelve
+          `409 EXAM_CODE_TAKEN`.
+        - Al clonar un exam para versión 2 (ver `POST /api/exams/{id}/clone`),
+          el clon hereda el código base del padre con la nueva versión:
+          `VOCC-2026-V1` → `VOCC-2026-V2`.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: '#/components/schemas/CreateExamRequest' }
-            example:
-              exam_type_code: "vocacional"
-              school_id: "3a8f..."
-              name: "Vocacional 2026 — Colegio San Pablo"
-              start_at: "2026-06-01T08:00:00Z"
-              end_at: "2026-06-30T23:59:59Z"
-              max_participants: 0
+            examples:
+              codigoAutogenerado:
+                summary: Sin code (el servidor lo arma)
+                value:
+                  exam_type_code: "vocacional"
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  name: "Vocacional 2026 — Colegio San Pablo"
+                  start_at: "2026-06-01T08:00:00Z"
+                  end_at: "2026-06-30T23:59:59Z"
+                  max_participants: 0
+              codigoExplicito:
+                summary: Con code propio
+                value:
+                  exam_type_code: "simulacro"
+                  school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                  code: "SIME-2026-INGRESO-ABRIL"
+                  name: "Simulacro de Admisión — Abril 2026"
+                  start_at: "2026-04-01T08:00:00Z"
+                  end_at: "2026-04-30T23:59:59Z"
+                  max_participants: 200
       responses:
         '200':
           description: Exam creado
@@ -2570,6 +2596,7 @@ paths:
                   school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
                   parent_exam_id: ""
                   version: 1
+                  code: "VOCC-2026-V1"
                   name: "Vocacional 2026 — Colegio San Pablo"
                   start_at: "2026-06-01T08:00:00Z"
                   end_at: "2026-06-30T23:59:59Z"
@@ -2595,6 +2622,12 @@ paths:
             schema:
               type: object
               properties:
+                code:
+                  type: string
+                  description: |
+                    Cambiar el código legible. Si llega vacío, el actual no se
+                    modifica. Si el nuevo código ya está en uso, devuelve
+                    `409 EXAM_CODE_TAKEN`.
                 name: { type: string }
                 start_at: { type: string, format: date-time }
                 end_at:   { type: string, format: date-time }
@@ -2617,6 +2650,7 @@ paths:
                   school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
                   parent_exam_id: ""
                   version: 1
+                  code: "VOCC-2026-V1"
                   name: "Vocacional 2026 — Colegio San Pablo (revisado)"
                   start_at: "2026-06-05T08:00:00Z"
                   end_at: "2026-07-05T23:59:59Z"
@@ -2699,10 +2733,22 @@ paths:
       tags: [Exams]
       summary: Clonar exam para nueva versión
       description: |
-        Crea un nuevo exam con `parent_exam_id` = id origen, `version` =
-        version_origen + 1, **en draft**, copiando todas sus `exam_question`.
-        Los `exam_attempt` antiguos siguen apuntando al exam original →
-        histórico preservado.
+        Crea un nuevo exam con `parent_exam_id` = id origen, **en draft**,
+        copiando todas sus `exam_question`. Los `exam_attempt` antiguos siguen
+        apuntando al exam original → histórico preservado.
+
+        ### Versionado
+
+        La `version` del clon es `max(version)` de toda la familia
+        (raíz + descendientes) + 1. O sea: clonar el mismo exam dos veces
+        produce v2 y v3, no dos v2.
+
+        ### Código del clon
+
+        El `code` se hereda del padre, reemplazando el sufijo `-V{n}` por el
+        nuevo número de versión:
+          * Padre `VOCC-2026-V1` → clon `VOCC-2026-V2`
+          * Padre `VOCC-2026-V2` → clon `VOCC-2026-V3`
 
         Permiso requerido: `db_exams.exam.write`.
       responses:
@@ -2718,6 +2764,7 @@ paths:
                   school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
                   parent_exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
                   version: 2
+                  code: "VOCC-2026-V2"
                   name: "Vocacional 2026 — Colegio San Pablo"
                   start_at: "2026-06-01T08:00:00Z"
                   end_at: "2026-06-30T23:59:59Z"
@@ -2734,7 +2781,7 @@ paths:
       summary: Búsqueda HubSpot-style de exams
       description: |
         Propiedades whitelist: `exam_type_id`, `school_id`, `parent_exam_id`,
-        `version`, `name`, `start_at`, `end_at`, `max_participants`,
+        `version`, `code`, `name`, `start_at`, `end_at`, `max_participants`,
         `published`, `active`, `created_at`, `updated_at`.
       requestBody:
         required: true
@@ -5394,7 +5441,8 @@ components:
         exam_type_id:     { type: integer, format: int32, description: "FK al catálogo exam_type" }
         school_id:        { type: string, format: uuid, description: "'' si exam abierto" }
         parent_exam_id:   { type: string, format: uuid, description: "'' si primera versión" }
-        version:          { type: integer, format: int32 }
+        version:          { type: integer, format: int32, description: "Versión dentro de la familia. Al clonar, sube monótono: max(version) de la familia + 1." }
+        code:             { type: string, description: "Identificador legible único (p.ej. \"VOCC-2026-V3\"). Visible al usuario en la UI." }
         name:             { type: string }
         start_at:         { type: string, format: date-time }
         end_at:           { type: string, format: date-time }
@@ -5410,6 +5458,16 @@ components:
       properties:
         exam_type_code:    { type: string, enum: [vocacional, simulacro, habitos] }
         school_id:         { type: string, format: uuid }
+        code:
+          type: string
+          description: |
+            Identificador legible que se ve en la UI. **Opcional**: si llega
+            vacío el servidor autogenera uno con el formato
+            `{PREFIX}-{YYYY}-V1` donde `PREFIX` es:
+              * `VOCC` para `vocacional`
+              * `SIME` para `simulacro`
+              * `ESTI` para `habitos`
+            Si el código que mandás ya existe, devuelve `409 EXAM_CODE_TAKEN`.
         name:              { type: string }
         start_at:          { type: string, format: date-time }
         end_at:            { type: string, format: date-time }

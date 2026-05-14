@@ -14,6 +14,7 @@ var examSearchSchema = SearchSchema{
 		"school_id":        {DBName: "school_id", Type: SearchTypeUUID, Filterable: true, Sortable: false, Selectable: true},
 		"parent_exam_id":   {DBName: "parent_exam_id", Type: SearchTypeUUID, Filterable: true, Sortable: false, Selectable: true},
 		"version":          {DBName: "version", Type: SearchTypeInt, Filterable: true, Sortable: true, Selectable: true},
+		"code":             {DBName: "code", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
 		"name":             {DBName: "name", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
 		"start_at":         {DBName: "start_at", Type: SearchTypeTimestamp, Filterable: true, Sortable: true, Selectable: true},
 		"end_at":           {DBName: "end_at", Type: SearchTypeTimestamp, Filterable: true, Sortable: true, Selectable: true},
