@@ -12,6 +12,8 @@ service AnalyticsService {
   rpc GetEstudianteDashboard  (GetEstudianteDashboardRequest)  returns (EstudianteDashboardResponse);
   rpc GetColegioComparativo   (GetColegioComparativoRequest)   returns (ColegioComparativoResponse);
   rpc GetHistoricoEstudiante  (GetHistoricoEstudianteRequest)  returns (HistoricoEstudianteResponse);
+  rpc GetHistoricoColegio     (GetHistoricoColegioRequest)     returns (HistoricoColegioResponse);
+  rpc GetColegiosHistorico    (GetColegiosHistoricoRequest)    returns (ColegiosHistoricoResponse);
   rpc ExportAsesorXLSX        (ExportAsesorXLSXRequest)        returns (ExportXLSXResponse);
   rpc ExportColegioXLSX       (ExportColegioXLSXRequest)       returns (ExportXLSXResponse);
   rpc ExportComparativoXLSX   (ExportComparativoXLSXRequest)   returns (ExportXLSXResponse);
@@ -83,6 +85,57 @@ message HistoricoEstudianteResponse {
   string user_id = 1;
   repeated TestResult items = 2;
   google.protobuf.Timestamp generated_at = 3;
+}
+
+// Histórico trimestral de un colegio. exam_type_code opcional: "" agrega
+// todos los tipos juntos. periods limita la ventana al N de quarters mas
+// recientes (default 8 = 2 años).
+message GetHistoricoColegioRequest {
+  string school_id      = 1;
+  string exam_type_code = 2;
+  int32  periods        = 3;
+}
+message HistoricoColegioPoint {
+  string period        = 1;  // "YYYY-QN"
+  int32  year          = 2;
+  int32  quarter       = 3;
+  double avg_score     = 4;  // 0..100
+  int32  attempts      = 5;
+  double variation_pct = 6;  // contra el quarter previo; NaN -> protobuf no transporta NaN, se manda 0 si no aplica
+  bool   has_previous  = 7;  // false => variation_pct no es interpretable
+}
+message HistoricoColegioResponse {
+  string school_id      = 1;
+  string school_name    = 2;
+  string city           = 3;
+  string category       = 4;
+  string exam_type_code = 5;
+  repeated HistoricoColegioPoint items = 6;
+  google.protobuf.Timestamp generated_at = 7;
+}
+
+// Listing por colegio para la grilla "Histórico de Colegio". Devuelve la
+// metrica del periodo solicitado para cada colegio + variacion vs anterior.
+// period opcional: "" o "current" toma el quarter actual; sino "YYYY-QN".
+message GetColegiosHistoricoRequest {
+  string period         = 1;
+  string exam_type_code = 2;
+}
+message ColegiosHistoricoRow {
+  string school_id      = 1;
+  string school_name    = 2;
+  string city           = 3;
+  string category       = 4;
+  double avg_score      = 5;
+  int32  attempts       = 6;
+  double variation_pct  = 7;
+  bool   has_previous   = 8;
+}
+message ColegiosHistoricoResponse {
+  string period         = 1;  // resuelto (no "" ni "current")
+  string exam_type_code = 2;
+  repeated ColegiosHistoricoRow items = 3;
+  google.protobuf.Timestamp generated_at = 4;
 }
 
 // ----- Exports -----

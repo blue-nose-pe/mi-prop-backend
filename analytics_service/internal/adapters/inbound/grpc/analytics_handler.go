@@ -98,6 +98,67 @@ func (h *AnalyticsHandler) GetHistoricoEstudiante(ctx context.Context, req *pb.G
 	}, nil
 }
 
+func (h *AnalyticsHandler) GetHistoricoColegio(ctx context.Context, req *pb.GetHistoricoColegioRequest) (*pb.HistoricoColegioResponse, error) {
+	d, err := h.qrys.GetHistoricoColegio(ctx, ports.HistoricoColegioInput{
+		SchoolID:     domain.SchoolID(req.GetSchoolId()),
+		ExamTypeCode: req.GetExamTypeCode(),
+		Periods:      req.GetPeriods(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	items := make([]*pb.HistoricoColegioPoint, 0, len(d.Items))
+	for _, p := range d.Items {
+		items = append(items, &pb.HistoricoColegioPoint{
+			Period:       p.Period,
+			Year:         p.Year,
+			Quarter:      p.Quarter,
+			AvgScore:     p.AvgScore,
+			Attempts:     p.Attempts,
+			VariationPct: p.VariationPct,
+			HasPrevious:  p.HasPrevious,
+		})
+	}
+	return &pb.HistoricoColegioResponse{
+		SchoolId:     string(d.SchoolID),
+		SchoolName:   d.SchoolName,
+		City:         d.City,
+		Category:     d.Category,
+		ExamTypeCode: d.ExamTypeCode,
+		Items:        items,
+		GeneratedAt:  timestamppb.New(d.GeneratedAt),
+	}, nil
+}
+
+func (h *AnalyticsHandler) GetColegiosHistorico(ctx context.Context, req *pb.GetColegiosHistoricoRequest) (*pb.ColegiosHistoricoResponse, error) {
+	d, err := h.qrys.GetColegiosHistorico(ctx, ports.ColegiosHistoricoInput{
+		Period:       req.GetPeriod(),
+		ExamTypeCode: req.GetExamTypeCode(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	items := make([]*pb.ColegiosHistoricoRow, 0, len(d.Items))
+	for _, r := range d.Items {
+		items = append(items, &pb.ColegiosHistoricoRow{
+			SchoolId:     string(r.SchoolID),
+			SchoolName:   r.SchoolName,
+			City:         r.City,
+			Category:     r.Category,
+			AvgScore:     r.AvgScore,
+			Attempts:     r.Attempts,
+			VariationPct: r.VariationPct,
+			HasPrevious:  r.HasPrevious,
+		})
+	}
+	return &pb.ColegiosHistoricoResponse{
+		Period:       d.Period,
+		ExamTypeCode: d.ExamTypeCode,
+		Items:        items,
+		GeneratedAt:  timestamppb.New(d.GeneratedAt),
+	}, nil
+}
+
 func (h *AnalyticsHandler) ExportAsesorXLSX(ctx context.Context, req *pb.ExportAsesorXLSXRequest) (*pb.ExportXLSXResponse, error) {
 	bs, err := h.exporter.ExportAsesorDashboard(ctx, domain.UserID(req.GetAsesorId()))
 	if err != nil {

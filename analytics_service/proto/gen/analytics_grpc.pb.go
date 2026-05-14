@@ -24,6 +24,8 @@ const (
 	AnalyticsService_GetEstudianteDashboard_FullMethodName = "/analytics.v1.AnalyticsService/GetEstudianteDashboard"
 	AnalyticsService_GetColegioComparativo_FullMethodName  = "/analytics.v1.AnalyticsService/GetColegioComparativo"
 	AnalyticsService_GetHistoricoEstudiante_FullMethodName = "/analytics.v1.AnalyticsService/GetHistoricoEstudiante"
+	AnalyticsService_GetHistoricoColegio_FullMethodName    = "/analytics.v1.AnalyticsService/GetHistoricoColegio"
+	AnalyticsService_GetColegiosHistorico_FullMethodName   = "/analytics.v1.AnalyticsService/GetColegiosHistorico"
 	AnalyticsService_ExportAsesorXLSX_FullMethodName       = "/analytics.v1.AnalyticsService/ExportAsesorXLSX"
 	AnalyticsService_ExportColegioXLSX_FullMethodName      = "/analytics.v1.AnalyticsService/ExportColegioXLSX"
 	AnalyticsService_ExportComparativoXLSX_FullMethodName  = "/analytics.v1.AnalyticsService/ExportComparativoXLSX"
@@ -38,6 +40,8 @@ type AnalyticsServiceClient interface {
 	GetEstudianteDashboard(ctx context.Context, in *GetEstudianteDashboardRequest, opts ...grpc.CallOption) (*EstudianteDashboardResponse, error)
 	GetColegioComparativo(ctx context.Context, in *GetColegioComparativoRequest, opts ...grpc.CallOption) (*ColegioComparativoResponse, error)
 	GetHistoricoEstudiante(ctx context.Context, in *GetHistoricoEstudianteRequest, opts ...grpc.CallOption) (*HistoricoEstudianteResponse, error)
+	GetHistoricoColegio(ctx context.Context, in *GetHistoricoColegioRequest, opts ...grpc.CallOption) (*HistoricoColegioResponse, error)
+	GetColegiosHistorico(ctx context.Context, in *GetColegiosHistoricoRequest, opts ...grpc.CallOption) (*ColegiosHistoricoResponse, error)
 	ExportAsesorXLSX(ctx context.Context, in *ExportAsesorXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error)
 	ExportColegioXLSX(ctx context.Context, in *ExportColegioXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error)
 	ExportComparativoXLSX(ctx context.Context, in *ExportComparativoXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error)
@@ -101,6 +105,26 @@ func (c *analyticsServiceClient) GetHistoricoEstudiante(ctx context.Context, in 
 	return out, nil
 }
 
+func (c *analyticsServiceClient) GetHistoricoColegio(ctx context.Context, in *GetHistoricoColegioRequest, opts ...grpc.CallOption) (*HistoricoColegioResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(HistoricoColegioResponse)
+	err := c.cc.Invoke(ctx, AnalyticsService_GetHistoricoColegio_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *analyticsServiceClient) GetColegiosHistorico(ctx context.Context, in *GetColegiosHistoricoRequest, opts ...grpc.CallOption) (*ColegiosHistoricoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ColegiosHistoricoResponse)
+	err := c.cc.Invoke(ctx, AnalyticsService_GetColegiosHistorico_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *analyticsServiceClient) ExportAsesorXLSX(ctx context.Context, in *ExportAsesorXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ExportXLSXResponse)
@@ -140,6 +164,8 @@ type AnalyticsServiceServer interface {
 	GetEstudianteDashboard(context.Context, *GetEstudianteDashboardRequest) (*EstudianteDashboardResponse, error)
 	GetColegioComparativo(context.Context, *GetColegioComparativoRequest) (*ColegioComparativoResponse, error)
 	GetHistoricoEstudiante(context.Context, *GetHistoricoEstudianteRequest) (*HistoricoEstudianteResponse, error)
+	GetHistoricoColegio(context.Context, *GetHistoricoColegioRequest) (*HistoricoColegioResponse, error)
+	GetColegiosHistorico(context.Context, *GetColegiosHistoricoRequest) (*ColegiosHistoricoResponse, error)
 	ExportAsesorXLSX(context.Context, *ExportAsesorXLSXRequest) (*ExportXLSXResponse, error)
 	ExportColegioXLSX(context.Context, *ExportColegioXLSXRequest) (*ExportXLSXResponse, error)
 	ExportComparativoXLSX(context.Context, *ExportComparativoXLSXRequest) (*ExportXLSXResponse, error)
@@ -167,6 +193,12 @@ func (UnimplementedAnalyticsServiceServer) GetColegioComparativo(context.Context
 }
 func (UnimplementedAnalyticsServiceServer) GetHistoricoEstudiante(context.Context, *GetHistoricoEstudianteRequest) (*HistoricoEstudianteResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetHistoricoEstudiante not implemented")
+}
+func (UnimplementedAnalyticsServiceServer) GetHistoricoColegio(context.Context, *GetHistoricoColegioRequest) (*HistoricoColegioResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetHistoricoColegio not implemented")
+}
+func (UnimplementedAnalyticsServiceServer) GetColegiosHistorico(context.Context, *GetColegiosHistoricoRequest) (*ColegiosHistoricoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetColegiosHistorico not implemented")
 }
 func (UnimplementedAnalyticsServiceServer) ExportAsesorXLSX(context.Context, *ExportAsesorXLSXRequest) (*ExportXLSXResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExportAsesorXLSX not implemented")
@@ -288,6 +320,42 @@ func _AnalyticsService_GetHistoricoEstudiante_Handler(srv interface{}, ctx conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AnalyticsService_GetHistoricoColegio_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetHistoricoColegioRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyticsServiceServer).GetHistoricoColegio(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyticsService_GetHistoricoColegio_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyticsServiceServer).GetHistoricoColegio(ctx, req.(*GetHistoricoColegioRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AnalyticsService_GetColegiosHistorico_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetColegiosHistoricoRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyticsServiceServer).GetColegiosHistorico(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyticsService_GetColegiosHistorico_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyticsServiceServer).GetColegiosHistorico(ctx, req.(*GetColegiosHistoricoRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AnalyticsService_ExportAsesorXLSX_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ExportAsesorXLSXRequest)
 	if err := dec(in); err != nil {
@@ -368,6 +436,14 @@ var AnalyticsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetHistoricoEstudiante",
 			Handler:    _AnalyticsService_GetHistoricoEstudiante_Handler,
+		},
+		{
+			MethodName: "GetHistoricoColegio",
+			Handler:    _AnalyticsService_GetHistoricoColegio_Handler,
+		},
+		{
+			MethodName: "GetColegiosHistorico",
+			Handler:    _AnalyticsService_GetColegiosHistorico_Handler,
 		},
 		{
 			MethodName: "ExportAsesorXLSX",

@@ -106,6 +106,8 @@ type createSchoolRequest struct {
 	Name            string `json:"name"`
 	UserID          string `json:"user_id"`
 	HubspotRecordID string `json:"hubspot_record_id"`
+	City            string `json:"city"`
+	Category        string `json:"category"`
 }
 
 func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
@@ -118,6 +120,8 @@ func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
 		Name:            in.Name,
 		UserId:          in.UserID,
 		HubspotRecordId: in.HubspotRecordID,
+		City:            in.City,
+		Category:        in.Category,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -130,6 +134,8 @@ type updateSchoolRequest struct {
 	Name            string `json:"name"`
 	UserID          string `json:"user_id"`
 	HubspotRecordID string `json:"hubspot_record_id"`
+	City            string `json:"city"`     // "" no toca; "-" limpia
+	Category        string `json:"category"` // "" no toca; "-" limpia
 }
 
 func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
@@ -143,6 +149,8 @@ func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
 		Name:            in.Name,
 		UserId:          in.UserID,
 		HubspotRecordId: in.HubspotRecordID,
+		City:            in.City,
+		Category:        in.Category,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -206,6 +214,8 @@ func protoSchoolToJSON(s *usersgrpcpb.School) map[string]any {
 		"id":                s.GetId(),
 		"user_id":           s.GetUserId(),
 		"name":              s.GetName(),
+		"city":              s.GetCity(),
+		"category":          s.GetCategory(),
 		"active":            s.GetActive(),
 		"hubspot_record_id": s.GetHubspotRecordId(),
 		"created_at":        optionalTimestamp(s.GetCreatedAt()),

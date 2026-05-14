@@ -30,6 +30,9 @@ func (NoopUsers) GetUser(_ context.Context, id domain.UserID) (*ports.UpstreamUs
 func (NoopUsers) GetSchool(_ context.Context, id domain.SchoolID) (*ports.UpstreamSchool, error) {
 	return &ports.UpstreamSchool{ID: id, Active: true}, nil
 }
+func (NoopUsers) ListSchools(_ context.Context, _ bool) ([]ports.UpstreamSchool, error) {
+	return nil, nil
+}
 func (NoopUsers) ListAssignedColegios(_ context.Context, _ domain.UserID) ([]ports.UpstreamSchool, error) {
 	return nil, nil
 }

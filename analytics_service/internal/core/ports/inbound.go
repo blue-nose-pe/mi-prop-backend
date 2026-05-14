@@ -18,6 +18,24 @@ type DashboardQueries interface {
 	GetEstudianteDashboard(ctx context.Context, userID domain.UserID) (*domain.EstudianteDashboard, error)
 	GetColegioComparativo(ctx context.Context, examTypeCode string) (*domain.ColegioComparativo, error)
 	GetHistoricoEstudiante(ctx context.Context, userID domain.UserID) (*domain.HistoricoEstudiante, error)
+	// GetHistoricoColegio agrupa attempts por quarter y calcula variacion.
+	// ExamTypeCode "" agrega todos los tipos. Periods <= 0 default a 8.
+	GetHistoricoColegio(ctx context.Context, in HistoricoColegioInput) (*domain.HistoricoColegio, error)
+	// GetColegiosHistorico devuelve una fila por colegio con la metrica del
+	// periodo solicitado + variacion vs anterior. Period "" o "current" toma
+	// el quarter actual; sino "YYYY-QN".
+	GetColegiosHistorico(ctx context.Context, in ColegiosHistoricoInput) (*domain.ColegiosHistoricoListing, error)
+}
+
+type HistoricoColegioInput struct {
+	SchoolID     domain.SchoolID
+	ExamTypeCode string
+	Periods      int32
+}
+
+type ColegiosHistoricoInput struct {
+	Period       string
+	ExamTypeCode string
 }
 
 type ExportCommands interface {

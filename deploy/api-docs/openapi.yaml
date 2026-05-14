@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.10.1
+  version: 0.11.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -2350,9 +2350,16 @@ paths:
                 name:              { type: string, example: "Colegio San Pablo" }
                 user_id:           { type: string, format: uuid, description: "ID del coordinador dueño del colegio." }
                 hubspot_record_id: { type: string, description: "Opcional; '' si todavía no se sincronizó al CRM." }
+                city:              { type: string, description: "Opcional. Ciudad/distrito." }
+                category:
+                  type: string
+                  enum: ["", "A+", "A", "B", "C", "D"]
+                  description: "Opcional. Tag interno UCSP."
             example:
               name: "Colegio San Pablo"
               user_id: "d4326844-7b4a-4daf-b36e-9395dd92bcbc"
+              city: "Arequipa"
+              category: "A"
       responses:
         '200':
           description: Colegio creado.
@@ -2494,8 +2501,21 @@ paths:
                 name:              { type: string }
                 user_id:           { type: string, format: uuid, description: "Cambiar el coordinador dueño. '' = no tocar." }
                 hubspot_record_id: { type: string }
+                city:
+                  type: string
+                  description: |
+                    '' = no tocar; "-" = limpiar (NULL); cualquier otro valor =
+                    setear esa ciudad.
+                category:
+                  type: string
+                  enum: ["", "-", "A+", "A", "B", "C", "D"]
+                  description: |
+                    '' = no tocar; "-" = limpiar (NULL); cualquier valor del
+                    enum = setear esa categoría.
             example:
               name: "Colegio San Pablo - sede norte"
+              city: "Cayma"
+              category: "A+"
       responses:
         '200':
           description: Colegio actualizado
@@ -4670,6 +4690,98 @@ paths:
                     submitted_at: "2026-04-12T09:42:00Z"
                 generated_at: "2026-05-09T16:00:00Z"
 
+  /api/analytics/colegio/{id}/historico:
+    parameters: [{ $ref: '#/components/parameters/SchoolID' }]
+    get:
+      tags: [Analytics]
+      summary: Histórico trimestral de un colegio
+      description: |
+        Agrupa los `exam_attempt` del colegio por **quarter** (`YYYY-QN`,
+        calculado en UTC sobre `submitted_at`) y calcula el promedio del
+        porcentaje `score / max_score * 100` por bucket. Devuelve además la
+        variación porcentual contra el quarter anterior.
+
+        Items ordenados ascendentemente por período (más antiguo → más
+        nuevo). Pensado para gráficas de línea.
+
+        Pensado para la pantalla **Histórico de Colegio** al hacer click en
+        una fila del listado.
+
+        Permiso requerido: `analytics.dashboard.read`.
+      parameters:
+        - in: query
+          name: exam_type_code
+          schema: { type: string, enum: [vocacional, simulacro, habitos] }
+          description: "Opcional. Si se omite agrega los attempts de todos los tipos."
+          example: "simulacro"
+        - in: query
+          name: periods
+          schema: { type: integer, minimum: 1, maximum: 40, default: 8 }
+          description: "Cantidad de quarters más recientes a devolver. Default 8 (≈ 2 años)."
+      responses:
+        '200':
+          description: Histórico
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HistoricoColegio' }
+              example:
+                school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c"
+                school_name: "Colegio Santa María"
+                city: "Arequipa"
+                category: "A+"
+                exam_type_code: "simulacro"
+                items:
+                  - { period: "2025-Q1", year: 2025, quarter: 1, avg_score: 62.0, attempts: 40, variation_pct: 0, has_previous: false }
+                  - { period: "2025-Q2", year: 2025, quarter: 2, avg_score: 67.5, attempts: 52, variation_pct: 8.87, has_previous: true }
+                  - { period: "2025-Q3", year: 2025, quarter: 3, avg_score: 64.1, attempts: 48, variation_pct: -5.04, has_previous: true }
+                generated_at: "2026-05-13T16:00:00Z"
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/analytics/colegios/historico:
+    get:
+      tags: [Analytics]
+      summary: Listado cross-colegio con métrica del período actual
+      description: |
+        Devuelve una fila por cada colegio activo con: `avg_score` del
+        período solicitado, `attempts` del período, `variation_pct` contra
+        el período anterior y los campos descriptivos (`city`, `category`).
+        Ordenado alfabéticamente por nombre.
+
+        Si el colegio no tuvo attempts en el período anterior, `has_previous`
+        es `false` y `variation_pct` no es interpretable (el front debería
+        mostrar "—").
+
+        Este endpoint sirve directamente la grilla **Histórico de Colegio**
+        del dashboard de admin.
+
+        Permiso requerido: `analytics.dashboard.read`.
+      parameters:
+        - in: query
+          name: period
+          schema: { type: string, default: "current" }
+          description: |
+            Período a usar. Valores: `current` (= quarter actual en UTC) o
+            literal `YYYY-QN` (ej `2026-Q1`). Vacío equivale a `current`.
+          example: "current"
+        - in: query
+          name: exam_type_code
+          schema: { type: string, enum: [vocacional, simulacro, habitos] }
+          description: "Opcional. Si se omite agrega todos los tipos."
+      responses:
+        '200':
+          description: Listing
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ColegiosHistorico' }
+              example:
+                period: "2026-Q2"
+                exam_type_code: "simulacro"
+                items:
+                  - { school_id: "3a8f2b54-1d9c-4ef7-9c22-7e9a8f0a1b2c", school_name: "Colegio Santa María", city: "Arequipa", category: "A+", avg_score: 67.4, attempts: 48, variation_pct: 4.2, has_previous: true }
+                  - { school_id: "5e21b9a3-4c8d-4a1b-bc55-8e9f0a1b2c3d", school_name: "Inst. Nacional Camilo Torres", city: "Cayma", category: "A", avg_score: 61.1, attempts: 31, variation_pct: -1.3, has_previous: true }
+                  - { school_id: "ab12cd34-5678-49ab-cdef-1234567890ab", school_name: "Col. Americano", city: "Yanahuara", category: "A", avg_score: 64.6, attempts: 22, variation_pct: 0, has_previous: false }
+                generated_at: "2026-05-13T16:00:00Z"
+
   /api/analytics/comparativo:
     get:
       tags: [Analytics]
@@ -5456,6 +5568,13 @@ components:
         id:                 { type: string, format: uuid }
         user_id:            { type: string, format: uuid, description: "Usuario que representa al colegio" }
         name:               { type: string }
+        city:               { type: string, description: "Ciudad/distrito del colegio. '' si no se cargó." }
+        category:
+          type: string
+          enum: ["", "A+", "A", "B", "C", "D"]
+          description: |
+            Tag interno UCSP para clasificar el colegio. '' = sin clasificar.
+            No es categoría oficial (Saber 11 es Colombia); convención interna.
         active:             { type: boolean }
         hubspot_record_id:  { type: string, description: "ID del Custom Object Colegio en HubSpot. '' si todavía no se sincronizó." }
         created_at:         { type: string, format: date-time }
@@ -5706,3 +5825,49 @@ components:
           type: array
           items: { $ref: '#/components/schemas/TestResult' }
         generated_at: { type: string, format: date-time }
+
+    HistoricoColegioPoint:
+      type: object
+      properties:
+        period:        { type: string, description: "Etiqueta YYYY-QN" }
+        year:          { type: integer, format: int32 }
+        quarter:       { type: integer, format: int32, minimum: 1, maximum: 4 }
+        avg_score:     { type: number, format: double, description: "Promedio del porcentaje score/max_score*100. 0..100." }
+        attempts:      { type: integer, format: int32 }
+        variation_pct: { type: number, format: double, description: "Variación % vs el período anterior. Ignorar si has_previous=false." }
+        has_previous:  { type: boolean }
+
+    HistoricoColegio:
+      type: object
+      properties:
+        school_id:      { type: string, format: uuid }
+        school_name:    { type: string }
+        city:           { type: string }
+        category:       { type: string, description: "Tag UCSP del colegio en ese momento (A+/A/B/C/D o '')." }
+        exam_type_code: { type: string, description: "'' si agregado de todos los tipos." }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/HistoricoColegioPoint' }
+        generated_at:   { type: string, format: date-time }
+
+    ColegiosHistoricoRow:
+      type: object
+      properties:
+        school_id:     { type: string, format: uuid }
+        school_name:   { type: string }
+        city:          { type: string }
+        category:      { type: string }
+        avg_score:     { type: number, format: double }
+        attempts:      { type: integer, format: int32 }
+        variation_pct: { type: number, format: double }
+        has_previous:  { type: boolean }
+
+    ColegiosHistorico:
+      type: object
+      properties:
+        period:         { type: string, description: "YYYY-QN del período resuelto" }
+        exam_type_code: { type: string }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/ColegiosHistoricoRow' }
+        generated_at:   { type: string, format: date-time }

@@ -15,6 +15,7 @@ import (
 type UsersClient interface {
 	GetUser(ctx context.Context, id domain.UserID) (*UpstreamUser, error)
 	GetSchool(ctx context.Context, id domain.SchoolID) (*UpstreamSchool, error)
+	ListSchools(ctx context.Context, activeOnly bool) ([]UpstreamSchool, error)
 	ListAssignedColegios(ctx context.Context, asesorID domain.UserID) ([]UpstreamSchool, error)
 	ListEstudiantesEnColegio(ctx context.Context, schoolID domain.SchoolID) ([]UpstreamUser, error)
 }
@@ -44,9 +45,11 @@ type UpstreamUser struct {
 }
 
 type UpstreamSchool struct {
-	ID     domain.SchoolID
-	Name   string
-	Active bool
+	ID       domain.SchoolID
+	Name     string
+	City     string
+	Category string
+	Active   bool
 }
 
 type UpstreamAttempt struct {

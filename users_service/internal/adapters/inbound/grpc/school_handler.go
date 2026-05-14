@@ -40,9 +40,14 @@ func (h *SchoolHandler) CreateSchool(ctx context.Context, req *pb.CreateSchoolRe
 	if req.GetUserId() == "" {
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_USER_ID", "user_id (coordinador owner) is required", "user_id"))
 	}
+	if cat := req.GetCategory(); cat != "" && !isValidSchoolCategory(cat) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A+, A, B, C, D", "category"))
+	}
 	s := &domain.School{
 		Name:            req.GetName(),
 		UserID:          domain.UserID(req.GetUserId()),
+		City:            req.GetCity(),
+		Category:        req.GetCategory(),
 		Active:          true,
 		HubspotRecordID: req.GetHubspotRecordId(),
 		CreatedAt:       time.Now(),
@@ -59,11 +64,16 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 	if req.GetId() == "" {
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
 	}
+	if cat := req.GetCategory(); cat != "" && cat != "-" && !isValidSchoolCategory(cat) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A+, A, B, C, D", "category"))
+	}
 	s := &domain.School{
 		ID:              domain.SchoolID(req.GetId()),
 		Name:            req.GetName(),
 		UserID:          domain.UserID(req.GetUserId()),
 		HubspotRecordID: req.GetHubspotRecordId(),
+		City:            req.GetCity(),
+		Category:        req.GetCategory(),
 	}
 	if err := h.repo.Update(ctx, s); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -100,6 +110,8 @@ func schoolToProto(s *domain.School) *pb.School {
 		Id:              string(s.ID),
 		UserId:          string(s.UserID),
 		Name:            s.Name,
+		City:            s.City,
+		Category:        s.Category,
 		Active:          s.Active,
 		HubspotRecordId: s.HubspotRecordID,
 		CreatedAt:       timestamppb.New(s.CreatedAt),
@@ -108,4 +120,14 @@ func schoolToProto(s *domain.School) *pb.School {
 		out.UpdatedAt = timestamppb.New(*s.UpdatedAt)
 	}
 	return out
+}
+
+// isValidSchoolCategory acepta los valores que el constraint check de la
+// migracion 018 permite. Sincronizar si cambian alli.
+func isValidSchoolCategory(c string) bool {
+	switch c {
+	case "A+", "A", "B", "C", "D":
+		return true
+	}
+	return false
 }

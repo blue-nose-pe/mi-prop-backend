@@ -28,6 +28,8 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/dashboard", p.getEstudianteDashboard)
 	mux.HandleFunc("GET /api/analytics/comparativo", p.getComparativo)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/historico", p.getEstudianteHistorico)
+	mux.HandleFunc("GET /api/analytics/colegio/{id}/historico", p.getColegioHistorico)
+	mux.HandleFunc("GET /api/analytics/colegios/historico", p.getColegiosHistorico)
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/export.xlsx", p.exportAsesorXLSX)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/export.xlsx", p.exportColegioXLSX)
 	mux.HandleFunc("GET /api/analytics/comparativo/export.xlsx", p.exportComparativoXLSX)
@@ -129,6 +131,79 @@ func (p *Proxy) getEstudianteHistorico(w http.ResponseWriter, r *http.Request) {
 		"user_id":      resp.GetUserId(),
 		"items":        testResultsToJSON(resp.GetItems()),
 		"generated_at": optionalTimestamp(resp.GetGeneratedAt()),
+	})
+}
+
+// getColegioHistorico — GET /api/analytics/colegio/{id}/historico
+// Query params:
+//   - exam_type_code (opcional, "" agrega todos los tipos)
+//   - periods (opcional, default 8 quarters)
+func (p *Proxy) getColegioHistorico(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	resp, err := p.cli.Analytics.GetHistoricoColegio(r.Context(), &analyticsgrpcpb.GetHistoricoColegioRequest{
+		SchoolId:     r.PathValue("id"),
+		ExamTypeCode: q.Get("exam_type_code"),
+		Periods:      int32(parseUint32Query(q.Get("periods"), 0)),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, it := range resp.GetItems() {
+		items = append(items, map[string]any{
+			"period":        it.GetPeriod(),
+			"year":          it.GetYear(),
+			"quarter":       it.GetQuarter(),
+			"avg_score":     it.GetAvgScore(),
+			"attempts":      it.GetAttempts(),
+			"variation_pct": it.GetVariationPct(),
+			"has_previous":  it.GetHasPrevious(),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"school_id":      resp.GetSchoolId(),
+		"school_name":    resp.GetSchoolName(),
+		"city":           resp.GetCity(),
+		"category":       resp.GetCategory(),
+		"exam_type_code": resp.GetExamTypeCode(),
+		"items":          items,
+		"generated_at":   optionalTimestamp(resp.GetGeneratedAt()),
+	})
+}
+
+// getColegiosHistorico — GET /api/analytics/colegios/historico
+// Query params:
+//   - period (opcional, "" o "current" = quarter actual; sino "YYYY-QN")
+//   - exam_type_code (opcional)
+func (p *Proxy) getColegiosHistorico(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	resp, err := p.cli.Analytics.GetColegiosHistorico(r.Context(), &analyticsgrpcpb.GetColegiosHistoricoRequest{
+		Period:       q.Get("period"),
+		ExamTypeCode: q.Get("exam_type_code"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, it := range resp.GetItems() {
+		items = append(items, map[string]any{
+			"school_id":     it.GetSchoolId(),
+			"school_name":   it.GetSchoolName(),
+			"city":          it.GetCity(),
+			"category":      it.GetCategory(),
+			"avg_score":     it.GetAvgScore(),
+			"attempts":      it.GetAttempts(),
+			"variation_pct": it.GetVariationPct(),
+			"has_previous":  it.GetHasPrevious(),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"period":         resp.GetPeriod(),
+		"exam_type_code": resp.GetExamTypeCode(),
+		"items":          items,
+		"generated_at":   optionalTimestamp(resp.GetGeneratedAt()),
 	})
 }
 

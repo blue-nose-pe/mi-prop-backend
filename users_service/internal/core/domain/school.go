@@ -9,6 +9,8 @@ type School struct {
 	ID              SchoolID
 	UserID          UserID // usuario que representa al colegio
 	Name            string
+	City            string // ciudad/distrito del colegio. "" = sin definir.
+	Category        string // tag UCSP: A+, A, B, C, D o "" si no clasificado.
 	Active          bool
 	CreatedAt       time.Time
 	UpdatedAt       *time.Time

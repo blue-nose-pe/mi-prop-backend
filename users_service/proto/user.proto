@@ -142,12 +142,16 @@ message CreateSchoolRequest {
   string name              = 1;
   string user_id           = 2;  // user_id del coordinador owner (obligatorio)
   string hubspot_record_id = 3;  // opcional, "" si todavia no se sincronizo
+  string city              = 4;  // opcional, ciudad/distrito del colegio
+  string category          = 5;  // opcional, tag UCSP: A+, A, B, C, D
 }
 message UpdateSchoolRequest {
   string id                = 1;
   string name              = 2;  // "" = no tocar
   string user_id           = 3;  // "" = no tocar
   string hubspot_record_id = 4;  // "" = no tocar
+  string city              = 5;  // "" = no tocar; "-" = limpiar (NULL)
+  string category          = 6;  // "" = no tocar; "-" = limpiar (NULL)
 }
 
 message School {
@@ -158,6 +162,8 @@ message School {
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
   string hubspot_record_id = 7;
+  string city              = 8;
+  string category          = 9;
 }
 
 // AuthService — separado de UserService porque los endpoints de auth

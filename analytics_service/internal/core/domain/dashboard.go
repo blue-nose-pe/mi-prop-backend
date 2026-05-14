@@ -78,3 +78,46 @@ type HistoricoEstudiante struct {
 	Items     []TestResult
 	GeneratedAt time.Time
 }
+
+// HistoricoColegio — serie temporal trimestral de un colegio. Cada item
+// es un bucket "{YYYY}-Q{1..4}" con score promedio y variacion vs el
+// quarter anterior.
+type HistoricoColegio struct {
+	SchoolID     SchoolID
+	SchoolName   string
+	City         string
+	Category     string
+	ExamTypeCode string // "" si agregado de todos los tipos
+	Items        []HistoricoColegioPoint
+	GeneratedAt  time.Time
+}
+
+type HistoricoColegioPoint struct {
+	Period       string  // ej "2026-Q1"
+	Year         int32
+	Quarter      int32
+	AvgScore     float64 // 0..100 (porcentaje sobre max_score)
+	Attempts     int32
+	VariationPct float64 // contra el punto anterior; ignorar si HasPrevious=false
+	HasPrevious  bool    // true => el punto previo existia y tenia attempts validos
+}
+
+// ColegiosHistoricoListing — fila por colegio con la metrica del periodo
+// actual + variacion vs anterior. Es lo que la grilla del front muestra.
+type ColegiosHistoricoListing struct {
+	Period       string // ej "2026-Q1"
+	ExamTypeCode string
+	Items        []ColegiosHistoricoRow
+	GeneratedAt  time.Time
+}
+
+type ColegiosHistoricoRow struct {
+	SchoolID     SchoolID
+	SchoolName   string
+	City         string
+	Category     string
+	AvgScore     float64 // del periodo. 0..100
+	Attempts     int32
+	VariationPct float64 // vs periodo anterior; ignorar si HasPrevious=false
+	HasPrevious  bool
+}

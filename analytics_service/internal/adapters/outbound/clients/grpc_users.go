@@ -33,8 +33,9 @@ import (
 )
 
 type GrpcUsers struct {
-	conn *grpc.ClientConn
-	cli  userspb.UserServiceClient
+	conn    *grpc.ClientConn
+	cli     userspb.UserServiceClient
+	schools userspb.SchoolServiceClient
 }
 
 var _ ports.UsersClient = (*GrpcUsers)(nil)
@@ -54,7 +55,11 @@ func NewGrpcUsers(addr string) (*GrpcUsers, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dial users_service: %w", err)
 	}
-	return &GrpcUsers{conn: conn, cli: userspb.NewUserServiceClient(conn)}, nil
+	return &GrpcUsers{
+		conn:    conn,
+		cli:     userspb.NewUserServiceClient(conn),
+		schools: userspb.NewSchoolServiceClient(conn),
+	}, nil
 }
 
 func (g *GrpcUsers) Close() error {
@@ -84,13 +89,48 @@ func (g *GrpcUsers) GetUser(ctx context.Context, id domain.UserID) (*ports.Upstr
 	}, nil
 }
 
-// GetSchool — NoOp. users_service no expone SchoolService vía gRPC.
-// Cuando se publique, reemplazar por el RPC correspondiente. Por ahora
-// devolvemos un placeholder activo para no romper composiciones que
-// solo necesitan el ID; el front puede resolver el nombre por otra vía.
-func (g *GrpcUsers) GetSchool(_ context.Context, id domain.SchoolID) (*ports.UpstreamSchool, error) {
-	log.Printf("[grpc_users] GetSchool: NoOp (SchoolService no publicado en users_service) school_id=%s", id)
-	return &ports.UpstreamSchool{ID: id, Active: true}, nil
+func (g *GrpcUsers) GetSchool(ctx context.Context, id domain.SchoolID) (*ports.UpstreamSchool, error) {
+	if id == "" {
+		return nil, fmt.Errorf("school id is empty")
+	}
+	resp, err := g.schools.GetSchool(forwardAuth(ctx), &userspb.GetSchoolRequest{Id: string(id)})
+	if err != nil {
+		return nil, err
+	}
+	s := resp.GetSchool()
+	if s == nil {
+		return nil, fmt.Errorf("users_service returned empty school for id=%s", id)
+	}
+	return &ports.UpstreamSchool{
+		ID:       domain.SchoolID(s.GetId()),
+		Name:     s.GetName(),
+		City:     s.GetCity(),
+		Category: s.GetCategory(),
+		Active:   s.GetActive(),
+	}, nil
+}
+
+// ListSchools devuelve todos los colegios (limit=1000). Si en el futuro
+// hay mas de 1000 colegios, paginar aca.
+func (g *GrpcUsers) ListSchools(ctx context.Context, activeOnly bool) ([]ports.UpstreamSchool, error) {
+	resp, err := g.schools.ListSchools(forwardAuth(ctx), &userspb.ListSchoolsRequest{
+		Limit:      1000,
+		ActiveOnly: activeOnly,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ports.UpstreamSchool, 0, len(resp.GetItems()))
+	for _, s := range resp.GetItems() {
+		out = append(out, ports.UpstreamSchool{
+			ID:       domain.SchoolID(s.GetId()),
+			Name:     s.GetName(),
+			City:     s.GetCity(),
+			Category: s.GetCategory(),
+			Active:   s.GetActive(),
+		})
+	}
+	return out, nil
 }
 
 // ListAssignedColegios — NoOp. AssignmentService existe en el core de
