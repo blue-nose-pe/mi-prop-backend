@@ -123,6 +123,39 @@ func (r *ExamRepo) SetActive(ctx context.Context, id domain.ExamID, active bool)
 	return nil
 }
 
+// MaxVersionInFamily encuentra la version mas alta entre la raiz de la familia
+// (el ancestro sin parent_exam_id) y todos sus descendientes. Se usa al clonar
+// para garantizar que cada clon obtenga una version unica dentro de la familia,
+// incluso si el mismo exam fue clonado mas de una vez.
+func (r *ExamRepo) MaxVersionInFamily(ctx context.Context, id domain.ExamID) (int32, error) {
+	const q = `
+		WITH ancestors AS (
+		    SELECT id, parent_exam_id
+		      FROM exam
+		     WHERE id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		    UNION ALL
+		    SELECT e.id, e.parent_exam_id
+		      FROM exam e
+		      JOIN ancestors a ON e.id = a.parent_exam_id
+		),
+		root AS (
+		    SELECT TOP 1 id FROM ancestors WHERE parent_exam_id IS NULL
+		),
+		descendants AS (
+		    SELECT id, version FROM exam WHERE id = (SELECT id FROM root)
+		    UNION ALL
+		    SELECT e.id, e.version
+		      FROM exam e
+		      JOIN descendants d ON e.parent_exam_id = d.id
+		)
+		SELECT ISNULL(MAX(version), 0) FROM descendants`
+	var v int32
+	if err := r.db.QueryRowContext(ctx, q, string(id)).Scan(&v); err != nil {
+		return 0, err
+	}
+	return v, nil
+}
+
 func (r *ExamRepo) SetPublished(ctx context.Context, id domain.ExamID, published bool) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE exam SET published = @p1 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p2)`,

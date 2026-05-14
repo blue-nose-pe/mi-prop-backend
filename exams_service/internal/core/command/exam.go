@@ -113,11 +113,17 @@ func (h *ExamHandler) Deactivate(ctx context.Context, id domain.ExamID) error {
 	return h.exams.SetActive(ctx, id, false)
 }
 
-// Clone genera una nueva versión del exam (parent_exam_id = id) con
-// version+1, copiando todas sus exam_question. Permite "editar" un exam
-// publicado sin perder los attempts antiguos.
+// Clone genera una nueva versión del exam (parent_exam_id = id), copiando
+// todas sus exam_question. La version del clon es max(version) de toda la
+// familia + 1, asi cada clon (incluyendo clones del mismo src) obtiene una
+// version unica monotona. Permite "editar" un exam publicado sin perder los
+// attempts antiguos.
 func (h *ExamHandler) Clone(ctx context.Context, id domain.ExamID) (*domain.Exam, error) {
 	src, err := h.exams.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	maxVer, err := h.exams.MaxVersionInFamily(ctx, src.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -125,7 +131,7 @@ func (h *ExamHandler) Clone(ctx context.Context, id domain.ExamID) (*domain.Exam
 		ExamTypeID:      src.ExamTypeID,
 		SchoolID:        src.SchoolID,
 		ParentExamID:    src.ID,
-		Version:         src.Version + 1,
+		Version:         maxVer + 1,
 		Name:            src.Name,
 		StartAt:         src.StartAt,
 		EndAt:           src.EndAt,

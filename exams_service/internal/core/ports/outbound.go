@@ -22,6 +22,9 @@ type ExamRepository interface {
 	SetActive(ctx context.Context, id domain.ExamID, active bool) error
 	SetPublished(ctx context.Context, id domain.ExamID, published bool) error
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
+	// MaxVersionInFamily devuelve la version mas alta dentro de la familia
+	// (raiz + todos los descendientes via parent_exam_id) del exam dado.
+	MaxVersionInFamily(ctx context.Context, id domain.ExamID) (int32, error)
 }
 
 type QuestionRepository interface {
