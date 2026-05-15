@@ -5,6 +5,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"analytics_service/internal/core/domain"
@@ -219,13 +220,68 @@ func (h *DashboardHandler) GetColegioComparativo(ctx context.Context, examTypeCo
 	if !validExamType(examTypeCode) {
 		return nil, domain.ErrInvalidExamType
 	}
-	// La lista global de colegios no está disponible en este servicio
-	// — se obtendría haciendo un Search a users_service con filtro
-	// school activo. Mientras tanto devolvemos un shell vacío para que
-	// el frontend pueda integrarse contra el contrato.
+	schools, err := h.users.ListSchools(ctx, true)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]domain.ColegioComparativoItem, 0, len(schools))
+	for _, s := range schools {
+		atts, err := h.exams.ListAttemptsByColegio(ctx, s.ID)
+		if err != nil {
+			continue
+		}
+		var sumScore float64
+		var n int32
+		// Resolvemos exam_type_code via cache local: una sola consulta
+		// GetExam por exam_id distinto encontrado entre los attempts del
+		// colegio. Evita N+1 cuando los attempts comparten exam.
+		typeByExam := map[domain.ExamID]string{}
+		resolveType := func(examID domain.ExamID) string {
+			if v, ok := typeByExam[examID]; ok {
+				return v
+			}
+			ex, err := h.exams.GetExam(ctx, examID)
+			if err != nil || ex == nil {
+				typeByExam[examID] = ""
+				return ""
+			}
+			typeByExam[examID] = ex.ExamTypeCode
+			return ex.ExamTypeCode
+		}
+		for _, a := range atts {
+			if a.SubmittedAt == nil || a.Score == nil || a.MaxScore == nil || *a.MaxScore == 0 {
+				continue
+			}
+			if resolveType(a.ExamID) != examTypeCode {
+				continue
+			}
+			sumScore += float64(*a.Score) / float64(*a.MaxScore) * 100.0
+			n++
+		}
+		avg := 0.0
+		if n > 0 {
+			avg = sumScore / float64(n)
+		}
+		items = append(items, domain.ColegioComparativoItem{
+			SchoolID:   s.ID,
+			SchoolName: s.Name,
+			AvgScore:   avg,
+			Attempts:   n,
+		})
+	}
+	// Ranking descendente por avg_score (filas con 0 attempts al final).
+	sort.Slice(items, func(i, j int) bool {
+		if items[i].Attempts == 0 && items[j].Attempts > 0 {
+			return false
+		}
+		if items[j].Attempts == 0 && items[i].Attempts > 0 {
+			return true
+		}
+		return items[i].AvgScore > items[j].AvgScore
+	})
 	return &domain.ColegioComparativo{
 		ExamTypeCode: examTypeCode,
-		Items:        []domain.ColegioComparativoItem{},
+		Items:        items,
 		GeneratedAt:  time.Now().UTC(),
 	}, nil
 }
