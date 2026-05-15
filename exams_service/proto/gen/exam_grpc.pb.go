@@ -1016,6 +1016,7 @@ const (
 	AttemptService_GetAttempt_FullMethodName          = "/exams.v1.AttemptService/GetAttempt"
 	AttemptService_ListByUser_FullMethodName          = "/exams.v1.AttemptService/ListByUser"
 	AttemptService_ListByExam_FullMethodName          = "/exams.v1.AttemptService/ListByExam"
+	AttemptService_ListByColegio_FullMethodName       = "/exams.v1.AttemptService/ListByColegio"
 	AttemptService_ListEnrichedAnswers_FullMethodName = "/exams.v1.AttemptService/ListEnrichedAnswers"
 )
 
@@ -1029,6 +1030,9 @@ type AttemptServiceClient interface {
 	GetAttempt(ctx context.Context, in *GetAttemptRequest, opts ...grpc.CallOption) (*AttemptResponse, error)
 	ListByUser(ctx context.Context, in *ListAttemptsByUserRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error)
 	ListByExam(ctx context.Context, in *ListAttemptsByExamRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error)
+	// ListByColegio: attempts cuyos users pertenecen al colegio. Cross-DB
+	// JOIN a db_users.dbo.users via school_id.
+	ListByColegio(ctx context.Context, in *ListAttemptsByColegioRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error)
 	// ListEnrichedAnswers: respuestas con metadata de pregunta/opcion en
 	// una sola llamada. Optimizado para reporting (evita N+1 al consumer).
 	ListEnrichedAnswers(ctx context.Context, in *ListEnrichedAnswersRequest, opts ...grpc.CallOption) (*ListEnrichedAnswersResponse, error)
@@ -1102,6 +1106,16 @@ func (c *attemptServiceClient) ListByExam(ctx context.Context, in *ListAttemptsB
 	return out, nil
 }
 
+func (c *attemptServiceClient) ListByColegio(ctx context.Context, in *ListAttemptsByColegioRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListAttemptsResponse)
+	err := c.cc.Invoke(ctx, AttemptService_ListByColegio_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *attemptServiceClient) ListEnrichedAnswers(ctx context.Context, in *ListEnrichedAnswersRequest, opts ...grpc.CallOption) (*ListEnrichedAnswersResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListEnrichedAnswersResponse)
@@ -1122,6 +1136,9 @@ type AttemptServiceServer interface {
 	GetAttempt(context.Context, *GetAttemptRequest) (*AttemptResponse, error)
 	ListByUser(context.Context, *ListAttemptsByUserRequest) (*ListAttemptsResponse, error)
 	ListByExam(context.Context, *ListAttemptsByExamRequest) (*ListAttemptsResponse, error)
+	// ListByColegio: attempts cuyos users pertenecen al colegio. Cross-DB
+	// JOIN a db_users.dbo.users via school_id.
+	ListByColegio(context.Context, *ListAttemptsByColegioRequest) (*ListAttemptsResponse, error)
 	// ListEnrichedAnswers: respuestas con metadata de pregunta/opcion en
 	// una sola llamada. Optimizado para reporting (evita N+1 al consumer).
 	ListEnrichedAnswers(context.Context, *ListEnrichedAnswersRequest) (*ListEnrichedAnswersResponse, error)
@@ -1152,6 +1169,9 @@ func (UnimplementedAttemptServiceServer) ListByUser(context.Context, *ListAttemp
 }
 func (UnimplementedAttemptServiceServer) ListByExam(context.Context, *ListAttemptsByExamRequest) (*ListAttemptsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListByExam not implemented")
+}
+func (UnimplementedAttemptServiceServer) ListByColegio(context.Context, *ListAttemptsByColegioRequest) (*ListAttemptsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListByColegio not implemented")
 }
 func (UnimplementedAttemptServiceServer) ListEnrichedAnswers(context.Context, *ListEnrichedAnswersRequest) (*ListEnrichedAnswersResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListEnrichedAnswers not implemented")
@@ -1285,6 +1305,24 @@ func _AttemptService_ListByExam_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AttemptService_ListByColegio_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAttemptsByColegioRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AttemptServiceServer).ListByColegio(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AttemptService_ListByColegio_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AttemptServiceServer).ListByColegio(ctx, req.(*ListAttemptsByColegioRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _AttemptService_ListEnrichedAnswers_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListEnrichedAnswersRequest)
 	if err := dec(in); err != nil {
@@ -1333,6 +1371,10 @@ var AttemptService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListByExam",
 			Handler:    _AttemptService_ListByExam_Handler,
+		},
+		{
+			MethodName: "ListByColegio",
+			Handler:    _AttemptService_ListByColegio_Handler,
 		},
 		{
 			MethodName: "ListEnrichedAnswers",

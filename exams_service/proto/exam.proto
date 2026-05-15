@@ -46,6 +46,9 @@ service AttemptService {
   rpc GetAttempt          (GetAttemptRequest)           returns (AttemptResponse);
   rpc ListByUser          (ListAttemptsByUserRequest)   returns (ListAttemptsResponse);
   rpc ListByExam          (ListAttemptsByExamRequest)   returns (ListAttemptsResponse);
+  // ListByColegio: attempts cuyos users pertenecen al colegio. Cross-DB
+  // JOIN a db_users.dbo.users via school_id.
+  rpc ListByColegio       (ListAttemptsByColegioRequest) returns (ListAttemptsResponse);
   // ListEnrichedAnswers: respuestas con metadata de pregunta/opcion en
   // una sola llamada. Optimizado para reporting (evita N+1 al consumer).
   rpc ListEnrichedAnswers (ListEnrichedAnswersRequest)  returns (ListEnrichedAnswersResponse);
@@ -183,9 +186,10 @@ message AnswerRequest {
 }
 message FinishAttemptRequest      { string attempt_id = 1; }
 message GetAttemptRequest         { string attempt_id = 1; }
-message ListAttemptsByUserRequest { string user_id = 1; }
-message ListAttemptsByExamRequest { string exam_id = 1; }
-message ListAttemptsResponse      { repeated Attempt items = 1; }
+message ListAttemptsByUserRequest    { string user_id = 1; }
+message ListAttemptsByExamRequest    { string exam_id = 1; }
+message ListAttemptsByColegioRequest { string school_id = 1; }
+message ListAttemptsResponse         { repeated Attempt items = 1; }
 message AttemptResponse           { Attempt attempt = 1; }
 
 message ListEnrichedAnswersRequest  { string attempt_id = 1; }

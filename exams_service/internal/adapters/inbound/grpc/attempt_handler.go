@@ -104,6 +104,14 @@ func (h *AttemptHandler) ListByExam(ctx context.Context, req *pb.ListAttemptsByE
 	return toAttemptsResponse(items), nil
 }
 
+func (h *AttemptHandler) ListByColegio(ctx context.Context, req *pb.ListAttemptsByColegioRequest) (*pb.ListAttemptsResponse, error) {
+	items, err := h.qrys.ListByColegio(ctx, domain.SchoolID(req.GetSchoolId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return toAttemptsResponse(items), nil
+}
+
 func (h *AttemptHandler) ListEnrichedAnswers(ctx context.Context, req *pb.ListEnrichedAnswersRequest) (*pb.ListEnrichedAnswersResponse, error) {
 	items, err := h.qrys.ListEnrichedAnswers(ctx, domain.AttemptID(req.GetAttemptId()))
 	if err != nil {

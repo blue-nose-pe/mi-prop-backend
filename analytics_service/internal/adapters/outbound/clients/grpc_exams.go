@@ -15,7 +15,6 @@ package clients
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"analytics_service/internal/core/domain"
@@ -82,11 +81,15 @@ func (g *GrpcExams) ListAttemptsByExam(ctx context.Context, examID domain.ExamID
 	return mapAttempts(resp.GetItems()), nil
 }
 
-// ListAttemptsByColegio — NoOp. exams_service no expone un RPC para listar
-// attempts por colegio. Se necesitaría agregarlo en el proto de exams.
-func (g *GrpcExams) ListAttemptsByColegio(_ context.Context, schoolID domain.SchoolID) ([]ports.UpstreamAttempt, error) {
-	log.Printf("[grpc_exams] ListAttemptsByColegio: NoOp (RPC no existe) school_id=%s", schoolID)
-	return nil, nil
+func (g *GrpcExams) ListAttemptsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]ports.UpstreamAttempt, error) {
+	if schoolID == "" {
+		return nil, nil
+	}
+	resp, err := g.attempts.ListByColegio(forwardAuth(ctx), &examspb.ListAttemptsByColegioRequest{SchoolId: string(schoolID)})
+	if err != nil {
+		return nil, err
+	}
+	return mapAttempts(resp.GetItems()), nil
 }
 
 func (g *GrpcExams) GetAttempt(ctx context.Context, id domain.AttemptID) (*ports.UpstreamAttempt, error) {

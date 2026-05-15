@@ -64,6 +64,22 @@ func (r *AttemptRepo) ListByExam(ctx context.Context, examID domain.ExamID) ([]d
 		string(examID))
 }
 
+// ListByColegio: attempts cuyos users pertenecen al colegio dado. Hace
+// cross-DB JOIN a db_users.dbo.users; ambas DBs viven en la misma
+// instancia (mssql-server) y db_users esta accesible con permisos del
+// mismo user SQL.
+func (r *AttemptRepo) ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.ExamAttempt, error) {
+	return r.list(ctx,
+		`SELECT `+attemptCols+`
+		   FROM exam_attempt a
+		  WHERE a.user_id IN (
+		      SELECT id FROM db_users.dbo.users
+		       WHERE school_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		  )
+		  ORDER BY a.started_at DESC`,
+		string(schoolID))
+}
+
 func (r *AttemptRepo) list(ctx context.Context, query, arg string) ([]domain.ExamAttempt, error) {
 	rows, err := r.db.QueryContext(ctx, query, arg)
 	if err != nil {

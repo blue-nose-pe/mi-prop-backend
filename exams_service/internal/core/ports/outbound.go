@@ -60,6 +60,10 @@ type AttemptRepository interface {
 	FindByID(ctx context.Context, id domain.AttemptID) (*domain.ExamAttempt, error)
 	ListByUser(ctx context.Context, userID domain.UserID) ([]domain.ExamAttempt, error)
 	ListByExam(ctx context.Context, examID domain.ExamID) ([]domain.ExamAttempt, error)
+	// ListByColegio lista los attempts cuyos users pertenecen al colegio
+	// indicado (users.school_id = X). Cross-DB JOIN a db_users.users; ambas
+	// DBs viven en la misma instancia mssql-server.
+	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.ExamAttempt, error)
 	UpsertAnswer(ctx context.Context, ans *domain.AttemptAnswer) error
 	ListAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.AttemptAnswer, error)
 	// ListEnrichedAnswers devuelve las respuestas del attempt con la pregunta
