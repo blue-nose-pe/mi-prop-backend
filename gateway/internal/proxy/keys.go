@@ -10,7 +10,12 @@
 //   GET    /api/asesores/{id}/keys
 //   GET    /api/colegios/{id}/keys
 //   POST   /api/keys/search
-//   GET    /api/keys/{id}/attempts   - attempts iniciados con esta key
+//   GET    /api/attempts/by-key/{id} - attempts iniciados con esta key
+//                                       (registrado aqui porque consulta
+//                                        exams-service via key_id; bajo
+//                                        /api/keys/{id}/attempts choca con
+//                                        /api/keys/by-code/{code} en
+//                                        Go ServeMux 1.22+)
 package proxy
 
 import (
@@ -29,15 +34,17 @@ func (p *Proxy) RegisterKeys(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/keys/{id}", p.getKey)
 	mux.HandleFunc("PATCH /api/keys/{id}", p.updateKey)
 	mux.HandleFunc("POST /api/keys/{id}/deactivate", p.deactivateKey)
-	mux.HandleFunc("GET /api/keys/{id}/attempts", p.listAttemptsByKey)
+	mux.HandleFunc("GET /api/attempts/by-key/{id}", p.listAttemptsByKey)
 	mux.HandleFunc("GET /api/asesores/{id}/keys", p.listKeysByAsesor)
 	mux.HandleFunc("GET /api/colegios/{id}/keys", p.listKeysByColegio)
 }
 
-// listAttemptsByKey — GET /api/keys/{id}/attempts
-// Lista los attempts iniciados con la key indicada. Cross-service: la ruta
-// vive bajo /api/keys/* pero pega al exams-service (AttemptService.ListByKey)
-// porque el join real esta en db_exams.exam_attempt.key_id.
+// listAttemptsByKey — GET /api/attempts/by-key/{id}
+// Lista los attempts iniciados con la key indicada. Pega a exams-service
+// (AttemptService.ListByKey) porque el join real esta en
+// db_exams.exam_attempt.key_id. El path vive bajo /api/attempts en vez de
+// /api/keys/{id}/attempts porque ese ultimo conflictaria con
+// /api/keys/by-code/{code} en Go ServeMux 1.22+ (ambiguity rule).
 func (p *Proxy) listAttemptsByKey(w http.ResponseWriter, r *http.Request) {
 	resp, err := p.cli.Attempts.ListByKey(r.Context(), &examsgrpcpb.ListAttemptsByKeyRequest{
 		KeyId: r.PathValue("id"),
