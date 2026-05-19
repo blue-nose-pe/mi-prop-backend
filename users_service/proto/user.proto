@@ -44,6 +44,10 @@ service SchoolService {
   // ListSchoolsByAsesor: colegios donde el asesor es el responsable vigente
   // (assignment kind=asesor_de_colegio, valid_to IS NULL).
   rpc ListSchoolsByAsesor (ListSchoolsByAsesorRequest) returns (ListSchoolsResponse);
+  // AssignAsesor: crea una assignment SCD-2 nueva (kind=asesor_de_colegio)
+  // y cierra la vigente anterior si existe (valid_to = NOW). Idempotente
+  // si el asesor ya esta asignado.
+  rpc AssignAsesor        (AssignAsesorRequest)        returns (EmptyResponse);
 }
 
 // VisitaService — CRUD de visitas (presenciales o remotas) que un asesor
@@ -153,6 +157,11 @@ message ListSchoolsResponse {
 
 message ListSchoolsByAsesorRequest {
   string asesor_id = 1;
+}
+
+message AssignAsesorRequest {
+  string school_id = 1;
+  string user_id   = 2;  // user a asignar como asesor del colegio
 }
 
 message CreateSchoolRequest {

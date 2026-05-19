@@ -12,14 +12,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// SchoolHandler implementa pb.SchoolServiceServer. Lectura de schools.
+// SchoolHandler implementa pb.SchoolServiceServer. Lectura de schools +
+// assignment de asesores via AssignmentRepository (SCD-2).
 type SchoolHandler struct {
 	pb.UnimplementedSchoolServiceServer
-	repo ports.SchoolRepository
+	repo        ports.SchoolRepository
+	assignments ports.AssignmentRepository
 }
 
-func NewSchoolHandler(repo ports.SchoolRepository) *SchoolHandler {
-	return &SchoolHandler{repo: repo}
+func NewSchoolHandler(repo ports.SchoolRepository, assignments ports.AssignmentRepository) *SchoolHandler {
+	return &SchoolHandler{repo: repo, assignments: assignments}
 }
 
 func (h *SchoolHandler) GetSchool(ctx context.Context, req *pb.GetSchoolRequest) (*pb.SchoolResponse, error) {
@@ -98,6 +100,37 @@ func (h *SchoolHandler) ListSchoolsByAsesor(ctx context.Context, req *pb.ListSch
 		out = append(out, schoolToProto(&items[i]))
 	}
 	return &pb.ListSchoolsResponse{Items: out, Total: uint32(len(out))}, nil
+}
+
+// AssignAsesor: registra una asignacion SCD-2 kind=asesor_de_colegio donde
+// source=asesor (user a asignar) y target=coordinador del colegio
+// (school.user_id). Cierra la vigente previa si existe.
+func (h *SchoolHandler) AssignAsesor(ctx context.Context, req *pb.AssignAsesorRequest) (*pb.EmptyResponse, error) {
+	if req.GetSchoolId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_SCHOOL_ID", "school_id is required", "school_id"))
+	}
+	if req.GetUserId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_USER_ID", "user_id (asesor) is required", "user_id"))
+	}
+	s, err := h.repo.FindByID(ctx, domain.SchoolID(req.GetSchoolId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	if s == nil || s.UserID == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("SCHOOL_NO_COORDINATOR", "school has no coordinator user_id", "school_id"))
+	}
+	// source = asesor (nuevo), target = coordinador del colegio.
+	// by = asesor mismo por simplicidad — el audit log de assignment recoge created_by.
+	if err := h.assignments.Reassign(
+		ctx,
+		ports.AssignmentAsesorDeColegio,
+		domain.UserID(req.GetUserId()),
+		s.UserID,
+		domain.UserID(req.GetUserId()),
+	); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
 }
 
 func (h *SchoolHandler) ListSchools(ctx context.Context, req *pb.ListSchoolsRequest) (*pb.ListSchoolsResponse, error) {

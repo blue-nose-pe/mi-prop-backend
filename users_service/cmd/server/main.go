@@ -193,7 +193,7 @@ func main() {
 	)
 	pb.RegisterUserServiceServer(s, userHandler)
 	pb.RegisterAuthServiceServer(s, authHandler)
-	pb.RegisterSchoolServiceServer(s, grpchandler.NewSchoolHandler(schoolRepo))
+	pb.RegisterSchoolServiceServer(s, grpchandler.NewSchoolHandler(schoolRepo, assignmentRepo))
 	pb.RegisterVisitaServiceServer(s, grpchandler.NewVisitaHandler(visitaRepo))
 	pb.RegisterPermissionGroupServiceServer(s, permGroupHandler)
 

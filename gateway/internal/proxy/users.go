@@ -55,6 +55,7 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/schools", p.listSchools)
 	mux.HandleFunc("GET /api/schools/{id}", p.getSchool)
 	mux.HandleFunc("PATCH /api/schools/{id}", p.updateSchool)
+	mux.HandleFunc("POST /api/schools/{id}/asesores", p.assignAsesorToSchool)
 
 	// Atajos semánticos (rolean al endpoint de grupo subyacente con
 	// el id del grupo predefinido). Pensados para el front: más obvios
@@ -516,6 +517,32 @@ func (p *Proxy) listColegiosByAsesor(w http.ResponseWriter, r *http.Request) {
 		"items": items,
 		"total": resp.GetTotal(),
 	})
+}
+
+// assignAsesorToSchool — POST /api/schools/{id}/asesores
+// Body: {"user_id": "<asesor-uuid>"}.
+// Crea una assignment SCD-2 kind=asesor_de_colegio. La SchoolService la
+// implementa cerrando la vigente y abriendo una nueva en una sola tx.
+func (p *Proxy) assignAsesorToSchool(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		UserID string `json:"user_id"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	if in.UserID == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_USER_ID", Message: "user_id is required"})
+		return
+	}
+	if _, err := p.cli.Schools.AssignAsesor(r.Context(), &usersgrpcpb.AssignAsesorRequest{
+		SchoolId: r.PathValue("id"),
+		UserId:   in.UserID,
+	}); err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 // listStudentsByColegio — GET /api/colegios/{id}/students

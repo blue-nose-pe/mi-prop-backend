@@ -10,11 +10,13 @@
 //   GET    /api/asesores/{id}/keys
 //   GET    /api/colegios/{id}/keys
 //   POST   /api/keys/search
+//   GET    /api/keys/{id}/attempts   - attempts iniciados con esta key
 package proxy
 
 import (
 	"net/http"
 
+	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	keyscommonpb "keys_service/proto/gen/common"
 )
@@ -27,8 +29,40 @@ func (p *Proxy) RegisterKeys(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/keys/{id}", p.getKey)
 	mux.HandleFunc("PATCH /api/keys/{id}", p.updateKey)
 	mux.HandleFunc("POST /api/keys/{id}/deactivate", p.deactivateKey)
+	mux.HandleFunc("GET /api/keys/{id}/attempts", p.listAttemptsByKey)
 	mux.HandleFunc("GET /api/asesores/{id}/keys", p.listKeysByAsesor)
 	mux.HandleFunc("GET /api/colegios/{id}/keys", p.listKeysByColegio)
+}
+
+// listAttemptsByKey — GET /api/keys/{id}/attempts
+// Lista los attempts iniciados con la key indicada. Cross-service: la ruta
+// vive bajo /api/keys/* pero pega al exams-service (AttemptService.ListByKey)
+// porque el join real esta en db_exams.exam_attempt.key_id.
+func (p *Proxy) listAttemptsByKey(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Attempts.ListByKey(r.Context(), &examsgrpcpb.ListAttemptsByKeyRequest{
+		KeyId: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, a := range resp.GetItems() {
+		items = append(items, map[string]any{
+			"id":           a.GetId(),
+			"exam_id":      a.GetExamId(),
+			"user_id":      a.GetUserId(),
+			"key_id":       a.GetKeyId(),
+			"score":        a.GetScore(),
+			"max_score":    a.GetMaxScore(),
+			"started_at":   optionalTimestamp(a.GetStartedAt()),
+			"submitted_at": optionalTimestamp(a.GetSubmittedAt()),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"total": len(items),
+	})
 }
 
 type generateKeyRequest struct {

@@ -633,6 +633,7 @@ const (
 	SchoolService_CreateSchool_FullMethodName        = "/users.v1.SchoolService/CreateSchool"
 	SchoolService_UpdateSchool_FullMethodName        = "/users.v1.SchoolService/UpdateSchool"
 	SchoolService_ListSchoolsByAsesor_FullMethodName = "/users.v1.SchoolService/ListSchoolsByAsesor"
+	SchoolService_AssignAsesor_FullMethodName        = "/users.v1.SchoolService/AssignAsesor"
 )
 
 // SchoolServiceClient is the client API for SchoolService service.
@@ -650,6 +651,10 @@ type SchoolServiceClient interface {
 	// ListSchoolsByAsesor: colegios donde el asesor es el responsable vigente
 	// (assignment kind=asesor_de_colegio, valid_to IS NULL).
 	ListSchoolsByAsesor(ctx context.Context, in *ListSchoolsByAsesorRequest, opts ...grpc.CallOption) (*ListSchoolsResponse, error)
+	// AssignAsesor: crea una assignment SCD-2 nueva (kind=asesor_de_colegio)
+	// y cierra la vigente anterior si existe (valid_to = NOW). Idempotente
+	// si el asesor ya esta asignado.
+	AssignAsesor(ctx context.Context, in *AssignAsesorRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 }
 
 type schoolServiceClient struct {
@@ -710,6 +715,16 @@ func (c *schoolServiceClient) ListSchoolsByAsesor(ctx context.Context, in *ListS
 	return out, nil
 }
 
+func (c *schoolServiceClient) AssignAsesor(ctx context.Context, in *AssignAsesorRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, SchoolService_AssignAsesor_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SchoolServiceServer is the server API for SchoolService service.
 // All implementations must embed UnimplementedSchoolServiceServer
 // for forward compatibility.
@@ -725,6 +740,10 @@ type SchoolServiceServer interface {
 	// ListSchoolsByAsesor: colegios donde el asesor es el responsable vigente
 	// (assignment kind=asesor_de_colegio, valid_to IS NULL).
 	ListSchoolsByAsesor(context.Context, *ListSchoolsByAsesorRequest) (*ListSchoolsResponse, error)
+	// AssignAsesor: crea una assignment SCD-2 nueva (kind=asesor_de_colegio)
+	// y cierra la vigente anterior si existe (valid_to = NOW). Idempotente
+	// si el asesor ya esta asignado.
+	AssignAsesor(context.Context, *AssignAsesorRequest) (*EmptyResponse, error)
 	mustEmbedUnimplementedSchoolServiceServer()
 }
 
@@ -749,6 +768,9 @@ func (UnimplementedSchoolServiceServer) UpdateSchool(context.Context, *UpdateSch
 }
 func (UnimplementedSchoolServiceServer) ListSchoolsByAsesor(context.Context, *ListSchoolsByAsesorRequest) (*ListSchoolsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListSchoolsByAsesor not implemented")
+}
+func (UnimplementedSchoolServiceServer) AssignAsesor(context.Context, *AssignAsesorRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AssignAsesor not implemented")
 }
 func (UnimplementedSchoolServiceServer) mustEmbedUnimplementedSchoolServiceServer() {}
 func (UnimplementedSchoolServiceServer) testEmbeddedByValue()                       {}
@@ -861,6 +883,24 @@ func _SchoolService_ListSchoolsByAsesor_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SchoolService_AssignAsesor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssignAsesorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchoolServiceServer).AssignAsesor(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchoolService_AssignAsesor_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchoolServiceServer).AssignAsesor(ctx, req.(*AssignAsesorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SchoolService_ServiceDesc is the grpc.ServiceDesc for SchoolService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -887,6 +927,10 @@ var SchoolService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListSchoolsByAsesor",
 			Handler:    _SchoolService_ListSchoolsByAsesor_Handler,
+		},
+		{
+			MethodName: "AssignAsesor",
+			Handler:    _SchoolService_AssignAsesor_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

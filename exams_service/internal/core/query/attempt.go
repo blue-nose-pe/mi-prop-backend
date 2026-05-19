@@ -33,6 +33,10 @@ func (h *AttemptHandler) ListByColegio(ctx context.Context, schoolID domain.Scho
 	return h.attempts.ListByColegio(ctx, schoolID)
 }
 
+func (h *AttemptHandler) ListByKey(ctx context.Context, keyID domain.KeyID) ([]domain.ExamAttempt, error) {
+	return h.attempts.ListByKey(ctx, keyID)
+}
+
 func (h *AttemptHandler) ListEnrichedAnswers(ctx context.Context, id domain.AttemptID) ([]domain.EnrichedAnswer, error) {
 	return h.attempts.ListEnrichedAnswers(ctx, id)
 }

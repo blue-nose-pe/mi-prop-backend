@@ -6,7 +6,10 @@
 global:
   imageRegistry: miprepositoacr.azurecr.io   # output del Bicep, override desde el pipeline
   imageTag: "latest"                          # CI/CD lo overridea con el build id
-  imagePullPolicy: IfNotPresent
+  # 'Always' evita el gotcha de kubelet cache cuando un tag se reusa o cuando
+  # hacemos kubectl set image durante desarrollo. El re-pull cuesta ~1-2s por
+  # rollout, mucho menos que diagnosticar codigo viejo corriendo silencioso.
+  imagePullPolicy: Always
 
   # Modo staging: SQL y Redis adentro del cluster (sin TLS).
   inClusterSql: true

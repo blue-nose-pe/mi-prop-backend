@@ -122,6 +122,7 @@ type AttemptQueries interface {
 	ListByUser(ctx context.Context, userID domain.UserID) ([]domain.ExamAttempt, error)
 	ListByExam(ctx context.Context, examID domain.ExamID) ([]domain.ExamAttempt, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.ExamAttempt, error)
+	ListByKey(ctx context.Context, keyID domain.KeyID) ([]domain.ExamAttempt, error)
 	ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.EnrichedAnswer, error)
 }
 

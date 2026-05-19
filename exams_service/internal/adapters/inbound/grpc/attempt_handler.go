@@ -112,6 +112,14 @@ func (h *AttemptHandler) ListByColegio(ctx context.Context, req *pb.ListAttempts
 	return toAttemptsResponse(items), nil
 }
 
+func (h *AttemptHandler) ListByKey(ctx context.Context, req *pb.ListAttemptsByKeyRequest) (*pb.ListAttemptsResponse, error) {
+	items, err := h.qrys.ListByKey(ctx, domain.KeyID(req.GetKeyId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return toAttemptsResponse(items), nil
+}
+
 func (h *AttemptHandler) ListEnrichedAnswers(ctx context.Context, req *pb.ListEnrichedAnswersRequest) (*pb.ListEnrichedAnswersResponse, error) {
 	items, err := h.qrys.ListEnrichedAnswers(ctx, domain.AttemptID(req.GetAttemptId()))
 	if err != nil {

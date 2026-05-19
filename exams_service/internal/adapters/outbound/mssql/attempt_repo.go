@@ -80,6 +80,16 @@ func (r *AttemptRepo) ListByColegio(ctx context.Context, schoolID domain.SchoolI
 		string(schoolID))
 }
 
+// ListByKey: attempts iniciados con la key especifica. Excluye attempts
+// modo admin (key_id NULL).
+func (r *AttemptRepo) ListByKey(ctx context.Context, keyID domain.KeyID) ([]domain.ExamAttempt, error) {
+	return r.list(ctx,
+		`SELECT `+attemptCols+` FROM exam_attempt
+		  WHERE key_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		  ORDER BY started_at DESC`,
+		string(keyID))
+}
+
 func (r *AttemptRepo) list(ctx context.Context, query, arg string) ([]domain.ExamAttempt, error) {
 	rows, err := r.db.QueryContext(ctx, query, arg)
 	if err != nil {
