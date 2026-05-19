@@ -58,16 +58,7 @@ func main() {
 	// ---------- 3. Mux + middlewares ----------
 	mux := http.NewServeMux()
 	pr := proxy.New(clients)
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				log.Printf("[REGISTRATION-PANIC] RegisterAll panicked: %v", r)
-				panic(r)
-			}
-		}()
-		pr.RegisterAll(mux)
-		log.Printf("[REGISTRATION-OK] RegisterAll completed")
-	}()
+	pr.RegisterAll(mux)
 
 	// JWT skip-list: rutas que no requieren auth.
 	jwtSkip := []string{
