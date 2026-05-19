@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"log"
 	"net/http"
 	"time"
 
@@ -35,16 +36,27 @@ func New(c *Clients) *Proxy { return &Proxy{cli: c} }
 //   /api/analytics/*                analytics_service (dashboards + exports XLSX)
 //   /api/hubspot/*                  hubspot_service (admin)
 func (p *Proxy) RegisterAll(mux *http.ServeMux) {
+	log.Printf("[REG] RegisterAuth start")
 	p.RegisterAuth(mux)
+	log.Printf("[REG] RegisterAuth done; RegisterHealth start")
 	p.RegisterHealth(mux)
+	log.Printf("[REG] RegisterHealth done; RegisterUsers start")
 	p.RegisterUsers(mux)
+	log.Printf("[REG] RegisterUsers done; RegisterVisitas start")
 	p.RegisterVisitas(mux)
+	log.Printf("[REG] RegisterVisitas done; RegisterPermissionGroups start")
 	p.RegisterPermissionGroups(mux)
+	log.Printf("[REG] RegisterPermissionGroups done; RegisterExams start")
 	p.RegisterExams(mux)
+	log.Printf("[REG] RegisterExams done; RegisterKeys start")
 	p.RegisterKeys(mux)
+	log.Printf("[REG] RegisterKeys done; RegisterSurveys start")
 	p.RegisterSurveys(mux)
+	log.Printf("[REG] RegisterSurveys done; RegisterAnalytics start")
 	p.RegisterAnalytics(mux)
+	log.Printf("[REG] RegisterAnalytics done; RegisterHubspot start")
 	p.RegisterHubspot(mux)
+	log.Printf("[REG] RegisterHubspot done; all routes registered")
 }
 
 // RegisterHealth expone /health para readiness/liveness del Ingress.
