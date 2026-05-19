@@ -1,6 +1,7 @@
 // Analytics handlers — proxy a analytics-service.
 //
 // Rutas REST:
+//   GET /api/analytics/dashboard                       - admin global (agregado)
 //   GET /api/analytics/asesor/{id}/dashboard
 //   GET /api/analytics/colegio/{id}/dashboard
 //   GET /api/analytics/estudiante/{id}/dashboard
@@ -16,13 +17,17 @@ package proxy
 
 import (
 	"net/http"
+	"sync"
+	"time"
 
 	analyticsgrpcpb "analytics_service/proto/gen"
+	usersgrpcpb "users_service/proto/gen"
 )
 
 const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/analytics/dashboard", p.getGlobalDashboard)
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/dashboard", p.getAsesorDashboard)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/dashboard", p.getColegioDashboard)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/dashboard", p.getEstudianteDashboard)
@@ -35,6 +40,103 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/export.xlsx", p.exportAsesorXLSX)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/export.xlsx", p.exportColegioXLSX)
 	mux.HandleFunc("GET /api/analytics/comparativo/export.xlsx", p.exportComparativoXLSX)
+}
+
+// ---------- Global dashboard (admin) ----------
+
+// getGlobalDashboard — GET /api/analytics/dashboard
+//
+// Agregador pensado para el rol superadmin: lista todos los asesores
+// (permission_group_id=3) y compone un dashboard sumando los GetAsesorDashboard
+// individuales en paralelo. No requiere RPC nuevo en analytics_service.
+//
+// Shape: misma estructura que AsesorDashboardResponse pero con totales
+// globales, sin asesor_id/asesor_name (en su lugar lleva total_asesores).
+func (p *Proxy) getGlobalDashboard(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	// 1. Lista de asesores (grupo 3).
+	asesores, err := p.cli.PermGroups.ListGroupUsers(ctx, &usersgrpcpb.ListGroupUsersRequest{
+		GroupId:    3,
+		Limit:      1000,
+		ActiveOnly: true,
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+
+	// 2. Fan-out: GetAsesorDashboard por asesor, paralelo con cap.
+	const maxParallel = 8
+	sem := make(chan struct{}, maxParallel)
+	results := make([]*analyticsgrpcpb.AsesorDashboardResponse, len(asesores.GetItems()))
+	var wg sync.WaitGroup
+	for i, u := range asesores.GetItems() {
+		wg.Add(1)
+		sem <- struct{}{}
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			resp, err := p.cli.Analytics.GetAsesorDashboard(ctx, &analyticsgrpcpb.GetAsesorDashboardRequest{
+				AsesorId: u.GetId(),
+			})
+			if err == nil {
+				results[i] = resp
+			}
+		}()
+	}
+	wg.Wait()
+
+	// 3. Sumar globales.
+	var totalColegios, totalKeys, totalAttempts int32
+	var completed, scheduled, pending, affected int32
+	byType := map[string]*analyticsgrpcpb.ExamTypeStats{}
+	for _, d := range results {
+		if d == nil {
+			continue
+		}
+		totalColegios += d.GetTotalColegios()
+		totalKeys += d.GetTotalKeys()
+		totalAttempts += d.GetTotalAttempts()
+		completed += d.GetCompletedVisits()
+		scheduled += d.GetScheduledVisits()
+		pending += d.GetPendingTests()
+		affected += d.GetAffectedStudents()
+		for k, v := range d.GetByExamType() {
+			if v == nil {
+				continue
+			}
+			cur, ok := byType[k]
+			if !ok {
+				cur = &analyticsgrpcpb.ExamTypeStats{}
+				byType[k] = cur
+			}
+			// Promedio ponderado por attempts.
+			weight := float64(v.GetAttempts())
+			cur.Attempts += v.GetAttempts()
+			cur.AvgScore += v.GetAvgScore() * weight
+			cur.AvgMaxScore += v.GetAvgMaxScore() * weight
+		}
+	}
+	// Promedios finales (avg ponderado / total attempts).
+	for _, v := range byType {
+		if v.GetAttempts() > 0 {
+			v.AvgScore = v.GetAvgScore() / float64(v.GetAttempts())
+			v.AvgMaxScore = v.GetAvgMaxScore() / float64(v.GetAttempts())
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total_asesores":    len(asesores.GetItems()),
+		"total_colegios":    totalColegios,
+		"total_keys":        totalKeys,
+		"total_attempts":    totalAttempts,
+		"completed_visits":  completed,
+		"scheduled_visits":  scheduled,
+		"pending_tests":     pending,
+		"affected_students": affected,
+		"by_exam_type":      examTypeStatsToJSON(byType),
+		"generated_at":      time.Now().UTC().Format(time.RFC3339),
+	})
 }
 
 // ---------- Dashboards ----------
