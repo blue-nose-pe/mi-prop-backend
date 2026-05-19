@@ -40,6 +40,7 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/export.xlsx", p.exportAsesorXLSX)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/export.xlsx", p.exportColegioXLSX)
 	mux.HandleFunc("GET /api/analytics/comparativo/export.xlsx", p.exportComparativoXLSX)
+	mux.HandleFunc("GET /api/analytics/estudiante/{id}/reporte.xlsx", p.exportReporteEstudianteXLSX)
 }
 
 // ---------- Global dashboard (admin) ----------
@@ -459,6 +460,21 @@ func (p *Proxy) exportComparativoXLSX(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := p.cli.Analytics.ExportComparativoXLSX(r.Context(), &analyticsgrpcpb.ExportComparativoXLSXRequest{
 		ExamTypeCode: examType,
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeXLSX(w, resp.GetFilename(), resp.GetContent())
+}
+
+// exportReporteEstudianteXLSX — GET /api/analytics/estudiante/{id}/reporte.xlsx
+// Genera el reporte "Tour Vocacional UCSP" del estudiante en formato Excel
+// (Resumen + RIASEC + Top areas + Secciones). attempt_id opcional via query.
+func (p *Proxy) exportReporteEstudianteXLSX(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Analytics.ExportReporteEstudianteXLSX(r.Context(), &analyticsgrpcpb.ExportReporteEstudianteXLSXRequest{
+		UserId:    r.PathValue("id"),
+		AttemptId: r.URL.Query().Get("attempt_id"),
 	})
 	if err != nil {
 		writeGRPCError(w, err)

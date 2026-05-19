@@ -289,6 +289,17 @@ func (h *AnalyticsHandler) ExportComparativoXLSX(ctx context.Context, req *pb.Ex
 	return &pb.ExportXLSXResponse{Content: bs, Filename: "comparativo-" + req.GetExamTypeCode() + ".xlsx"}, nil
 }
 
+func (h *AnalyticsHandler) ExportReporteEstudianteXLSX(ctx context.Context, req *pb.ExportReporteEstudianteXLSXRequest) (*pb.ExportXLSXResponse, error) {
+	bs, err := h.exporter.ExportReporteEstudiante(ctx, ports.ReporteEstudianteInput{
+		UserID:    domain.UserID(req.GetUserId()),
+		AttemptID: domain.AttemptID(req.GetAttemptId()),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.ExportXLSXResponse{Content: bs, Filename: "reporte-estudiante-" + req.GetUserId() + ".xlsx"}, nil
+}
+
 // ----- mappers -----
 
 func toExamTypeStats(m map[string]domain.ExamTypeStats) map[string]*pb.ExamTypeStats {

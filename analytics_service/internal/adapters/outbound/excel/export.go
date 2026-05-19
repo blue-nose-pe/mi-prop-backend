@@ -72,23 +72,123 @@ func (e *Exporter) ExportColegioComparativo(ctx context.Context, examTypeCode st
 	return writeSheet("Comparativo", rows)
 }
 
-// writeSheet centraliza la generación del .xlsx para no repetir 3 veces
-// el setup. Cada fila se escribe con SetSheetRow en A{n+1}.
-func writeSheet(sheet string, rows [][]any) ([]byte, error) {
-	f := excelize.NewFile()
-	defer f.Close()
-	idx, err := f.NewSheet(sheet)
+// ExportReporteEstudiante construye un workbook multi-hoja con el reporte
+// "Tour Vocacional UCSP". Reusa GetReporteEstudiante para que el contenido
+// XLSX y el endpoint JSON queden alineados a la misma rúbrica.
+func (e *Exporter) ExportReporteEstudiante(ctx context.Context, in ports.ReporteEstudianteInput) ([]byte, error) {
+	r, err := e.dashboards.GetReporteEstudiante(ctx, in)
 	if err != nil {
 		return nil, err
 	}
-	f.SetActiveSheet(idx)
-	_ = f.DeleteSheet("Sheet1")
 
-	for i, row := range rows {
-		cell := fmt.Sprintf("A%d", i+1)
-		if err := f.SetSheetRow(sheet, cell, &row); err != nil {
+	submitted := ""
+	if r.SubmittedAt != nil {
+		submitted = r.SubmittedAt.Format("2006-01-02 15:04")
+	}
+
+	// Hoja 1: resumen del attempt.
+	resumen := [][]any{
+		{"Estudiante", r.StudentName},
+		{"ID Estudiante", string(r.UserID)},
+		{"Examen", r.ExamName},
+		{"Tipo de examen", r.ExamTypeCode},
+		{"ID Attempt", string(r.AttemptID)},
+		{"Fecha de envio", submitted},
+		{"Puntaje", r.Score},
+		{"Puntaje maximo", r.MaxScore},
+		{"Generado", r.GeneratedAt.Format("2006-01-02 15:04")},
+	}
+
+	// Hoja 2: RIASEC completo (todas las categorias).
+	areas := [][]any{
+		{"Codigo", "Area", "Puntos", "Puntos maximos", "Porcentaje"},
+	}
+	if r.AreasInteres.Available {
+		for _, code := range []string{"R", "I", "A", "S", "E", "C"} {
+			s, ok := r.AreasInteres.Scores[code]
+			if !ok {
+				continue
+			}
+			pct := 0.0
+			if s.MaxPoints > 0 {
+				pct = float64(s.Points) / float64(s.MaxPoints) * 100
+			}
+			areas = append(areas, []any{s.Code, s.Label, s.Points, s.MaxPoints, fmt.Sprintf("%.1f%%", pct)})
+		}
+	} else {
+		areas = append(areas, []any{"-", r.AreasInteres.Reason, "", "", ""})
+	}
+
+	// Hoja 3: Top areas (1-3) con carreras sugeridas en columnas separadas.
+	top := [][]any{
+		{"Ranking", "Codigo", "Area", "Etiqueta visible", "Caracteristicas", "Carreras", "Puntos", "Puntos maximos"},
+	}
+	for i, t := range r.AreasInteres.Top {
+		careers := ""
+		for j, c := range t.Careers {
+			if j > 0 {
+				careers += ", "
+			}
+			careers += c
+		}
+		top = append(top, []any{i + 1, t.Code, t.Label, t.AreaLabel, t.Characteristics, careers, t.Points, t.MaxPoints})
+	}
+
+	// Hoja 4: secciones que aun no tienen rubrica final.
+	secciones := [][]any{
+		{"Seccion", "Disponible", "Motivo"},
+		{"Personalidad", r.Personalidad.Available, r.Personalidad.Reason},
+		{"Apoyo familiar", r.ApoyoFamiliar.Available, r.ApoyoFamiliar.Reason},
+		{"Proyecto de vida", r.ProyectoDeVida.Available, r.ProyectoDeVida.Reason},
+	}
+
+	return writeMultiSheet([]xlsxSheet{
+		{Name: "Resumen", Rows: resumen},
+		{Name: "Areas de Interes", Rows: areas},
+		{Name: "Top Areas", Rows: top},
+		{Name: "Secciones", Rows: secciones},
+	})
+}
+
+// writeSheet centraliza la generación del .xlsx para no repetir 3 veces
+// el setup. Cada fila se escribe con SetSheetRow en A{n+1}.
+func writeSheet(sheet string, rows [][]any) ([]byte, error) {
+	return writeMultiSheet([]xlsxSheet{{Name: sheet, Rows: rows}})
+}
+
+// xlsxSheet describe una hoja a generar: nombre + filas. Lo usa
+// writeMultiSheet para construir workbooks con varias pestañas en una sola
+// pasada (reporte por estudiante, por ejemplo).
+type xlsxSheet struct {
+	Name string
+	Rows [][]any
+}
+
+// writeMultiSheet genera un .xlsx en memoria con N hojas. La primera hoja
+// queda activa. Si la lista está vacía devuelve un workbook con una hoja
+// "Hoja1" vacía para no romper la convención de excelize.
+func writeMultiSheet(sheets []xlsxSheet) ([]byte, error) {
+	f := excelize.NewFile()
+	defer f.Close()
+
+	for i, s := range sheets {
+		idx, err := f.NewSheet(s.Name)
+		if err != nil {
 			return nil, err
 		}
+		if i == 0 {
+			f.SetActiveSheet(idx)
+		}
+		for j, row := range s.Rows {
+			cell := fmt.Sprintf("A%d", j+1)
+			if err := f.SetSheetRow(s.Name, cell, &row); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// excelize crea Sheet1 por defecto; lo borramos solo si añadimos otras.
+	if len(sheets) > 0 {
+		_ = f.DeleteSheet("Sheet1")
 	}
 
 	var buf bytes.Buffer

@@ -19,18 +19,19 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AnalyticsService_GetAsesorDashboard_FullMethodName     = "/analytics.v1.AnalyticsService/GetAsesorDashboard"
-	AnalyticsService_GetColegioDashboard_FullMethodName    = "/analytics.v1.AnalyticsService/GetColegioDashboard"
-	AnalyticsService_GetEstudianteDashboard_FullMethodName = "/analytics.v1.AnalyticsService/GetEstudianteDashboard"
-	AnalyticsService_GetColegioComparativo_FullMethodName  = "/analytics.v1.AnalyticsService/GetColegioComparativo"
-	AnalyticsService_GetHistoricoEstudiante_FullMethodName = "/analytics.v1.AnalyticsService/GetHistoricoEstudiante"
-	AnalyticsService_GetHistoricoColegio_FullMethodName    = "/analytics.v1.AnalyticsService/GetHistoricoColegio"
-	AnalyticsService_GetColegiosHistorico_FullMethodName   = "/analytics.v1.AnalyticsService/GetColegiosHistorico"
-	AnalyticsService_GetReporteEstudiante_FullMethodName   = "/analytics.v1.AnalyticsService/GetReporteEstudiante"
-	AnalyticsService_GetAsesorPendientes_FullMethodName    = "/analytics.v1.AnalyticsService/GetAsesorPendientes"
-	AnalyticsService_ExportAsesorXLSX_FullMethodName       = "/analytics.v1.AnalyticsService/ExportAsesorXLSX"
-	AnalyticsService_ExportColegioXLSX_FullMethodName      = "/analytics.v1.AnalyticsService/ExportColegioXLSX"
-	AnalyticsService_ExportComparativoXLSX_FullMethodName  = "/analytics.v1.AnalyticsService/ExportComparativoXLSX"
+	AnalyticsService_GetAsesorDashboard_FullMethodName          = "/analytics.v1.AnalyticsService/GetAsesorDashboard"
+	AnalyticsService_GetColegioDashboard_FullMethodName         = "/analytics.v1.AnalyticsService/GetColegioDashboard"
+	AnalyticsService_GetEstudianteDashboard_FullMethodName      = "/analytics.v1.AnalyticsService/GetEstudianteDashboard"
+	AnalyticsService_GetColegioComparativo_FullMethodName       = "/analytics.v1.AnalyticsService/GetColegioComparativo"
+	AnalyticsService_GetHistoricoEstudiante_FullMethodName      = "/analytics.v1.AnalyticsService/GetHistoricoEstudiante"
+	AnalyticsService_GetHistoricoColegio_FullMethodName         = "/analytics.v1.AnalyticsService/GetHistoricoColegio"
+	AnalyticsService_GetColegiosHistorico_FullMethodName        = "/analytics.v1.AnalyticsService/GetColegiosHistorico"
+	AnalyticsService_GetReporteEstudiante_FullMethodName        = "/analytics.v1.AnalyticsService/GetReporteEstudiante"
+	AnalyticsService_GetAsesorPendientes_FullMethodName         = "/analytics.v1.AnalyticsService/GetAsesorPendientes"
+	AnalyticsService_ExportAsesorXLSX_FullMethodName            = "/analytics.v1.AnalyticsService/ExportAsesorXLSX"
+	AnalyticsService_ExportColegioXLSX_FullMethodName           = "/analytics.v1.AnalyticsService/ExportColegioXLSX"
+	AnalyticsService_ExportComparativoXLSX_FullMethodName       = "/analytics.v1.AnalyticsService/ExportComparativoXLSX"
+	AnalyticsService_ExportReporteEstudianteXLSX_FullMethodName = "/analytics.v1.AnalyticsService/ExportReporteEstudianteXLSX"
 )
 
 // AnalyticsServiceClient is the client API for AnalyticsService service.
@@ -49,6 +50,7 @@ type AnalyticsServiceClient interface {
 	ExportAsesorXLSX(ctx context.Context, in *ExportAsesorXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error)
 	ExportColegioXLSX(ctx context.Context, in *ExportColegioXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error)
 	ExportComparativoXLSX(ctx context.Context, in *ExportComparativoXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error)
+	ExportReporteEstudianteXLSX(ctx context.Context, in *ExportReporteEstudianteXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error)
 }
 
 type analyticsServiceClient struct {
@@ -179,6 +181,16 @@ func (c *analyticsServiceClient) ExportComparativoXLSX(ctx context.Context, in *
 	return out, nil
 }
 
+func (c *analyticsServiceClient) ExportReporteEstudianteXLSX(ctx context.Context, in *ExportReporteEstudianteXLSXRequest, opts ...grpc.CallOption) (*ExportXLSXResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ExportXLSXResponse)
+	err := c.cc.Invoke(ctx, AnalyticsService_ExportReporteEstudianteXLSX_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AnalyticsServiceServer is the server API for AnalyticsService service.
 // All implementations must embed UnimplementedAnalyticsServiceServer
 // for forward compatibility.
@@ -195,6 +207,7 @@ type AnalyticsServiceServer interface {
 	ExportAsesorXLSX(context.Context, *ExportAsesorXLSXRequest) (*ExportXLSXResponse, error)
 	ExportColegioXLSX(context.Context, *ExportColegioXLSXRequest) (*ExportXLSXResponse, error)
 	ExportComparativoXLSX(context.Context, *ExportComparativoXLSXRequest) (*ExportXLSXResponse, error)
+	ExportReporteEstudianteXLSX(context.Context, *ExportReporteEstudianteXLSXRequest) (*ExportXLSXResponse, error)
 	mustEmbedUnimplementedAnalyticsServiceServer()
 }
 
@@ -240,6 +253,9 @@ func (UnimplementedAnalyticsServiceServer) ExportColegioXLSX(context.Context, *E
 }
 func (UnimplementedAnalyticsServiceServer) ExportComparativoXLSX(context.Context, *ExportComparativoXLSXRequest) (*ExportXLSXResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ExportComparativoXLSX not implemented")
+}
+func (UnimplementedAnalyticsServiceServer) ExportReporteEstudianteXLSX(context.Context, *ExportReporteEstudianteXLSXRequest) (*ExportXLSXResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExportReporteEstudianteXLSX not implemented")
 }
 func (UnimplementedAnalyticsServiceServer) mustEmbedUnimplementedAnalyticsServiceServer() {}
 func (UnimplementedAnalyticsServiceServer) testEmbeddedByValue()                          {}
@@ -478,6 +494,24 @@ func _AnalyticsService_ExportComparativoXLSX_Handler(srv interface{}, ctx contex
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AnalyticsService_ExportReporteEstudianteXLSX_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExportReporteEstudianteXLSXRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AnalyticsServiceServer).ExportReporteEstudianteXLSX(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AnalyticsService_ExportReporteEstudianteXLSX_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AnalyticsServiceServer).ExportReporteEstudianteXLSX(ctx, req.(*ExportReporteEstudianteXLSXRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AnalyticsService_ServiceDesc is the grpc.ServiceDesc for AnalyticsService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -532,6 +566,10 @@ var AnalyticsService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ExportComparativoXLSX",
 			Handler:    _AnalyticsService_ExportComparativoXLSX_Handler,
+		},
+		{
+			MethodName: "ExportReporteEstudianteXLSX",
+			Handler:    _AnalyticsService_ExportReporteEstudianteXLSX_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

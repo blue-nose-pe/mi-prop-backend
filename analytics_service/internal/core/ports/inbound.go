@@ -55,4 +55,8 @@ type ExportCommands interface {
 	ExportAsesorDashboard(ctx context.Context, asesorID domain.UserID) ([]byte, error)
 	ExportColegioDashboard(ctx context.Context, schoolID domain.SchoolID) ([]byte, error)
 	ExportColegioComparativo(ctx context.Context, examTypeCode string) ([]byte, error)
+	// Reporte por estudiante (Tour Vocacional UCSP). Genera un workbook
+	// con tabs: Resumen, Areas de Interes (RIASEC), Top Areas, Secciones.
+	// Si attemptID == "", usa el ultimo attempt submitted del user.
+	ExportReporteEstudiante(ctx context.Context, in ReporteEstudianteInput) ([]byte, error)
 }

@@ -19,6 +19,7 @@ service AnalyticsService {
   rpc ExportAsesorXLSX        (ExportAsesorXLSXRequest)        returns (ExportXLSXResponse);
   rpc ExportColegioXLSX       (ExportColegioXLSXRequest)       returns (ExportXLSXResponse);
   rpc ExportComparativoXLSX   (ExportComparativoXLSXRequest)   returns (ExportXLSXResponse);
+  rpc ExportReporteEstudianteXLSX (ExportReporteEstudianteXLSXRequest) returns (ExportXLSXResponse);
 }
 
 message ExamTypeStats {
@@ -240,6 +241,10 @@ message ReporteEstudianteResponse {
 message ExportAsesorXLSXRequest      { string asesor_id = 1; }
 message ExportColegioXLSXRequest     { string school_id = 1; }
 message ExportComparativoXLSXRequest { string exam_type_code = 1; }
+message ExportReporteEstudianteXLSXRequest {
+  string user_id    = 1;
+  string attempt_id = 2; // opcional; vacio = ultimo attempt submitted del user
+}
 message ExportXLSXResponse {
   bytes  content   = 1;
   string filename  = 2;
