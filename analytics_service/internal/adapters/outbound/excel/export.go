@@ -6,12 +6,21 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/xuri/excelize/v2"
 
 	"analytics_service/internal/core/domain"
 	"analytics_service/internal/core/ports"
 )
+
+// moduleRank: fila ordenable usada por ExportReporteEstudiante cuando arma
+// la hoja "Puntajes por módulo" del simulacro/habitos.
+type moduleRank struct {
+	Code      string
+	Points    int32
+	MaxPoints int32
+}
 
 type Exporter struct {
 	dashboards ports.DashboardQueries
@@ -75,80 +84,135 @@ func (e *Exporter) ExportColegioComparativo(ctx context.Context, examTypeCode st
 // ExportReporteEstudiante construye un workbook multi-hoja con el reporte
 // "Tour Vocacional UCSP". Reusa GetReporteEstudiante para que el contenido
 // XLSX y el endpoint JSON queden alineados a la misma rúbrica.
+//
+// La forma del workbook se adapta al tipo de examen:
+//   - vocacional: 4 hojas (Resumen + Áreas RIASEC + Top Áreas con carreras + Secciones)
+//   - simulacro/habitos: 3 hojas (Resumen + Puntajes por módulo + Secciones)
+//
+// Esto evita que un simulacro muestre tabs vacías de "Áreas de Interés"
+// (RIASEC no aplica) o tabs con código=área=etiqueta duplicados.
 func (e *Exporter) ExportReporteEstudiante(ctx context.Context, in ports.ReporteEstudianteInput) ([]byte, error) {
 	r, err := e.dashboards.GetReporteEstudiante(ctx, in)
 	if err != nil {
 		return nil, err
 	}
 
-	submitted := ""
+	submitted := "—"
 	if r.SubmittedAt != nil {
 		submitted = r.SubmittedAt.Format("2006-01-02 15:04")
 	}
 
-	// Hoja 1: resumen del attempt.
 	resumen := [][]any{
 		{"Estudiante", r.StudentName},
 		{"ID Estudiante", string(r.UserID)},
 		{"Examen", r.ExamName},
 		{"Tipo de examen", r.ExamTypeCode},
 		{"ID Attempt", string(r.AttemptID)},
-		{"Fecha de envio", submitted},
+		{"Fecha de envío", submitted},
 		{"Puntaje", r.Score},
-		{"Puntaje maximo", r.MaxScore},
+		{"Puntaje máximo", r.MaxScore},
 		{"Generado", r.GeneratedAt.Format("2006-01-02 15:04")},
 	}
 
-	// Hoja 2: RIASEC completo (todas las categorias).
-	areas := [][]any{
-		{"Codigo", "Area", "Puntos", "Puntos maximos", "Porcentaje"},
-	}
-	if r.AreasInteres.Available {
-		for _, code := range []string{"R", "I", "A", "S", "E", "C"} {
-			s, ok := r.AreasInteres.Scores[code]
-			if !ok {
-				continue
-			}
-			pct := 0.0
-			if s.MaxPoints > 0 {
-				pct = float64(s.Points) / float64(s.MaxPoints) * 100
-			}
-			areas = append(areas, []any{s.Code, s.Label, s.Points, s.MaxPoints, fmt.Sprintf("%.1f%%", pct)})
-		}
-	} else {
-		areas = append(areas, []any{"-", r.AreasInteres.Reason, "", "", ""})
-	}
-
-	// Hoja 3: Top areas (1-3) con carreras sugeridas en columnas separadas.
-	top := [][]any{
-		{"Ranking", "Codigo", "Area", "Etiqueta visible", "Caracteristicas", "Carreras", "Puntos", "Puntos maximos"},
-	}
-	for i, t := range r.AreasInteres.Top {
-		careers := ""
-		for j, c := range t.Careers {
-			if j > 0 {
-				careers += ", "
-			}
-			careers += c
-		}
-		top = append(top, []any{i + 1, t.Code, t.Label, t.AreaLabel, t.Characteristics, careers, t.Points, t.MaxPoints})
-	}
-
-	// Hoja 4: secciones que aun no tienen rubrica final.
 	secciones := [][]any{
-		{"Seccion", "Disponible", "Motivo"},
-		{"Personalidad", r.Personalidad.Available, r.Personalidad.Reason},
-		{"Apoyo familiar", r.ApoyoFamiliar.Available, r.ApoyoFamiliar.Reason},
-		{"Proyecto de vida", r.ProyectoDeVida.Available, r.ProyectoDeVida.Reason},
+		{"Sección", "Disponible", "Motivo"},
+		{"Personalidad", boolEsp(r.Personalidad.Available), r.Personalidad.Reason},
+		{"Apoyo familiar", boolEsp(r.ApoyoFamiliar.Available), r.ApoyoFamiliar.Reason},
+		{"Proyecto de vida", boolEsp(r.ProyectoDeVida.Available), r.ProyectoDeVida.Reason},
 	}
 
-	return writeMultiSheet([]xlsxSheet{
-		{Name: "Resumen", Rows: resumen},
-		{Name: "Areas de Interes", Rows: areas},
-		{Name: "Top Areas", Rows: top},
-		{Name: "Secciones", Rows: secciones},
-	})
+	sheets := []xlsxSheet{{Name: "Resumen", Rows: resumen}}
+
+	if r.ExamTypeCode == "vocacional" {
+		// Vocacional: RIASEC completo + top con carreras sugeridas.
+		areas := [][]any{
+			{"Código", "Área", "Puntos", "Puntos máximos", "Porcentaje"},
+		}
+		if r.AreasInteres.Available {
+			for _, code := range []string{"R", "I", "A", "S", "E", "C"} {
+				s, ok := r.AreasInteres.Scores[code]
+				if !ok {
+					continue
+				}
+				pct := 0.0
+				if s.MaxPoints > 0 {
+					pct = float64(s.Points) / float64(s.MaxPoints) * 100
+				}
+				areas = append(areas, []any{s.Code, s.Label, s.Points, s.MaxPoints, fmt.Sprintf("%.1f%%", pct)})
+			}
+		} else {
+			reason := r.AreasInteres.Reason
+			if reason == "" {
+				reason = "No hay respuestas categorizadas para calcular las áreas de interés."
+			}
+			areas = append(areas, []any{"—", reason, "", "", ""})
+		}
+
+		top := [][]any{
+			{"Ranking", "Código", "Área", "Características", "Carreras sugeridas", "Puntos", "Puntos máximos"},
+		}
+		for i, t := range r.AreasInteres.Top {
+			careers := ""
+			for j, c := range t.Careers {
+				if j > 0 {
+					careers += ", "
+				}
+				careers += c
+			}
+			top = append(top, []any{i + 1, t.Code, t.AreaLabel, t.Characteristics, careers, t.Points, t.MaxPoints})
+		}
+
+		sheets = append(sheets,
+			xlsxSheet{Name: "Áreas de Interés", Rows: areas},
+			xlsxSheet{Name: "Top Áreas", Rows: top},
+		)
+	} else {
+		// Simulacro / habitos / otros: los "Code" agrupan módulos del examen
+		// (COM, MAT, BIO, etc.). Se lista en una sola hoja "Puntajes por módulo".
+		mod := [][]any{
+			{"Módulo", "Puntos", "Puntos máximos", "Porcentaje"},
+		}
+		if r.AreasInteres.Available {
+			ranks := make([]moduleRank, 0, len(r.AreasInteres.Scores))
+			for code, s := range r.AreasInteres.Scores {
+				ranks = append(ranks, moduleRank{Code: code, Points: s.Points, MaxPoints: s.MaxPoints})
+			}
+			// Mismo criterio que el back: por puntos desc, alfabético para desempate.
+			sort.Slice(ranks, func(i, j int) bool {
+				if ranks[i].Points != ranks[j].Points {
+					return ranks[i].Points > ranks[j].Points
+				}
+				return ranks[i].Code < ranks[j].Code
+			})
+			for _, m := range ranks {
+				pct := 0.0
+				if m.MaxPoints > 0 {
+					pct = float64(m.Points) / float64(m.MaxPoints) * 100
+				}
+				mod = append(mod, []any{m.Code, m.Points, m.MaxPoints, fmt.Sprintf("%.1f%%", pct)})
+			}
+		} else {
+			reason := r.AreasInteres.Reason
+			if reason == "" {
+				reason = "Sin desglose por módulo disponible para este attempt."
+			}
+			mod = append(mod, []any{"—", "", "", reason})
+		}
+		sheets = append(sheets, xlsxSheet{Name: "Puntajes por módulo", Rows: mod})
+	}
+
+	sheets = append(sheets, xlsxSheet{Name: "Secciones", Rows: secciones})
+
+	return writeMultiSheet(sheets)
 }
+
+func boolEsp(b bool) string {
+	if b {
+		return "Sí"
+	}
+	return "No"
+}
+
 
 // writeSheet centraliza la generación del .xlsx para no repetir 3 veces
 // el setup. Cada fila se escribe con SetSheetRow en A{n+1}.

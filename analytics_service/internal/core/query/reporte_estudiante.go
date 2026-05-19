@@ -124,15 +124,15 @@ func (h *DashboardHandler) GetReporteEstudiante(ctx context.Context, in ports.Re
 		AreasInteres: buildAreasInteres(answers),
 		Personalidad: domain.ReportSection{
 			Available: false,
-			Reason:    "Personality scoring requires a separate questionnaire and rubric from UCSP (4-temperaments model). To be wired when the rubric is provided.",
+			Reason:    "Pendiente: requiere el cuestionario y rúbrica de personalidad (modelo de 4 temperamentos) que aportará UCSP.",
 		},
 		ApoyoFamiliar: domain.ReportSection{
 			Available: false,
-			Reason:    "Family-support score requires a separate questionnaire (family-relationship items) and a 0..5 rubric. To be wired when the rubric is provided.",
+			Reason:    "Pendiente: requiere un cuestionario de relaciones familiares y la rúbrica 0..5 que aportará UCSP.",
 		},
 		ProyectoDeVida: domain.ReportSection{
 			Available: false,
-			Reason:    "5-axis Life Project (autoconocimiento, informacion, preparacion, presupuesto, vocacion) requires its own questionnaire and rubric.",
+			Reason:    "Pendiente: requiere el cuestionario de Proyecto de Vida (autoconocimiento, información, preparación, presupuesto, vocación) y su rúbrica.",
 		},
 		GeneratedAt: time.Now().UTC(),
 	}
