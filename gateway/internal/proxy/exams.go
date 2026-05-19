@@ -129,7 +129,12 @@ func (p *Proxy) getExam(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"exam": protoExamToJSON(resp.GetExam())})
+	e := resp.GetExam()
+	if e == nil {
+		writeNotFound(w, "exam")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"exam": protoExamToJSON(e)})
 }
 
 type updateExamRequest struct {

@@ -285,7 +285,12 @@ func (p *Proxy) getUser(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(resp.GetUser())})
+	u := resp.GetUser()
+	if u == nil {
+		writeNotFound(w, "user")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(u)})
 }
 
 type updateUserRequest struct {
@@ -314,7 +319,12 @@ func (p *Proxy) updateUser(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(resp.GetUser())})
+	u := resp.GetUser()
+	if u == nil {
+		writeNotFound(w, "user")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(u)})
 }
 
 func (p *Proxy) deactivateUser(w http.ResponseWriter, r *http.Request) {
@@ -335,7 +345,12 @@ func (p *Proxy) reactivateUser(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(resp.GetUser())})
+	u := resp.GetUser()
+	if u == nil {
+		writeNotFound(w, "user")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(u)})
 }
 
 // ---------- Self ("me") ----------
@@ -404,7 +419,12 @@ func (p *Proxy) getUserByEmail(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(resp.GetUser())})
+	u := resp.GetUser()
+	if u == nil {
+		writeNotFound(w, "user")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(u)})
 }
 
 func (p *Proxy) searchUsers(w http.ResponseWriter, r *http.Request) {

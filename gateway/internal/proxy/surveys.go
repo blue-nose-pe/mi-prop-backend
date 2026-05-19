@@ -83,7 +83,12 @@ func (p *Proxy) getSurvey(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"survey": protoSurveyToJSON(resp.GetSurvey())})
+	s := resp.GetSurvey()
+	if s == nil {
+		writeNotFound(w, "survey")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"survey": protoSurveyToJSON(s)})
 }
 
 type updateSurveyRequest struct {
@@ -145,7 +150,12 @@ func (p *Proxy) getSurveyByCode(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"survey": protoSurveyToJSON(resp.GetSurvey())})
+	s := resp.GetSurvey()
+	if s == nil {
+		writeNotFound(w, "survey")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"survey": protoSurveyToJSON(s)})
 }
 
 func (p *Proxy) searchSurveys(w http.ResponseWriter, r *http.Request) {
@@ -294,7 +304,12 @@ func (p *Proxy) getSurveyResponse(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"response": protoSurveyResponseToJSON(resp.GetResponse())})
+	sr := resp.GetResponse()
+	if sr == nil {
+		writeNotFound(w, "survey response")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"response": protoSurveyResponseToJSON(sr)})
 }
 
 func (p *Proxy) getSurveyMetrics(w http.ResponseWriter, r *http.Request) {

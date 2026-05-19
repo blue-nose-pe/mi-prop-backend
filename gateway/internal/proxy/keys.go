@@ -126,7 +126,12 @@ func (p *Proxy) getKey(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(resp.GetKey())})
+	k := resp.GetKey()
+	if k == nil {
+		writeNotFound(w, "key")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(k)})
 }
 
 type updateKeyRequest struct {
@@ -174,7 +179,12 @@ func (p *Proxy) getKeyByCode(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(resp.GetKey())})
+	k := resp.GetKey()
+	if k == nil {
+		writeNotFound(w, "key")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(k)})
 }
 
 func (p *Proxy) deactivateKey(w http.ResponseWriter, r *http.Request) {
@@ -200,7 +210,12 @@ func (p *Proxy) validateKey(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(resp.GetKey())})
+	k := resp.GetKey()
+	if k == nil {
+		writeNotFound(w, "key")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(k)})
 }
 
 func (p *Proxy) listKeysByAsesor(w http.ResponseWriter, r *http.Request) {

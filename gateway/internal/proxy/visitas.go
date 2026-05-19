@@ -116,7 +116,12 @@ func (p *Proxy) getVisita(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"visita": protoVisitaToJSON(resp.GetVisita())})
+	v := resp.GetVisita()
+	if v == nil {
+		writeNotFound(w, "visita")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"visita": protoVisitaToJSON(v)})
 }
 
 func (p *Proxy) listVisitas(w http.ResponseWriter, r *http.Request) {

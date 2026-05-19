@@ -144,6 +144,17 @@ func isSuperadminContext(r *http.Request) bool {
 	return false
 }
 
+// writeNotFound responde 404 con el envelope de error estandar cuando un
+// resource lookup devuelve gRPC OK pero con payload vacio (upstream que
+// no diferencia "ok+nil" de "not found"). Centraliza el shape del JSON.
+func writeNotFound(w http.ResponseWriter, resource string) {
+	writeJSON(w, http.StatusNotFound, errorBody{
+		Status:  "error",
+		Code:    "NOT_FOUND",
+		Message: resource + " not found",
+	})
+}
+
 // enforceAsesorScope devuelve el asesor_user_id efectivo para una request:
 // los superadmins pueden pasar cualquier valor (incluido "" para listar
 // todo); el resto queda forzado a su propio Subject. Devuelve "" si la
