@@ -16,6 +16,8 @@
 //   GET    /api/users/{id}/permissions
 //   GET    /api/users/{id}/permissions/check
 //   GET    /api/schools/{id}
+//   GET    /api/asesores/{id}/colegios     - colegios asignados al asesor (SCD-2 vigente)
+//   GET    /api/colegios/{id}/students     - estudiantes activos del colegio
 package proxy
 
 import (
@@ -60,6 +62,10 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/students", p.listStudents)
 	mux.HandleFunc("GET /api/asesores", p.listAsesores)
 	mux.HandleFunc("GET /api/coordinadores", p.listCoordinadores)
+
+	// Sub-recursos por id de asesor / colegio.
+	mux.HandleFunc("GET /api/asesores/{id}/colegios", p.listColegiosByAsesor)
+	mux.HandleFunc("GET /api/colegios/{id}/students", p.listStudentsByColegio)
 }
 
 // Atajo: GET /api/students = GET /api/permission-groups/1/users
@@ -487,4 +493,71 @@ func (p *Proxy) checkUserPermission(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"allowed": resp.GetAllowed()})
+}
+
+// ---------- Sub-recursos por asesor / colegio ----------
+
+// listColegiosByAsesor — GET /api/asesores/{id}/colegios
+// Lista los colegios donde el user es el asesor vigente (assignment SCD-2
+// con valid_to IS NULL). Vacío si el asesor no tiene asignaciones.
+func (p *Proxy) listColegiosByAsesor(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{
+		AsesorId: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, s := range resp.GetItems() {
+		items = append(items, protoSchoolToJSON(s))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items,
+		"total": resp.GetTotal(),
+	})
+}
+
+// listStudentsByColegio — GET /api/colegios/{id}/students
+// Atajo HubSpot-style: bajo el capó arma una SearchUsers con filtro
+// school_id={id}, properties básicas y limit alto. Devuelve la misma shape
+// que /api/users/search ({total, results[], paging}).
+func (p *Proxy) listStudentsByColegio(w http.ResponseWriter, r *http.Request) {
+	schoolID := r.PathValue("id")
+	if schoolID == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_ID", Message: "id is required"})
+		return
+	}
+	q := r.URL.Query()
+	limit := parseUint32Query(q.Get("limit"), 200)
+	if limit > 1000 {
+		limit = 1000
+	}
+	req := &userscommonpb.SearchRequest{
+		FilterGroups: []*userscommonpb.FilterGroup{{
+			Filters: []*userscommonpb.Filter{
+				{
+					PropertyName: "school_id",
+					Operator:     userscommonpb.FilterOperator_EQ,
+					Values:       []string{schoolID},
+				},
+				{
+					PropertyName: "active",
+					Operator:     userscommonpb.FilterOperator_EQ,
+					Values:       []string{"true"},
+				},
+			},
+		}},
+		Properties: []string{"email", "first_name", "last_name", "document_number", "phone", "school_id", "active"},
+		Limit:      limit,
+		After:      parseUint32Query(q.Get("after"), 0),
+	}
+	resp, err := p.cli.Users.SearchUsers(r.Context(), req)
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, searchResponseToJSON[*userscommonpb.SearchResult, *userscommonpb.Paging](
+		resp.GetTotal(), resp.GetResults(), resp.GetPaging(),
+	))
 }
