@@ -131,8 +131,12 @@ func (p *Proxy) listVisitas(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "to: " + err.Error()})
 		return
 	}
+	// Mismo cierre que /api/asesores/{id}/keys: el filtro asesor_user_id
+	// se fuerza al caller salvo que sea superadmin (que puede pasar
+	// cualquier valor o "" para listar todo).
+	asesorID := enforceAsesorScope(r, q.Get("asesor_user_id"))
 	resp, err := p.cli.Visitas.ListVisitas(r.Context(), &usersgrpcpb.ListVisitasRequest{
-		AsesorUserId: q.Get("asesor_user_id"),
+		AsesorUserId: asesorID,
 		SchoolId:     q.Get("school_id"),
 		Status:       q.Get("status"),
 		From:         from,

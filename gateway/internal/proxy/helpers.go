@@ -128,6 +128,34 @@ func userIDFromContext(r *http.Request) string {
 	return c.Subject
 }
 
+// isSuperadminContext devuelve true si los claims del request incluyen
+// el rol "superadmin". Cualquier otro usuario debe restringirse a los
+// recursos cuyo asesor_user_id coincide con su Subject.
+func isSuperadminContext(r *http.Request) bool {
+	c := middleware.ClaimsFromContext(r.Context())
+	if c == nil {
+		return false
+	}
+	for _, role := range c.Roles {
+		if role == "superadmin" {
+			return true
+		}
+	}
+	return false
+}
+
+// enforceAsesorScope devuelve el asesor_user_id efectivo para una request:
+// los superadmins pueden pasar cualquier valor (incluido "" para listar
+// todo); el resto queda forzado a su propio Subject. Devuelve "" si la
+// request no esta autenticada (lo cual ya deberia haber bloqueado el
+// middleware JWT, pero defendemos aqui igual).
+func enforceAsesorScope(r *http.Request, requested string) string {
+	if isSuperadminContext(r) {
+		return requested
+	}
+	return userIDFromContext(r)
+}
+
 // decodeSearchRequest deserializa el body JSON estilo HubSpot
 // (filter_groups / properties / sorts / limit / after) directamente al
 // `commonpb.SearchRequest` de cualquier servicio. Los seis servicios

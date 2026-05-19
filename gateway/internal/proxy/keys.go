@@ -204,8 +204,11 @@ func (p *Proxy) validateKey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) listKeysByAsesor(w http.ResponseWriter, r *http.Request) {
+	// Un asesor solo puede consultar sus propias keys; el path id se ignora
+	// si no coincide con el caller. Superadmins pasan por aqui sin cambios.
+	asesorID := enforceAsesorScope(r, r.PathValue("id"))
 	resp, err := p.cli.Keys.ListByAsesor(r.Context(), &keysgrpcpb.ListByAsesorRequest{
-		AsesorUserId: r.PathValue("id"),
+		AsesorUserId: asesorID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
