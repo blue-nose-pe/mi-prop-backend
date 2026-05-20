@@ -8,17 +8,19 @@ import "google/protobuf/timestamp.proto";
 import "common/search.proto";
 
 service SurveyService {
-  rpc CreateSurvey     (CreateSurveyRequest)     returns (SurveyResponse);
-  rpc UpdateSurvey     (UpdateSurveyRequest)     returns (SurveyResponse);
-  rpc PublishSurvey    (PublishSurveyRequest)    returns (EmptyResponse);
-  rpc DeactivateSurvey (DeactivateSurveyRequest) returns (EmptyResponse);
-  rpc GetSurvey        (GetSurveyRequest)        returns (SurveyResponse);
-  rpc GetByCode        (GetByCodeRequest)        returns (SurveyResponse);
-  rpc ListQuestions    (ListQuestionsRequest)    returns (ListQuestionsResponse);
-  rpc AddQuestion      (AddQuestionRequest)      returns (QuestionResponse);
-  rpc UpdateQuestion   (UpdateQuestionRequest)   returns (EmptyResponse);
-  rpc RemoveQuestion   (RemoveQuestionRequest)   returns (EmptyResponse);
-  rpc Search           (common.v1.SearchRequest) returns (common.v1.SearchResponse);
+  rpc CreateSurvey      (CreateSurveyRequest)      returns (SurveyResponse);
+  rpc UpdateSurvey      (UpdateSurveyRequest)      returns (SurveyResponse);
+  rpc PublishSurvey     (PublishSurveyRequest)     returns (EmptyResponse);
+  rpc DeactivateSurvey  (DeactivateSurveyRequest)  returns (EmptyResponse);
+  rpc ReactivateSurvey  (ReactivateSurveyRequest)  returns (SurveyResponse);
+  rpc CloneSurvey       (CloneSurveyRequest)       returns (SurveyResponse);
+  rpc GetSurvey         (GetSurveyRequest)         returns (SurveyResponse);
+  rpc GetByCode         (GetByCodeRequest)         returns (SurveyResponse);
+  rpc ListQuestions     (ListQuestionsRequest)     returns (ListQuestionsResponse);
+  rpc AddQuestion       (AddQuestionRequest)       returns (QuestionResponse);
+  rpc UpdateQuestion    (UpdateQuestionRequest)    returns (EmptyResponse);
+  rpc RemoveQuestion    (RemoveQuestionRequest)    returns (EmptyResponse);
+  rpc Search            (common.v1.SearchRequest)  returns (common.v1.SearchResponse);
 }
 
 service ResponseService {
@@ -82,6 +84,8 @@ message UpdateSurveyRequest {
 
 message PublishSurveyRequest    { string id = 1; }
 message DeactivateSurveyRequest { string id = 1; }
+message ReactivateSurveyRequest { string id = 1; }
+message CloneSurveyRequest      { string id = 1; }
 message GetSurveyRequest        { string id = 1; }
 message GetByCodeRequest        { string code = 1; int32 version = 2; }
 message ListQuestionsRequest    { string survey_id = 1; }

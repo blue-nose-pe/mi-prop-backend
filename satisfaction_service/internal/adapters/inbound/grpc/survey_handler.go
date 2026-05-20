@@ -66,6 +66,28 @@ func (h *SurveyHandler) DeactivateSurvey(ctx context.Context, req *pb.Deactivate
 	return &pb.EmptyResponse{}, nil
 }
 
+func (h *SurveyHandler) ReactivateSurvey(ctx context.Context, req *pb.ReactivateSurveyRequest) (*pb.SurveyResponse, error) {
+	if req.GetId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
+	}
+	s, err := h.cmds.Reactivate(ctx, domain.SurveyID(req.GetId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.SurveyResponse{Survey: toProtoSurvey(s)}, nil
+}
+
+func (h *SurveyHandler) CloneSurvey(ctx context.Context, req *pb.CloneSurveyRequest) (*pb.SurveyResponse, error) {
+	if req.GetId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
+	}
+	s, err := h.cmds.Clone(ctx, domain.SurveyID(req.GetId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.SurveyResponse{Survey: toProtoSurvey(s)}, nil
+}
+
 func (h *SurveyHandler) GetSurvey(ctx context.Context, req *pb.GetSurveyRequest) (*pb.SurveyResponse, error) {
 	if req.GetId() == "" {
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))

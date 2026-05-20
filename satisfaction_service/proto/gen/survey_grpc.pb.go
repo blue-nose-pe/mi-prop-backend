@@ -24,6 +24,8 @@ const (
 	SurveyService_UpdateSurvey_FullMethodName     = "/satisfaction.v1.SurveyService/UpdateSurvey"
 	SurveyService_PublishSurvey_FullMethodName    = "/satisfaction.v1.SurveyService/PublishSurvey"
 	SurveyService_DeactivateSurvey_FullMethodName = "/satisfaction.v1.SurveyService/DeactivateSurvey"
+	SurveyService_ReactivateSurvey_FullMethodName = "/satisfaction.v1.SurveyService/ReactivateSurvey"
+	SurveyService_CloneSurvey_FullMethodName      = "/satisfaction.v1.SurveyService/CloneSurvey"
 	SurveyService_GetSurvey_FullMethodName        = "/satisfaction.v1.SurveyService/GetSurvey"
 	SurveyService_GetByCode_FullMethodName        = "/satisfaction.v1.SurveyService/GetByCode"
 	SurveyService_ListQuestions_FullMethodName    = "/satisfaction.v1.SurveyService/ListQuestions"
@@ -41,6 +43,8 @@ type SurveyServiceClient interface {
 	UpdateSurvey(ctx context.Context, in *UpdateSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
 	PublishSurvey(ctx context.Context, in *PublishSurveyRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	DeactivateSurvey(ctx context.Context, in *DeactivateSurveyRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	ReactivateSurvey(ctx context.Context, in *ReactivateSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
+	CloneSurvey(ctx context.Context, in *CloneSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
 	GetSurvey(ctx context.Context, in *GetSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
 	GetByCode(ctx context.Context, in *GetByCodeRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
 	ListQuestions(ctx context.Context, in *ListQuestionsRequest, opts ...grpc.CallOption) (*ListQuestionsResponse, error)
@@ -92,6 +96,26 @@ func (c *surveyServiceClient) DeactivateSurvey(ctx context.Context, in *Deactiva
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EmptyResponse)
 	err := c.cc.Invoke(ctx, SurveyService_DeactivateSurvey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *surveyServiceClient) ReactivateSurvey(ctx context.Context, in *ReactivateSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SurveyResponse)
+	err := c.cc.Invoke(ctx, SurveyService_ReactivateSurvey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *surveyServiceClient) CloneSurvey(ctx context.Context, in *CloneSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SurveyResponse)
+	err := c.cc.Invoke(ctx, SurveyService_CloneSurvey_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -176,6 +200,8 @@ type SurveyServiceServer interface {
 	UpdateSurvey(context.Context, *UpdateSurveyRequest) (*SurveyResponse, error)
 	PublishSurvey(context.Context, *PublishSurveyRequest) (*EmptyResponse, error)
 	DeactivateSurvey(context.Context, *DeactivateSurveyRequest) (*EmptyResponse, error)
+	ReactivateSurvey(context.Context, *ReactivateSurveyRequest) (*SurveyResponse, error)
+	CloneSurvey(context.Context, *CloneSurveyRequest) (*SurveyResponse, error)
 	GetSurvey(context.Context, *GetSurveyRequest) (*SurveyResponse, error)
 	GetByCode(context.Context, *GetByCodeRequest) (*SurveyResponse, error)
 	ListQuestions(context.Context, *ListQuestionsRequest) (*ListQuestionsResponse, error)
@@ -204,6 +230,12 @@ func (UnimplementedSurveyServiceServer) PublishSurvey(context.Context, *PublishS
 }
 func (UnimplementedSurveyServiceServer) DeactivateSurvey(context.Context, *DeactivateSurveyRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DeactivateSurvey not implemented")
+}
+func (UnimplementedSurveyServiceServer) ReactivateSurvey(context.Context, *ReactivateSurveyRequest) (*SurveyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReactivateSurvey not implemented")
+}
+func (UnimplementedSurveyServiceServer) CloneSurvey(context.Context, *CloneSurveyRequest) (*SurveyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CloneSurvey not implemented")
 }
 func (UnimplementedSurveyServiceServer) GetSurvey(context.Context, *GetSurveyRequest) (*SurveyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetSurvey not implemented")
@@ -315,6 +347,42 @@ func _SurveyService_DeactivateSurvey_Handler(srv interface{}, ctx context.Contex
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(SurveyServiceServer).DeactivateSurvey(ctx, req.(*DeactivateSurveyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SurveyService_ReactivateSurvey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReactivateSurveyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SurveyServiceServer).ReactivateSurvey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SurveyService_ReactivateSurvey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SurveyServiceServer).ReactivateSurvey(ctx, req.(*ReactivateSurveyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SurveyService_CloneSurvey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CloneSurveyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SurveyServiceServer).CloneSurvey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SurveyService_CloneSurvey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SurveyServiceServer).CloneSurvey(ctx, req.(*CloneSurveyRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -467,6 +535,14 @@ var SurveyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DeactivateSurvey",
 			Handler:    _SurveyService_DeactivateSurvey_Handler,
+		},
+		{
+			MethodName: "ReactivateSurvey",
+			Handler:    _SurveyService_ReactivateSurvey_Handler,
+		},
+		{
+			MethodName: "CloneSurvey",
+			Handler:    _SurveyService_CloneSurvey_Handler,
 		},
 		{
 			MethodName: "GetSurvey",

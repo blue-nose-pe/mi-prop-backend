@@ -83,6 +83,72 @@ func (h *SurveyHandler) Deactivate(ctx context.Context, id domain.SurveyID) erro
 	return h.surveys.SetActive(ctx, id, false)
 }
 
+// Reactivate vuelve un survey paused (active=false) a draft activo. NO
+// republica — el usuario debe pasar por Publish explicitamente despues.
+func (h *SurveyHandler) Reactivate(ctx context.Context, id domain.SurveyID) (*domain.Survey, error) {
+	s, err := h.surveys.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.surveys.SetActive(ctx, id, true); err != nil {
+		return nil, err
+	}
+	// Devolvemos un Survey "actualizado" sin re-leer; el caller ya tiene
+	// el id y suele recargar la lista despues.
+	s.Active = true
+	s.Published = false
+	return s, nil
+}
+
+// Clone crea un draft nuevo con titulo "<orig> (copia)", code suffixeado
+// y mismo set de preguntas. Util cuando el survey original ya esta
+// published y no permite mas ediciones. La copia siempre arranca
+// active=true, published=false.
+func (h *SurveyHandler) Clone(ctx context.Context, id domain.SurveyID) (*domain.Survey, error) {
+	orig, err := h.surveys.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	qs, err := h.questions.ListBySurvey(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	suffix := strings.ToLower(string(id))
+	if len(suffix) > 6 {
+		suffix = suffix[:6]
+	}
+	cloneCode := orig.Code + "-copy-" + suffix
+	clone := &domain.Survey{
+		Code:        cloneCode,
+		Title:       orig.Title + " (copia)",
+		Description: orig.Description,
+		TargetRole:  orig.TargetRole,
+		Trigger:     orig.Trigger,
+		Version:     orig.Version + 1,
+		Active:      true,
+		Published:   false,
+	}
+	newID, err := h.surveys.Save(ctx, clone)
+	if err != nil {
+		return nil, err
+	}
+	clone.ID = newID
+	for _, q := range qs {
+		nq := &domain.Question{
+			SurveyID:    newID,
+			Text:        q.Text,
+			Kind:        q.Kind,
+			SortOrder:   q.SortOrder,
+			OptionsJSON: q.OptionsJSON,
+			Required:    q.Required,
+		}
+		if _, err := h.questions.Save(ctx, nq); err != nil {
+			return nil, err
+		}
+	}
+	return clone, nil
+}
+
 func (h *SurveyHandler) AddQuestion(ctx context.Context, in ports.AddQuestionInput) (*domain.Question, error) {
 	if !in.Kind.Valid() {
 		return nil, domain.ErrInvalidQuestionKind

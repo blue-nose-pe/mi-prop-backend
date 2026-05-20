@@ -14,6 +14,12 @@ type SurveyCommands interface {
 	Update(ctx context.Context, in UpdateSurveyInput) (*domain.Survey, error)
 	Publish(ctx context.Context, id domain.SurveyID) error
 	Deactivate(ctx context.Context, id domain.SurveyID) error
+	// Reactivate vuelve un survey pausado a draft (active=true, published=false).
+	Reactivate(ctx context.Context, id domain.SurveyID) (*domain.Survey, error)
+	// Clone crea un draft nuevo con title="<orig> (copia)", code suffixeado
+	// y mismo set de preguntas. Util cuando el survey original ya esta
+	// published y no permite mas ediciones.
+	Clone(ctx context.Context, id domain.SurveyID) (*domain.Survey, error)
 	AddQuestion(ctx context.Context, in AddQuestionInput) (*domain.Question, error)
 	UpdateQuestion(ctx context.Context, in UpdateQuestionInput) error
 	RemoveQuestion(ctx context.Context, id domain.QuestionID) error

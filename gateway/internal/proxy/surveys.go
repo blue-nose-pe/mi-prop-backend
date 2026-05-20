@@ -34,6 +34,8 @@ func (p *Proxy) RegisterSurveys(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /api/surveys/{id}", p.updateSurvey)
 	mux.HandleFunc("POST /api/surveys/{id}/publish", p.publishSurvey)
 	mux.HandleFunc("POST /api/surveys/{id}/deactivate", p.deactivateSurvey)
+	mux.HandleFunc("POST /api/surveys/{id}/reactivate", p.reactivateSurvey)
+	mux.HandleFunc("POST /api/surveys/{id}/clone", p.cloneSurvey)
 	mux.HandleFunc("GET /api/surveys/{id}/questions", p.listSurveyQuestions)
 	mux.HandleFunc("POST /api/surveys/{id}/questions", p.addSurveyQuestion)
 	mux.HandleFunc("GET /api/surveys/{id}/metrics", p.getSurveyMetrics)
@@ -128,6 +130,39 @@ func (p *Proxy) deactivateSurvey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// reactivateSurvey vuelve un survey paused a draft activo (active=true,
+// published=false). El usuario debe pasar por publish despues si quiere
+// volver a publicarlo.
+func (p *Proxy) reactivateSurvey(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Surveys.ReactivateSurvey(r.Context(), &satisfactiongrpcpb.ReactivateSurveyRequest{Id: r.PathValue("id")})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	s := resp.GetSurvey()
+	if s == nil {
+		writeNotFound(w, "survey")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"survey": protoSurveyToJSON(s)})
+}
+
+// cloneSurvey crea un draft nuevo del survey indicado, copiando preguntas.
+// Util cuando el original esta publicado y no admite mas ediciones.
+func (p *Proxy) cloneSurvey(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Surveys.CloneSurvey(r.Context(), &satisfactiongrpcpb.CloneSurveyRequest{Id: r.PathValue("id")})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	s := resp.GetSurvey()
+	if s == nil {
+		writeNotFound(w, "survey")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"survey": protoSurveyToJSON(s)})
 }
 
 func (p *Proxy) getSurveyByCode(w http.ResponseWriter, r *http.Request) {
