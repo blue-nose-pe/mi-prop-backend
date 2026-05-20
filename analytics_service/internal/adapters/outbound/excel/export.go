@@ -54,7 +54,7 @@ func (e *Exporter) ExportColegioDashboard(ctx context.Context, schoolID domain.S
 	if err != nil {
 		return nil, err
 	}
-	rows := [][]any{
+	resumen := [][]any{
 		{"Colegio", d.SchoolName},
 		{"Total estudiantes", d.TotalStudents},
 		{"Total attempts", d.TotalAttempts},
@@ -62,9 +62,40 @@ func (e *Exporter) ExportColegioDashboard(ctx context.Context, schoolID domain.S
 		{"Tipo de examen", "Attempts", "Score promedio", "Score máximo prom."},
 	}
 	for code, s := range d.ByExamType {
-		rows = append(rows, []any{code, s.Attempts, s.AvgScore, s.AvgMaxScore})
+		resumen = append(resumen, []any{code, s.Attempts, s.AvgScore, s.AvgMaxScore})
 	}
-	return writeSheet("Colegio", rows)
+
+	// Pestaña "Estudiantes": antes el export solo tenia rollup y el cliente
+	// se quedaba sin la lista nominal. Ahora arma una segunda hoja con un
+	// row por estudiante activo del colegio. Orden alfabetico por apellido,
+	// nombre para que el archivo abra en un orden util sin necesidad de
+	// re-sortear en Excel.
+	students := make([]domain.ColegioStudent, len(d.Students))
+	copy(students, d.Students)
+	sort.Slice(students, func(i, j int) bool {
+		if students[i].LastName != students[j].LastName {
+			return students[i].LastName < students[j].LastName
+		}
+		return students[i].FirstName < students[j].FirstName
+	})
+	estudiantes := [][]any{
+		{"Nombre", "Apellido", "DNI", "Correo", "Telefono", "ID"},
+	}
+	for _, s := range students {
+		estudiantes = append(estudiantes, []any{
+			s.FirstName,
+			s.LastName,
+			s.DocumentNumber,
+			s.Email,
+			s.Phone,
+			string(s.ID),
+		})
+	}
+
+	return writeMultiSheet([]xlsxSheet{
+		{Name: "Colegio", Rows: resumen},
+		{Name: "Estudiantes", Rows: estudiantes},
+	})
 }
 
 func (e *Exporter) ExportColegioComparativo(ctx context.Context, examTypeCode string) ([]byte, error) {

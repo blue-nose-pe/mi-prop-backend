@@ -38,12 +38,30 @@ type ExamTypeStats struct {
 
 // ColegioDashboard — vista agregada para un colegio.
 type ColegioDashboard struct {
-	SchoolID       SchoolID
-	SchoolName     string
-	TotalStudents  int32
-	TotalAttempts  int32
-	ByExamType     map[string]ExamTypeStats
-	GeneratedAt    time.Time
+	SchoolID      SchoolID
+	SchoolName    string
+	TotalStudents int32
+	TotalAttempts int32
+	ByExamType    map[string]ExamTypeStats
+	// Students lista plana de estudiantes activos del colegio. La poblamos
+	// igual que TotalStudents (de hecho TotalStudents = len(Students)). La
+	// usa el export XLSX para incluir una pestaña "Estudiantes" con los
+	// datos personales — el front lo descarga desde
+	// /api/analytics/colegio/{id}/export.xlsx.
+	Students    []ColegioStudent
+	GeneratedAt time.Time
+}
+
+// ColegioStudent — fila por estudiante para hidratar la pestaña
+// "Estudiantes" del export XLSX. Es un subset de UpstreamUser; se mantiene
+// en el dominio para no acoplar el exporter al adapter outbound.
+type ColegioStudent struct {
+	ID             UserID
+	FirstName      string
+	LastName       string
+	DocumentNumber string
+	Email          string
+	Phone          string
 }
 
 // EstudianteDashboard — vista personal del estudiante.

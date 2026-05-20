@@ -201,7 +201,7 @@ func (g *GrpcUsers) ListEstudiantesEnColegio(ctx context.Context, schoolID domai
 				},
 			},
 		},
-		Properties: []string{"email", "first_name", "last_name", "document_number", "school_id", "active"},
+		Properties: []string{"email", "first_name", "last_name", "document_number", "phone", "school_id", "active"},
 		Limit:      200,
 	}
 	resp, err := g.cli.SearchUsers(forwardAuth(ctx), req)
@@ -217,6 +217,7 @@ func (g *GrpcUsers) ListEstudiantesEnColegio(ctx context.Context, schoolID domai
 			FirstName:      asString(props["first_name"]),
 			LastName:       asString(props["last_name"]),
 			DocumentNumber: asString(props["document_number"]),
+			Phone:          asString(props["phone"]),
 			SchoolID:       domain.SchoolID(asString(props["school_id"])),
 			Active:         asBool(props["active"]),
 		})

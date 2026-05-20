@@ -61,6 +61,7 @@ type UpstreamUser struct {
 	FirstName      string
 	LastName       string
 	DocumentNumber string
+	Phone          string
 	SchoolID       domain.SchoolID
 	Active         bool
 }

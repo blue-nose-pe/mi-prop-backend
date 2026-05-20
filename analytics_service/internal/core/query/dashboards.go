@@ -157,12 +157,25 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 	}
 	finalize(stats)
 
+	studentRows := make([]domain.ColegioStudent, 0, len(students))
+	for _, s := range students {
+		studentRows = append(studentRows, domain.ColegioStudent{
+			ID:             s.ID,
+			FirstName:      s.FirstName,
+			LastName:       s.LastName,
+			DocumentNumber: s.DocumentNumber,
+			Email:          s.Email,
+			Phone:          s.Phone,
+		})
+	}
+
 	out := &domain.ColegioDashboard{
 		SchoolID:      schoolID,
 		SchoolName:    school.Name,
 		TotalStudents: int32(len(students)),
 		TotalAttempts: int32(len(atts)),
 		ByExamType:    materialize(stats),
+		Students:      studentRows,
 		GeneratedAt:   time.Now().UTC(),
 	}
 	if h.cache != nil {

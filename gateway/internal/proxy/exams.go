@@ -77,6 +77,9 @@ func (p *Proxy) RegisterExams(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/attempts/{id}/finish", p.finishAttempt)
 	mux.HandleFunc("GET /api/users/{id}/attempts", p.listAttemptsByUser)
 	mux.HandleFunc("GET /api/exams/{id}/attempts", p.listAttemptsByExam)
+	// `/api/attempts/by-key/{id}` se registra en RegisterKeys porque el
+	// path /api/keys/{id}/attempts choca con /api/keys/by-code/{code} en
+	// el matching del ServeMux 1.22+.
 }
 
 // ====================== EXAMS ======================

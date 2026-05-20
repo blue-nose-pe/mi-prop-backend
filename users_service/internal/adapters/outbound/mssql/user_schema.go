@@ -16,6 +16,12 @@ var userSearchSchema = SearchSchema{
 	DefaultLimit: 50,
 	MaxLimit:     200,
 	Columns: map[string]SearchColumn{
+		// `id` se expone como propiedad filtrable (no seleccionable: el id
+		// siempre viaja en el sobre como __id, no como columna). Sirve para
+		// hidrataciones por lote tipo `id IN (uuid1, uuid2, ...)` desde
+		// otros servicios (p. ej. exams_service devuelve attempts con
+		// user_id y el front pide los nombres en una sola request).
+		"id":              {DBName: "id", Type: SearchTypeUUID, Filterable: true, Sortable: false, Selectable: false},
 		"email":           {DBName: "email", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
 		"first_name":      {DBName: "first_name", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
 		"last_name":       {DBName: "last_name", Type: SearchTypeString, Filterable: true, Sortable: true, Selectable: true},
