@@ -27,7 +27,38 @@ type AsesorDashboard struct {
 	PendingTests     int32 // suma cross-estudiantes de tests pendientes por rendir
 	AffectedStudents int32 // estudiantes con al menos un test pendiente
 	ByExamType       map[string]ExamTypeStats // "vocacional" | "simulacro" | "habitos"
-	GeneratedAt      time.Time
+	// Colegios asignados al asesor (assignment SCD-2 vigente). El export
+	// XLSX los renderiza en una hoja aparte "Colegios" — sin esta lista
+	// nominal el asesor solo veia "Total colegios: N" sin saber cuales.
+	Colegios []AsesorColegio
+	// Keys creadas por el asesor (activas + inactivas). El export XLSX
+	// las renderiza en una hoja aparte "Keys" para que el asesor sepa
+	// cuales fueron, su vigencia y su uso.
+	Keys        []AsesorKey
+	GeneratedAt time.Time
+}
+
+// AsesorColegio — fila por colegio asignado al asesor. Subset de
+// UpstreamSchool mantenido en el dominio para no acoplar el exporter
+// al adapter outbound.
+type AsesorColegio struct {
+	ID       SchoolID
+	Name     string
+	City     string
+	Category string
+}
+
+// AsesorKey — fila por key creada/asociada al asesor para el export.
+// Subset minimo de UpstreamKey + SchoolName resuelto desde la lista de
+// colegios del asesor. Si UCSP pide ver mode/grade/section/active/
+// vigencia, ampliar UpstreamKey + el cliente gRPC keys.
+type AsesorKey struct {
+	ID           string
+	Code         string
+	ExamTypeCode string // "vocacional" | "simulacro" | "habitos"
+	SchoolName   string // vacio si la key esta en modo LAN (sin school_id)
+	CurrentUses  int32
+	MaxUses      int32
 }
 
 type ExamTypeStats struct {

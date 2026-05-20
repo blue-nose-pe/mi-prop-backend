@@ -30,23 +30,75 @@ var _ ports.ExportCommands = (*Exporter)(nil)
 
 func NewExporter(d ports.DashboardQueries) *Exporter { return &Exporter{dashboards: d} }
 
+// ExportAsesorDashboard genera un workbook con 3 hojas:
+//   - "Asesor"   resumen + breakdown por tipo de examen (sin cambios).
+//   - "Colegios" un row por colegio asignado (assignment SCD-2 vigente).
+//                Sirve para que el asesor sepa CUALES son sus colegios
+//                en vez de solo "Total colegios: N".
+//   - "Keys"     un row por key creada/asociada con tipo, colegio (o
+//                vacio si LAN) y aforo (current/max). Sirve para auditar
+//                que keys siguen siendo utiles y cuales se agotaron.
 func (e *Exporter) ExportAsesorDashboard(ctx context.Context, asesorID domain.UserID) ([]byte, error) {
 	d, err := e.dashboards.GetAsesorDashboard(ctx, asesorID)
 	if err != nil {
 		return nil, err
 	}
-	rows := [][]any{
+
+	resumen := [][]any{
 		{"Asesor", d.AsesorName},
 		{"Total colegios", d.TotalColegios},
 		{"Total keys", d.TotalKeys},
 		{"Total attempts", d.TotalAttempts},
+		{"Visitas completadas", d.CompletedVisits},
+		{"Visitas agendadas", d.ScheduledVisits},
 		{},
 		{"Tipo de examen", "Attempts", "Score promedio", "Score máximo prom."},
 	}
 	for code, s := range d.ByExamType {
-		rows = append(rows, []any{code, s.Attempts, s.AvgScore, s.AvgMaxScore})
+		resumen = append(resumen, []any{code, s.Attempts, s.AvgScore, s.AvgMaxScore})
 	}
-	return writeSheet("Asesor", rows)
+
+	// Pestaña "Colegios": un row por colegio asignado. Orden alfabetico
+	// por nombre para que el archivo abra en un orden util sin necesidad
+	// de re-sortear en Excel.
+	colegios := make([]domain.AsesorColegio, len(d.Colegios))
+	copy(colegios, d.Colegios)
+	sort.Slice(colegios, func(i, j int) bool {
+		return colegios[i].Name < colegios[j].Name
+	})
+	colegiosRows := [][]any{
+		{"Colegio", "Ciudad", "Categoría", "ID"},
+	}
+	for _, c := range colegios {
+		colegiosRows = append(colegiosRows, []any{c.Name, c.City, c.Category, string(c.ID)})
+	}
+
+	// Pestaña "Keys": orden por uso (descendente) y luego por code, asi
+	// las mas usadas aparecen primero.
+	keys := make([]domain.AsesorKey, len(d.Keys))
+	copy(keys, d.Keys)
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].CurrentUses != keys[j].CurrentUses {
+			return keys[i].CurrentUses > keys[j].CurrentUses
+		}
+		return keys[i].Code < keys[j].Code
+	})
+	keysRows := [][]any{
+		{"Código", "Tipo de examen", "Colegio", "Usos", "Aforo máximo"},
+	}
+	for _, k := range keys {
+		school := k.SchoolName
+		if school == "" {
+			school = "— (LAN)"
+		}
+		keysRows = append(keysRows, []any{k.Code, k.ExamTypeCode, school, k.CurrentUses, k.MaxUses})
+	}
+
+	return writeMultiSheet([]xlsxSheet{
+		{Name: "Asesor", Rows: resumen},
+		{Name: "Colegios", Rows: colegiosRows},
+		{Name: "Keys", Rows: keysRows},
+	})
 }
 
 func (e *Exporter) ExportColegioDashboard(ctx context.Context, schoolID domain.SchoolID) ([]byte, error) {

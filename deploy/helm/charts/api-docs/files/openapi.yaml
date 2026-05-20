@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.14.0
+  version: 0.14.1
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -5507,12 +5507,29 @@ paths:
       tags: [Analytics]
       summary: Exportar dashboard de asesor a Excel
       description: |
-        Devuelve `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
-        binario. El frontend lo descarga directo (`window.location` o
-        `Blob`).
+        Genera un workbook XLSX con **tres hojas**:
+
+        - **`Asesor`** — resumen: nombre, total colegios/keys/attempts,
+          visitas completadas/agendadas, y breakdown por tipo de examen
+          (`Attempts`, `Score promedio`, `Score máximo prom.`).
+        - **`Colegios`** — un row por colegio asignado (assignment SCD-2
+          vigente): `Colegio`, `Ciudad`, `Categoría`, `ID`. Ordenada
+          alfabéticamente por nombre para abrir en orden útil sin
+          re-sortear en Excel.
+        - **`Keys`** — un row por key creada/asociada al asesor (activas
+          + inactivas): `Código`, `Tipo de examen`, `Colegio` (o
+          `— (LAN)` si la key no tiene school_id), `Usos`,
+          `Aforo máximo`. Ordenada por usos descendente: las keys más
+          consumidas aparecen primero.
+
+        Devuelve `application/vnd.openxmlformats-officedocument.
+        spreadsheetml.sheet` binario. El frontend lo descarga directo
+        (`window.location` o `Blob`).
+
+        Permiso requerido: `analytics.dashboard.read`.
       responses:
         '200':
-          description: Archivo XLSX
+          description: Archivo XLSX (workbook con `Asesor` + `Colegios` + `Keys`)
           content:
             application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
               schema: { type: string, format: binary }

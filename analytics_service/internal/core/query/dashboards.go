@@ -95,6 +95,33 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 		}
 	}
 
+	// Mapear colegios y keys al dominio para que el exporter XLSX los
+	// rendere en hojas aparte ("Colegios" y "Keys"). schoolNameById
+	// resuelve la columna `Colegio` en la hoja de keys sin tener que
+	// volver a llamar a users-service.
+	asesorColegios := make([]domain.AsesorColegio, 0, len(colegios))
+	schoolNameByID := make(map[domain.SchoolID]string, len(colegios))
+	for _, c := range colegios {
+		asesorColegios = append(asesorColegios, domain.AsesorColegio{
+			ID:       c.ID,
+			Name:     c.Name,
+			City:     c.City,
+			Category: c.Category,
+		})
+		schoolNameByID[c.ID] = c.Name
+	}
+	asesorKeys := make([]domain.AsesorKey, 0, len(keys))
+	for _, k := range keys {
+		asesorKeys = append(asesorKeys, domain.AsesorKey{
+			ID:           k.ID,
+			Code:         k.Code,
+			ExamTypeCode: k.ExamTypeCode,
+			SchoolName:   schoolNameByID[k.SchoolID],
+			CurrentUses:  k.CurrentUses,
+			MaxUses:      k.MaxUses,
+		})
+	}
+
 	out := &domain.AsesorDashboard{
 		AsesorID:         asesorID,
 		AsesorName:       fullName(asesor),
@@ -106,6 +133,8 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 		PendingTests:     pendingTotal,
 		AffectedStudents: pendingAffected,
 		ByExamType:       materialize(stats),
+		Colegios:         asesorColegios,
+		Keys:             asesorKeys,
 		GeneratedAt:      time.Now().UTC(),
 	}
 
