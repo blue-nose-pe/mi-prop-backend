@@ -99,3 +99,22 @@ func (h *AuthHandler) VerifyStudentOTP(ctx context.Context, req *pb.VerifyStuden
 		RefreshToken: out.RefreshToken,
 	}, nil
 }
+
+func (h *AuthHandler) RegisterStudentWithKey(
+	ctx context.Context,
+	req *pb.RegisterStudentWithKeyRequest,
+) (*pb.RegisterStudentWithKeyResponse, error) {
+	out, err := h.cmds.RegisterStudentWithKey(ctx, ports.RegisterStudentWithKeyInput{
+		Email:          domain.Email(req.GetEmail()),
+		FirstName:      req.GetFirstName(),
+		LastName:       req.GetLastName(),
+		DocumentNumber: req.GetDocumentNumber(),
+		Phone:          req.GetPhone(),
+		SchoolID:       domain.SchoolID(req.GetSchoolId()),
+		IP:             req.GetIp(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.RegisterStudentWithKeyResponse{Status: out.Status}, nil
+}

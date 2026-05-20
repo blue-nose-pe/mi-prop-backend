@@ -282,6 +282,97 @@ func (r *PermissionRepo) FindGroupByID(ctx context.Context, id uint32) (*domain.
 	return group, nil
 }
 
+// FindGroupByCode espejo de FindGroupByID pero lookup por code estable
+// ("student_permissions", "asesor_permissions", etc.). El SELECT es
+// identico salvo el WHERE. Usado por el flujo de auto-registro publico
+// de estudiantes para resolver el id del grupo sin hard-codear.
+func (r *PermissionRepo) FindGroupByCode(ctx context.Context, code string) (*domain.PermissionGroup, error) {
+	const q = `
+		SELECT g.id, g.code, g.name, ISNULL(g.description, ''), g.active,
+		       g.created_at, g.updated_at,
+		       p.id, p.scope, p.code, p.name, ISNULL(p.description, ''), p.active,
+		       p.created_at, p.updated_at
+		  FROM permission_group g
+		  LEFT JOIN permission_group_permission pgp ON pgp.permission_group_id = g.id
+		  LEFT JOIN permission p                    ON p.id = pgp.permission_id AND p.active = 1
+		 WHERE g.code = @p1`
+	rows, err := r.db.QueryContext(ctx, q, code)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var (
+		group *domain.PermissionGroup
+		found bool
+	)
+	for rows.Next() {
+		found = true
+		var (
+			gID                          int64
+			gCode, gName, gDescription   string
+			gActive                      bool
+			gCreatedAt                   sql.NullTime
+			gUpdatedAt                   sql.NullTime
+			pID                          sql.NullInt64
+			pScope, pCode, pName, pDescr sql.NullString
+			pActive                      sql.NullBool
+			pCreated                     sql.NullTime
+			pUpdated                     sql.NullTime
+		)
+		if err := rows.Scan(
+			&gID, &gCode, &gName, &gDescription, &gActive,
+			&gCreatedAt, &gUpdatedAt,
+			&pID, &pScope, &pCode, &pName, &pDescr, &pActive,
+			&pCreated, &pUpdated,
+		); err != nil {
+			return nil, err
+		}
+		if group == nil {
+			group = &domain.PermissionGroup{
+				ID:          uint32(gID),
+				Code:        gCode,
+				Name:        gName,
+				Description: gDescription,
+				Active:      gActive,
+				Permissions: []domain.Permission{},
+			}
+			if gCreatedAt.Valid {
+				group.CreatedAt = gCreatedAt.Time
+			}
+			if gUpdatedAt.Valid {
+				t := gUpdatedAt.Time
+				group.UpdatedAt = &t
+			}
+		}
+		if pID.Valid {
+			perm := domain.Permission{
+				ID:          uint32(pID.Int64),
+				Scope:       pScope.String,
+				Code:        pCode.String,
+				Name:        pName.String,
+				Description: pDescr.String,
+				Active:      pActive.Bool,
+			}
+			if pCreated.Valid {
+				perm.CreatedAt = pCreated.Time
+			}
+			if pUpdated.Valid {
+				t := pUpdated.Time
+				perm.UpdatedAt = &t
+			}
+			group.Permissions = append(group.Permissions, perm)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, domain.ErrPermGroupNotFound
+	}
+	return group, nil
+}
+
 // ListGroups retorna todos los grupos activos con sus permisos.
 // Para evitar el N+1 (un SELECT por grupo) hacemos UNA sola query con
 // LEFT JOIN y agrupamos en memoria por group.id. La query devuelve hasta

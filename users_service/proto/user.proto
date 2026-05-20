@@ -218,6 +218,17 @@ service AuthService {
   // VerifyStudentOTP valida el código y emite par access+refresh JWT.
   // Público.
   rpc VerifyStudentOTP (VerifyStudentOTPRequest) returns (LoginResponse);
+
+  // RegisterStudentWithKey crea (o reusa) un usuario estudiante asociado
+  // al colegio de una key valida y dispara el envio del OTP. Endpoint
+  // publico (sin JWT): el control de acceso es la propia validez de la
+  // key. El gateway ya valido el key_code antes de invocarlo y resolvio
+  // el school_id correspondiente.
+  //
+  // Si el email ya existe como estudiante del mismo colegio, no crea
+  // nada — solo reenvia OTP. Si existe pero pertenece a otro rol u otro
+  // colegio, devuelve error.
+  rpc RegisterStudentWithKey (RegisterStudentWithKeyRequest) returns (RegisterStudentWithKeyResponse);
 }
 
 // --------- Messages ---------
@@ -307,6 +318,25 @@ message VerifyStudentOTPRequest {
   string otp        = 2; // 6 dígitos
   string ip         = 3;
   string user_agent = 4;
+}
+
+message RegisterStudentWithKeyRequest {
+  string email           = 1;
+  string first_name      = 2;
+  string last_name       = 3;
+  string document_number = 4;
+  string phone           = 5;
+  // school_id resuelto por el gateway via keys_service.ValidateKey antes
+  // de invocar esta RPC. users_service NO consulta keys_service.
+  string school_id       = 6;
+  string ip              = 7;
+}
+
+// status: "created" (user nuevo creado) | "exists" (ya existia como
+// estudiante del mismo colegio; se reenvio OTP). En ambos casos el OTP
+// se dispara.
+message RegisterStudentWithKeyResponse {
+  string status = 1;
 }
 
 message AssignGroupRequest { string user_id = 1; uint32 permission_group_id = 2; }

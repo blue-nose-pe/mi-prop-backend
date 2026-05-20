@@ -76,6 +76,10 @@ type PermissionRepository interface {
 	UpdateGroup(ctx context.Context, id uint32, name, description string) error
 	DeleteGroup(ctx context.Context, id uint32) error
 	FindGroupByID(ctx context.Context, id uint32) (*domain.PermissionGroup, error)
+	// FindGroupByCode resuelve un grupo por su `code` estable (ej.
+	// "student_permissions"). Lo usa el flujo de auto-registro publico
+	// de estudiantes para asignar el grupo correcto sin hard-codear ID.
+	FindGroupByCode(ctx context.Context, code string) (*domain.PermissionGroup, error)
 	ListGroups(ctx context.Context) ([]domain.PermissionGroup, error)
 
 	// Permisos por grupo.

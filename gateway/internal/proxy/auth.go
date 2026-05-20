@@ -1,16 +1,18 @@
 // Auth handlers — proxy a users-service AuthService.
 //
 // Rutas REST:
-//   POST /api/auth/login                  → AuthService.Login
-//   POST /api/auth/refresh                → AuthService.Refresh
-//   POST /api/auth/logout                 → AuthService.Logout
-//   POST /api/auth/student/request-otp    → AuthService.RequestStudentOTP
-//   POST /api/auth/student/verify-otp     → AuthService.VerifyStudentOTP
+//   POST /api/auth/login                       → AuthService.Login
+//   POST /api/auth/refresh                     → AuthService.Refresh
+//   POST /api/auth/logout                      → AuthService.Logout
+//   POST /api/auth/student/request-otp         → AuthService.RequestStudentOTP
+//   POST /api/auth/student/verify-otp          → AuthService.VerifyStudentOTP
+//   POST /api/auth/student/register-with-key   → keys.ValidateKey + AuthService.RegisterStudentWithKey
 package proxy
 
 import (
 	"net/http"
 
+	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 )
 
@@ -20,6 +22,7 @@ func (p *Proxy) RegisterAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/logout", p.logout)
 	mux.HandleFunc("POST /api/auth/student/request-otp", p.requestStudentOTP)
 	mux.HandleFunc("POST /api/auth/student/verify-otp", p.verifyStudentOTP)
+	mux.HandleFunc("POST /api/auth/student/register-with-key", p.registerStudentWithKey)
 }
 
 type loginRequest struct {
@@ -165,6 +168,95 @@ func (p *Proxy) verifyStudentOTP(w http.ResponseWriter, r *http.Request) {
 		Permissions:  perms,
 		AccessToken:  resp.GetAccessToken(),
 		RefreshToken: resp.GetRefreshToken(),
+	})
+}
+
+// ----- Auto-registro de estudiante con key publica -----
+//
+//   POST /api/auth/student/register-with-key
+//   body: { email, first_name, last_name, document_number, phone, key_code }
+//   200 { status: "created" | "exists" } — OTP enviado en ambos casos
+//   400/401/422: errores de validacion de key, email mal formado, etc.
+//
+// Flow:
+//   1. ValidateKey(key_code) en keys_service: chequea active + vigencia +
+//      aforo restante. Read-only — NO incrementa current_uses.
+//   2. Si OK, llamamos a users_service.AuthService.RegisterStudentWithKey
+//      pasando email + datos personales + school_id resuelto de la key.
+//   3. users_service crea (o reusa) el user con permission_group=
+//      student_permissions y dispara el OTP.
+//
+// Ruta publica (jwtSkip lo deja pasar sin Authorization).
+
+type registerStudentWithKeyRequest struct {
+	Email          string `json:"email"`
+	FirstName      string `json:"first_name"`
+	LastName       string `json:"last_name"`
+	DocumentNumber string `json:"document_number"`
+	Phone          string `json:"phone"`
+	KeyCode        string `json:"key_code"`
+}
+
+func (p *Proxy) registerStudentWithKey(w http.ResponseWriter, r *http.Request) {
+	var in registerStudentWithKeyRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	if in.Email == "" || in.FirstName == "" || in.LastName == "" || in.KeyCode == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status:  "error",
+			Code:    "VALIDATION_ERROR",
+			Message: "email, first_name, last_name y key_code son obligatorios",
+		})
+		return
+	}
+
+	// 1) Validar key. Si la key no es valida, devolvemos el error tal cual
+	// (keys_service lo distingue: KEY_NOT_FOUND, KEY_EXPIRED, KEY_EXHAUSTED).
+	keyResp, err := p.cli.Keys.ValidateKey(r.Context(), &keysgrpcpb.ValidateKeyRequest{Code: in.KeyCode})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	key := keyResp.GetKey()
+	if key == nil {
+		writeJSON(w, http.StatusNotFound, errorBody{
+			Status:  "error",
+			Code:    "KEY_NOT_FOUND",
+			Message: "La llave indicada no existe o no esta disponible.",
+		})
+		return
+	}
+	schoolID := key.GetSchoolId()
+	if schoolID == "" {
+		// Key en modo LAN (sin colegio asignado) → no podemos
+		// auto-registrar porque el estudiante necesita pertenecer a un
+		// colegio concreto para que dashboards / reportes funcionen.
+		writeJSON(w, http.StatusUnprocessableEntity, errorBody{
+			Status:  "error",
+			Code:    "KEY_HAS_NO_SCHOOL",
+			Message: "Esta llave no esta asociada a un colegio. Pedile a tu coordinador una llave de colegio.",
+		})
+		return
+	}
+
+	// 2) Delegar creacion + envio de OTP a users_service.
+	regResp, err := p.cli.Auth.RegisterStudentWithKey(r.Context(), &usersgrpcpb.RegisterStudentWithKeyRequest{
+		Email:          in.Email,
+		FirstName:      in.FirstName,
+		LastName:       in.LastName,
+		DocumentNumber: in.DocumentNumber,
+		Phone:          in.Phone,
+		SchoolId:       schoolID,
+		Ip:             clientIPFromRequest(r),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status": regResp.GetStatus(),
 	})
 }
 

@@ -3,9 +3,11 @@ package command
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"log"
 	"math/big"
+	"strings"
 	"time"
 
 	"users_service/internal/core/domain"
@@ -348,6 +350,162 @@ func (h *AuthHandler) VerifyStudentOTP(ctx context.Context, in ports.VerifyStude
 		AccessToken:  pair.AccessToken,
 		RefreshToken: pair.RefreshToken,
 	}, nil
+}
+
+// RegisterStudentWithKey crea (o reusa) un usuario estudiante asociado al
+// colegio resuelto por el caller (gateway, que valido la key antes), y
+// dispara el envio del OTP. Idempotente para emails ya existentes que
+// pertenezcan al mismo colegio.
+//
+// Errores devueltos:
+//   - domain.ErrEmailTaken: email existe pero el user NO es estudiante o
+//     pertenece a otro colegio.
+//   - domain.ErrValidation: payload invalido (email mal formado, sin
+//     school_id, sin first/last name).
+//   - domain.ErrPermGroupNotFound: el grupo "student_permissions" no
+//     existe — bug de seed o BD vacia.
+func (h *AuthHandler) RegisterStudentWithKey(
+	ctx context.Context,
+	in ports.RegisterStudentWithKeyInput,
+) (*ports.RegisterStudentWithKeyOutput, error) {
+	email := in.Email.Normalize()
+	if err := email.Validate(); err != nil {
+		return nil, err
+	}
+	if string(in.SchoolID) == "" {
+		return nil, fmt.Errorf("school_id is required")
+	}
+	firstName := strings.TrimSpace(in.FirstName)
+	lastName := strings.TrimSpace(in.LastName)
+	if firstName == "" || lastName == "" {
+		return nil, fmt.Errorf("first_name and last_name are required")
+	}
+
+	// Resuelve el grupo de estudiantes por code estable. Si no existe es
+	// bug de seed (migration 014) — devolvemos error visible para que el
+	// operador se entere.
+	group, err := h.perms.FindGroupByCode(ctx, "student_permissions")
+	if err != nil {
+		return nil, fmt.Errorf("student_permissions group: %w", err)
+	}
+
+	existing, lookupErr := h.users.FindByEmail(ctx, email)
+	if lookupErr == nil && existing != nil {
+		// Email ya existe → validar que sea estudiante del mismo colegio.
+		isStudent, err := h.classifier.IsStudent(ctx, existing.ID)
+		if err != nil {
+			return nil, err
+		}
+		if !isStudent {
+			// Email registrado pero no es estudiante (asesor / admin /
+			// coordinador). No autorizamos register-with-key para no
+			// permitir secuestro de cuentas.
+			return nil, domain.ErrEmailTaken
+		}
+		if string(existing.SchoolID) != string(in.SchoolID) {
+			// Estudiante existe pero de OTRO colegio. No le cambiamos el
+			// school_id por dentro (eso seria abuso del endpoint publico:
+			// alguien con una key de su colegio podria reasignar a otro
+			// estudiante a su colegio). Bloqueamos.
+			return nil, domain.ErrEmailTaken
+		}
+		// Reactivar si estaba desactivado (estudiante volvio).
+		if !existing.Active {
+			if err := h.users.SetActive(ctx, existing.ID, true); err != nil {
+				return nil, err
+			}
+		}
+		// Mismo flujo que RequestStudentOTP: generar codigo, persistir,
+		// disparar envio.
+		if err := h.sendStudentOTP(ctx, existing, in.IP); err != nil {
+			return nil, err
+		}
+		return &ports.RegisterStudentWithKeyOutput{
+			Status: "exists",
+			UserID: existing.ID,
+		}, nil
+	}
+	if lookupErr != nil && !errors.Is(lookupErr, domain.ErrUserNotFound) {
+		return nil, lookupErr
+	}
+
+	// User no existe → crearlo. Password random (16 chars) porque el
+	// estudiante no la va a usar nunca; el login es solo por OTP.
+	randomPwd, err := generateRandomPassword(16)
+	if err != nil {
+		return nil, err
+	}
+	pwdHash, err := h.hasher.Hash(randomPwd)
+	if err != nil {
+		return nil, err
+	}
+	u := &domain.User{
+		Email:          email,
+		PasswordHash:   pwdHash,
+		FirstName:      firstName,
+		LastName:       lastName,
+		DocumentNumber: strings.TrimSpace(in.DocumentNumber),
+		Phone:          strings.TrimSpace(in.Phone),
+		SchoolID:       in.SchoolID,
+		Active:         true,
+		CreatedAt:      time.Now(),
+	}
+	id, err := h.users.Save(ctx, u)
+	if err != nil {
+		return nil, err
+	}
+	u.ID = id
+
+	// Asignar el grupo student_permissions. Si esto falla, eliminar el
+	// user que acabamos de crear seria lo ideal, pero el repo no expone
+	// Delete (y deactivate dejaria basura). En la practica AssignGroup
+	// solo falla si el grupo no existe o por error de BD; ambos son
+	// problemas operativos que ameritan investigar, no rollback.
+	if err := h.perms.AssignGroupToUser(ctx, id, group.ID); err != nil {
+		return nil, err
+	}
+
+	if err := h.sendStudentOTP(ctx, u, in.IP); err != nil {
+		return nil, err
+	}
+
+	return &ports.RegisterStudentWithKeyOutput{
+		Status: "created",
+		UserID: id,
+	}, nil
+}
+
+// sendStudentOTP centraliza la generacion + persist + envio del OTP.
+// Lo extraemos de RequestStudentOTP para que RegisterStudentWithKey lo
+// reuse sin duplicar logica.
+func (h *AuthHandler) sendStudentOTP(ctx context.Context, u *domain.User, ip string) error {
+	if err := h.otpRepo.InvalidateAllForUser(ctx, u.ID); err != nil {
+		return err
+	}
+	plain, err := generateOTPCode()
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	tok := &domain.OTPToken{
+		ID:          uuid.NewString(),
+		UserID:      u.ID,
+		CodeHash:    h.otpHasher.Hash(plain),
+		IssuedAt:    now,
+		ExpiresAt:   now.Add(h.otpTTL),
+		Attempts:    0,
+		MaxAttempts: 3,
+		IP:          ip,
+	}
+	if err := h.otpRepo.Save(ctx, tok); err != nil {
+		return err
+	}
+	if err := h.otpSender.Send(ctx, string(u.Email), plain); err != nil {
+		log.Printf("sendStudentOTP: send failed for user=%s err=%v", u.ID, err)
+		_ = h.otpRepo.Consume(ctx, tok.ID)
+		return domain.ErrOTPDeliveryFail
+	}
+	return nil
 }
 
 // generateOTPCode produce 6 dígitos numéricos cripto-aleatorios.

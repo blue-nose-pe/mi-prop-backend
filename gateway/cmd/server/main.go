@@ -66,6 +66,7 @@ func main() {
 		"/api/auth/refresh",
 		"/api/auth/student/request-otp",
 		"/api/auth/student/verify-otp",
+		"/api/auth/student/register-with-key",
 		"/health",
 	}
 

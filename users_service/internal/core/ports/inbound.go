@@ -69,6 +69,10 @@ type AuthCommands interface {
 	RequestStudentOTP(ctx context.Context, in RequestStudentOTPInput) error
 	// VerifyStudentOTP: valida el OTP y emite par access+refresh JWT.
 	VerifyStudentOTP(ctx context.Context, in VerifyStudentOTPInput) (*LoginOutput, error)
+	// RegisterStudentWithKey: crea (o reusa) un usuario estudiante asociado
+	// al colegio resuelto por una key valida. Dispara OTP al final. El
+	// caller (gateway) ya valido la key + resolvio el school_id.
+	RegisterStudentWithKey(ctx context.Context, in RegisterStudentWithKeyInput) (*RegisterStudentWithKeyOutput, error)
 }
 
 // =============== PERMISSION ===============
@@ -287,4 +291,24 @@ type VerifyStudentOTPInput struct {
 	OTP       string // 6 dígitos
 	IP        string
 	UserAgent string
+}
+
+// RegisterStudentWithKeyInput: payload para auto-registro de estudiante.
+// El gateway ya valido el key_code y resolvio SchoolID; users_service no
+// consulta keys_service. Si el email ya existe como estudiante del mismo
+// colegio, el comando es idempotente (no crea, solo reenvia OTP).
+type RegisterStudentWithKeyInput struct {
+	Email          domain.Email
+	FirstName      string
+	LastName       string
+	DocumentNumber string
+	Phone          string
+	SchoolID       domain.SchoolID
+	IP             string
+}
+
+// RegisterStudentWithKeyOutput.Status: "created" o "exists".
+type RegisterStudentWithKeyOutput struct {
+	Status string
+	UserID domain.UserID
 }

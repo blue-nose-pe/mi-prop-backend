@@ -307,6 +307,10 @@ func (m *PermissionRepoMock) FindGroupByID(_ context.Context, _ uint32) (*domain
 	return nil, nil
 }
 
+func (m *PermissionRepoMock) FindGroupByCode(_ context.Context, _ string) (*domain.PermissionGroup, error) {
+	return nil, nil
+}
+
 func (m *PermissionRepoMock) ListGroups(_ context.Context) ([]domain.PermissionGroup, error) {
 	return nil, nil
 }

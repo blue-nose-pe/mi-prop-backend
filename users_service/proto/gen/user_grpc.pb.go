@@ -1583,12 +1583,13 @@ var PermissionGroupService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AuthService_Authenticate_FullMethodName      = "/users.v1.AuthService/Authenticate"
-	AuthService_Login_FullMethodName             = "/users.v1.AuthService/Login"
-	AuthService_Refresh_FullMethodName           = "/users.v1.AuthService/Refresh"
-	AuthService_Logout_FullMethodName            = "/users.v1.AuthService/Logout"
-	AuthService_RequestStudentOTP_FullMethodName = "/users.v1.AuthService/RequestStudentOTP"
-	AuthService_VerifyStudentOTP_FullMethodName  = "/users.v1.AuthService/VerifyStudentOTP"
+	AuthService_Authenticate_FullMethodName           = "/users.v1.AuthService/Authenticate"
+	AuthService_Login_FullMethodName                  = "/users.v1.AuthService/Login"
+	AuthService_Refresh_FullMethodName                = "/users.v1.AuthService/Refresh"
+	AuthService_Logout_FullMethodName                 = "/users.v1.AuthService/Logout"
+	AuthService_RequestStudentOTP_FullMethodName      = "/users.v1.AuthService/RequestStudentOTP"
+	AuthService_VerifyStudentOTP_FullMethodName       = "/users.v1.AuthService/VerifyStudentOTP"
+	AuthService_RegisterStudentWithKey_FullMethodName = "/users.v1.AuthService/RegisterStudentWithKey"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -1616,6 +1617,16 @@ type AuthServiceClient interface {
 	// VerifyStudentOTP valida el código y emite par access+refresh JWT.
 	// Público.
 	VerifyStudentOTP(ctx context.Context, in *VerifyStudentOTPRequest, opts ...grpc.CallOption) (*LoginResponse, error)
+	// RegisterStudentWithKey crea (o reusa) un usuario estudiante asociado
+	// al colegio de una key valida y dispara el envio del OTP. Endpoint
+	// publico (sin JWT): el control de acceso es la propia validez de la
+	// key. El gateway ya valido el key_code antes de invocarlo y resolvio
+	// el school_id correspondiente.
+	//
+	// Si el email ya existe como estudiante del mismo colegio, no crea
+	// nada — solo reenvia OTP. Si existe pero pertenece a otro rol u otro
+	// colegio, devuelve error.
+	RegisterStudentWithKey(ctx context.Context, in *RegisterStudentWithKeyRequest, opts ...grpc.CallOption) (*RegisterStudentWithKeyResponse, error)
 }
 
 type authServiceClient struct {
@@ -1686,6 +1697,16 @@ func (c *authServiceClient) VerifyStudentOTP(ctx context.Context, in *VerifyStud
 	return out, nil
 }
 
+func (c *authServiceClient) RegisterStudentWithKey(ctx context.Context, in *RegisterStudentWithKeyRequest, opts ...grpc.CallOption) (*RegisterStudentWithKeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterStudentWithKeyResponse)
+	err := c.cc.Invoke(ctx, AuthService_RegisterStudentWithKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -1711,6 +1732,16 @@ type AuthServiceServer interface {
 	// VerifyStudentOTP valida el código y emite par access+refresh JWT.
 	// Público.
 	VerifyStudentOTP(context.Context, *VerifyStudentOTPRequest) (*LoginResponse, error)
+	// RegisterStudentWithKey crea (o reusa) un usuario estudiante asociado
+	// al colegio de una key valida y dispara el envio del OTP. Endpoint
+	// publico (sin JWT): el control de acceso es la propia validez de la
+	// key. El gateway ya valido el key_code antes de invocarlo y resolvio
+	// el school_id correspondiente.
+	//
+	// Si el email ya existe como estudiante del mismo colegio, no crea
+	// nada — solo reenvia OTP. Si existe pero pertenece a otro rol u otro
+	// colegio, devuelve error.
+	RegisterStudentWithKey(context.Context, *RegisterStudentWithKeyRequest) (*RegisterStudentWithKeyResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -1738,6 +1769,9 @@ func (UnimplementedAuthServiceServer) RequestStudentOTP(context.Context, *Reques
 }
 func (UnimplementedAuthServiceServer) VerifyStudentOTP(context.Context, *VerifyStudentOTPRequest) (*LoginResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method VerifyStudentOTP not implemented")
+}
+func (UnimplementedAuthServiceServer) RegisterStudentWithKey(context.Context, *RegisterStudentWithKeyRequest) (*RegisterStudentWithKeyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RegisterStudentWithKey not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -1868,6 +1902,24 @@ func _AuthService_VerifyStudentOTP_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_RegisterStudentWithKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterStudentWithKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).RegisterStudentWithKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_RegisterStudentWithKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).RegisterStudentWithKey(ctx, req.(*RegisterStudentWithKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1898,6 +1950,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "VerifyStudentOTP",
 			Handler:    _AuthService_VerifyStudentOTP_Handler,
+		},
+		{
+			MethodName: "RegisterStudentWithKey",
+			Handler:    _AuthService_RegisterStudentWithKey_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
