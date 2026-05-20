@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.13.0
+  version: 0.14.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -940,6 +940,149 @@ paths:
                 category: "PERMISSION_DENIED"
         '429': { $ref: '#/components/responses/RateLimit' }
 
+  /api/auth/student/register-with-key:
+    post:
+      tags: [Auth]
+      summary: Auto-registro de estudiante con llave válida
+      description: |
+        Crea (o reusa) un usuario estudiante asociado al colegio que
+        resuelve la llave y dispara el envío del OTP. Pensado para el
+        flujo público donde el estudiante NO fue cargado previamente por
+        el coordinador y se da de alta a sí mismo con el código de la
+        llave que su asesor distribuyó.
+
+        Flujo interno:
+
+        1. **`keys_service.ValidateKey(key_code)`** — read-only; verifica
+           que la llave exista, esté `active=true`, dentro de
+           `valid_from`/`valid_to` y con `current_uses < max_uses`. NO
+           consume aforo.
+        2. **`users_service.AuthService.RegisterStudentWithKey`** —
+           idempotente:
+           - si el email existe como estudiante del **mismo `school_id`**
+             que la llave: reusa el user y solo dispara OTP nuevo
+             (`status: "exists"`);
+           - si el email existe como otro rol o pertenece a otro colegio:
+             responde `409 EMAIL_TAKEN` (anti-hijack);
+           - si no existe: crea user con `permission_group =
+             student_permissions`, `school_id` resuelto de la llave,
+             password random (nunca se usa — login es siempre OTP),
+             `active=true`. Responde `status: "created"`.
+        3. **OTP** se envía igual que `/api/auth/student/request-otp`
+           (mismo TTL 10 min, mismo workflow HubSpot, mismas reglas de
+           rate limit).
+
+        **Llaves LAN** (sin `school_id`) NO son aceptadas porque el
+        estudiante necesita pertenecer a un colegio concreto para que
+        dashboards y reportes funcionen. Responde `422 KEY_HAS_NO_SCHOOL`.
+      security: []  # público
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, first_name, last_name, key_code]
+              properties:
+                email:           { type: string, format: email }
+                first_name:      { type: string, example: "María" }
+                last_name:       { type: string, example: "González" }
+                document_number: { type: string, description: "DNI opcional; recomendado para dedup", example: "70123456" }
+                phone:           { type: string, description: "Teléfono opcional", example: "+51999111222" }
+                key_code:        { type: string, example: "SI-000018" }
+            example:
+              email: "maria.gonzalez@gmail.com"
+              first_name: "María"
+              last_name: "González"
+              document_number: "70123456"
+              phone: "+51999111222"
+              key_code: "SI-000018"
+      responses:
+        '200':
+          description: Usuario creado (o reusado) — OTP disparado por correo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [created, exists]
+                    description: |
+                      `created` si se insertó un user nuevo;
+                      `exists` si el email ya pertenecía a un estudiante
+                      del mismo colegio (solo se reenvió OTP).
+              example: { status: "created" }
+        '400':
+          description: Body inválido o faltan campos obligatorios
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "VALIDATION_ERROR"
+                message: "email, first_name, last_name y key_code son obligatorios"
+                category: "VALIDATION_ERROR"
+        '404':
+          description: La llave no existe
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "KEY_NOT_FOUND"
+                message: "key not found"
+                category: "NOT_FOUND"
+        '409':
+          description: Email pertenece a otro rol o a otro colegio (anti-hijack)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "EMAIL_TAKEN"
+                message: "email already in use"
+                category: "CONFLICT"
+        '410':
+          description: Llave vencida o agotada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              examples:
+                expired:
+                  value:
+                    status: "error"
+                    code: "KEY_EXPIRED"
+                    message: "key is outside its validity window"
+                    category: "GONE"
+                exhausted:
+                  value:
+                    status: "error"
+                    code: "KEY_EXHAUSTED"
+                    message: "key reached its max_uses cap"
+                    category: "GONE"
+        '422':
+          description: Llave en modo LAN — no asignable para auto-registro
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "KEY_HAS_NO_SCHOOL"
+                message: "esta llave no esta asociada a un colegio"
+                category: "VALIDATION_ERROR"
+        '429': { $ref: '#/components/responses/RateLimit' }
+        '500':
+          description: Falló el envío del OTP por HubSpot Automation
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "OTP_DELIVERY_FAIL"
+                message: "could not dispatch OTP email"
+                category: "INTERNAL_ERROR"
+
   /api/auth/logout:
     post:
       tags: [Auth]
@@ -1648,10 +1791,17 @@ paths:
         Patrón `filterGroups` (AND dentro, OR entre grupos), `properties`,
         `sorts`, paginación. Permiso `db_users.users.read`.
 
-        **Propiedades whitelist**: `email`, `first_name`, `last_name`,
-        `document_number`, `school_id`, `active`, `last_access_at`,
-        `created_at`, `updated_at`. `password_hash` no aparece — no es
-        seleccionable ni filtrable.
+        **Propiedades whitelist**: `id`, `email`, `first_name`,
+        `last_name`, `document_number`, `phone`, `school_id`, `active`,
+        `last_access_at`, `created_at`, `updated_at`. `password_hash` no
+        aparece — no es seleccionable ni filtrable.
+
+        `id` es **filtrable pero NO seleccionable**: el UUID siempre
+        viaja en el sobre como `__id`, no como columna del payload.
+        Sirve para hidrataciones por lote tipo `id IN (uuid1, uuid2,
+        ...)` desde otros servicios (p. ej. `exams_service` devuelve
+        attempts con `user_id` y el front pide los nombres en una sola
+        request).
       requestBody:
         required: true
         content:
@@ -1675,6 +1825,14 @@ paths:
                     - filters:
                         - { property_name: "document_number", operator: "STARTS_WITH", values: ["7012"] }
                   limit: 10
+              hidrataci_n_por_lote_de_ids:
+                summary: Hidratar usuarios por lote de IDs (caso típico - resolver nombres desde lista de user_id devuelta por otro servicio)
+                value:
+                  filter_groups:
+                    - filters:
+                        - { property_name: "id", operator: "IN", values: ["7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e", "8d224a72-9b2e-5f3b-ac4d-2e3b4c5d6e7f"] }
+                  properties: ["email","first_name","last_name","document_number","phone"]
+                  limit: 50
       responses:
         '200':
           description: Resultados paginados
@@ -3590,6 +3748,134 @@ paths:
                     started_at: "2026-05-09T14:22:00Z"
                     submitted_at: "2026-05-09T15:18:42Z"
 
+  /api/attempts/by-key/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+        description: UUID de la `key` (no el `code`).
+    get:
+      tags: [Attempts]
+      summary: Listar attempts iniciados con una key
+      description: |
+        Lista los intentos creados contra una key específica. Lo usa el
+        front del asesor (`/app/simulacrum/view` y similares) para
+        mostrar quién rindió un examen disparado desde un código de
+        acceso concreto.
+
+        Excluye attempts en modo admin (los que se crean sin `key_id`
+        porque el admin no necesita validar aforo).
+
+        Ordenado por `started_at DESC`. La ruta vive bajo
+        `/api/attempts/by-key/...` y NO `/api/keys/{id}/attempts` para
+        evitar conflicto con `/api/keys/by-code/{code}` en el matching
+        del ServeMux 1.22+.
+
+        Permiso requerido: `db_exams.attempt.read`.
+      responses:
+        '200':
+          description: Lista
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Attempt' }
+                  total: { type: integer, description: "len(items) — sin paginación todavía" }
+              example:
+                items:
+                  - id: "f3b9e07c-1234-4def-9876-abcdef012345"
+                    exam_id: "0ef21a5c-7d8b-4a31-90b2-6a1e2d3f4a5b"
+                    user_id: "7c114f61-8a1d-4e2a-9b3c-1f2a3b4c5d6e"
+                    key_id: "1a2b3c4d-5e6f-7890-abcd-ef0123456789"
+                    score: 17
+                    max_score: 20
+                    started_at: "2026-05-09T14:22:00Z"
+                    submitted_at: "2026-05-09T15:18:42Z"
+                total: 1
+
+  /api/answers/by-attempt/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+        description: UUID del `exam_attempt`.
+    get:
+      tags: [Attempts]
+      summary: Detalle por-pregunta de un attempt (enriched answers)
+      description: |
+        Devuelve cada respuesta del attempt con `question_text`,
+        `option_text`, `option_is_correct` y `question_category`. Lo
+        usa el modal "Resultados del estudiante" para:
+
+        - **simulacro**: contar `correctas`/`incorrectas` reales (en
+          vez de inferirlas de `score`/`max_score`, que solo
+          coincidiría si todas las preguntas valen 1 punto);
+        - **vocacional / habitos**: agrupar por `question_category`
+          y calcular niveles ALTA/MEDIA/BAJA por rasgo (RIASEC,
+          Estilos, Canales).
+
+        La ruta vive bajo `/api/answers/by-attempt/...` y NO bajo
+        `/api/attempts/{id}/answers` para evitar conflicto con
+        `/api/attempts/by-key/{id}` en el matching del ServeMux 1.22+
+        (ambos patrones matcheaban `/api/attempts/by-key/answers` sin
+        ser uno estrictamente más específico → panic en startup).
+
+        Permiso requerido: `db_exams.attempt.read`.
+      responses:
+        '200':
+          description: Lista de respuestas enriquecidas (vacío si attempt sin answers).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        question_id:       { type: string, format: uuid }
+                        question_text:     { type: string }
+                        question_category: { type: string, description: "ej ACTIVO / REFLEXIVO / R / I / MATEMATICA / ..." }
+                        option_id:         { type: string, format: uuid }
+                        option_text:       { type: string }
+                        option_sort_order: { type: integer }
+                        option_is_correct: { type: boolean }
+                        answered_at:       { type: string, format: date-time, nullable: true }
+              example:
+                items:
+                  - question_id: "11111111-1111-1111-1111-111111111111"
+                    question_text: "¿Cuál es la capital de Perú?"
+                    question_category: "GENERAL"
+                    option_id: "22222222-2222-2222-2222-222222222222"
+                    option_text: "Lima"
+                    option_sort_order: 0
+                    option_is_correct: true
+                    answered_at: "2026-05-09T14:25:00Z"
+                  - question_id: "33333333-3333-3333-3333-333333333333"
+                    question_text: "Prefiero trabajar en equipo organizando ideas."
+                    question_category: "ACTIVO"
+                    option_id: "44444444-4444-4444-4444-444444444444"
+                    option_text: "Totalmente de acuerdo"
+                    option_sort_order: 3
+                    option_is_correct: true
+                    answered_at: "2026-05-09T14:26:00Z"
+        '404':
+          description: Attempt no encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example:
+                status: "error"
+                code: "NOT_FOUND"
+                message: "attempt not found"
+                category: "NOT_FOUND"
+
   # ──────────────────────────────────────────────────────────────────
   # KEYS
   # ──────────────────────────────────────────────────────────────────
@@ -5236,9 +5522,25 @@ paths:
     get:
       tags: [Analytics]
       summary: Exportar dashboard de colegio a Excel
+      description: |
+        Genera un workbook XLSX con **dos hojas**:
+
+        - **`Colegio`** — resumen agregado: nombre del colegio, total
+          estudiantes, total attempts y breakdown por tipo de examen
+          (`Attempts`, `Score promedio`, `Score máximo prom.`).
+        - **`Estudiantes`** — un row por cada estudiante activo del
+          colegio: `Nombre`, `Apellido`, `DNI`, `Correo`, `Telefono`,
+          `ID`. Ordenada por apellido + nombre para que el archivo abra
+          en un orden útil sin necesidad de re-sortear en Excel.
+
+        El listado se construye con `users_service.SearchUsers` filtrando
+        por `school_id` + `active=true` (límite 200; si el colegio supera
+        ese número hay que paginar, hoy ningún colegio lo hace).
+
+        Permiso requerido: `analytics.dashboard.read`.
       responses:
         '200':
-          description: Archivo XLSX
+          description: Archivo XLSX (workbook con `Colegio` + `Estudiantes`)
           content:
             application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
               schema: { type: string, format: binary }
