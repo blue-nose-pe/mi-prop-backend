@@ -76,12 +76,14 @@ func mapKeys(items []*keyspb.Key) []ports.UpstreamKey {
 			continue
 		}
 		// Mismo caveat que en grpc_exams.GetExam: el proto Key expone
-		// exam_type_id (int IDENTITY), no el code estable. Sin un RPC
-		// para resolver id->code dejamos el campo vacío. Best-effort.
+		// exam_type_id (int IDENTITY), no el code estable. Lo mapeamos
+		// con la misma tabla del seed 008 (1=vocacional, 2=simulacro,
+		// 3=habitos) — sin esto el export XLSX del asesor mostraba la
+		// columna "Tipo de examen" vacia para todas sus keys.
 		out = append(out, ports.UpstreamKey{
 			ID:           k.GetId(),
 			Code:         k.GetCode(),
-			ExamTypeCode: "", // ver comentario arriba
+			ExamTypeCode: examTypeCodeFromID(k.GetExamTypeId()),
 			SchoolID:     domain.SchoolID(k.GetSchoolId()),
 			AsesorUserID: domain.UserID(k.GetAsesorUserId()),
 			CurrentUses:  k.GetCurrentUses(),
