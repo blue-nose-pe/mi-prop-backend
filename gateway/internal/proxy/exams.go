@@ -77,6 +77,17 @@ func (p *Proxy) RegisterExams(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/attempts/{id}/finish", p.finishAttempt)
 	mux.HandleFunc("GET /api/users/{id}/attempts", p.listAttemptsByUser)
 	mux.HandleFunc("GET /api/exams/{id}/attempts", p.listAttemptsByExam)
+	// Detalle por-pregunta del intento: question_text + option_text +
+	// option_is_correct. Lo usa el modal "Resultados del estudiante" para
+	// computar correctas/incorrectas en cliente sin cargar el banco de
+	// preguntas completo aparte.
+	//
+	// Vive bajo /api/answers/by-attempt/{id} y NO bajo
+	// /api/attempts/{id}/answers porque ese ultimo entra en conflicto con
+	// /api/attempts/by-key/{id} en el matching del ServeMux 1.22+ (ambos
+	// matchean /api/attempts/by-key/answers, sin que uno sea mas
+	// especifico que el otro).
+	mux.HandleFunc("GET /api/answers/by-attempt/{id}", p.listAttemptAnswers)
 	// `/api/attempts/by-key/{id}` se registra en RegisterKeys porque el
 	// path /api/keys/{id}/attempts choca con /api/keys/by-code/{code} en
 	// el matching del ServeMux 1.22+.
@@ -538,6 +549,34 @@ func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, a := range resp.GetItems() {
 		items = append(items, protoAttemptToJSON(a))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// listAttemptAnswers → AttemptService.ListEnrichedAnswers. Cada item del
+// array trae question_text, option_text y option_is_correct, suficiente
+// para que el front compute correctas/incorrectas + render por modulo
+// sin volver a tocar el banco de preguntas.
+func (p *Proxy) listAttemptAnswers(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Attempts.ListEnrichedAnswers(r.Context(), &examsgrpcpb.ListEnrichedAnswersRequest{
+		AttemptId: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, a := range resp.GetItems() {
+		items = append(items, map[string]any{
+			"question_id":       a.GetQuestionId(),
+			"question_text":     a.GetQuestionText(),
+			"question_category": a.GetQuestionCategory(),
+			"option_id":         a.GetOptionId(),
+			"option_text":       a.GetOptionText(),
+			"option_sort_order": a.GetOptionSortOrder(),
+			"option_is_correct": a.GetOptionIsCorrect(),
+			"answered_at":       optionalTimestamp(a.GetAnsweredAt()),
+		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
