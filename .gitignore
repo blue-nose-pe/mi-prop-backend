@@ -49,7 +49,6 @@ secrets.yaml
 # ------ Notas internas y artefactos de trabajo ------
 # Cualquier nota operativa que tenga IDs internos de Azure
 # (tenant, subscription, resource ids) o lista de UUIDs de prueba.
-# NO entregar al cliente. Cada quien arma el suyo.
 GUIA_INSTALACION_CLIENTE.md
 seed-demo-ids.json
 BWd*

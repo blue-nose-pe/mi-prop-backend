@@ -142,16 +142,48 @@ func (h *UserHandler) RevokePermissionGroup(ctx context.Context, req *pb.RevokeG
 
 // ---------- Permission queries ----------
 
+// ListUserPermissions permite que un user lea SUS PROPIOS permisos sin
+// necesitar `db_users.permission.read` (el front lo llama post-login).
+// Para leer los permisos de OTRO user, igual se exige la permission.
+// Sin esta excepcion el flow de simulacro publico se rompe: el estudiante
+// nunca tiene `db_users.permission.read`, la llamada devolvia 403 y el
+// front se quedaba colgado en el loading.
 func (h *UserHandler) ListUserPermissions(ctx context.Context, req *pb.ListPermsRequest) (*pb.ListPermsResponse, error) {
-	codes, err := h.permQrys.ListUserPermissions(ctx, domain.UserID(req.GetUserId()))
+	caller := callerID(ctx)
+	target := domain.UserID(req.GetUserId())
+	if caller == "" {
+		return nil, apperr.ToGRPC(ctx, domain.ErrInvalidPassword) // generico
+	}
+	if target != caller {
+		// Lectura de permisos de OTRO user → exigir permission explicita.
+		ok, perr := h.permQrys.HasPermission(ctx, caller, "db_users.permission.read")
+		if perr != nil || !ok {
+			return nil, apperr.ToGRPC(ctx, domain.ErrForbidden)
+		}
+	}
+	codes, err := h.permQrys.ListUserPermissions(ctx, target)
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}
 	return &pb.ListPermsResponse{Codes: codes}, nil
 }
 
+// HasPermission — misma logica de autorizacion que ListUserPermissions:
+// un user puede chequear sus propios permisos; para chequear los de otro
+// se exige `db_users.permission.read`.
 func (h *UserHandler) HasPermission(ctx context.Context, req *pb.HasPermissionRequest) (*pb.HasPermissionResponse, error) {
-	ok, err := h.permQrys.HasPermission(ctx, domain.UserID(req.GetUserId()), req.GetCode())
+	caller := callerID(ctx)
+	target := domain.UserID(req.GetUserId())
+	if caller == "" {
+		return nil, apperr.ToGRPC(ctx, domain.ErrInvalidPassword)
+	}
+	if target != caller {
+		ok, perr := h.permQrys.HasPermission(ctx, caller, "db_users.permission.read")
+		if perr != nil || !ok {
+			return nil, apperr.ToGRPC(ctx, domain.ErrForbidden)
+		}
+	}
+	ok, err := h.permQrys.HasPermission(ctx, target, req.GetCode())
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}

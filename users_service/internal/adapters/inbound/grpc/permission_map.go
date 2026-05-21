@@ -30,8 +30,11 @@ var PermissionMap = map[string]string{
 	// permissions / groups
 	"/users.v1.UserService/AssignPermissionGroup":  "db_users.permission_group.write",
 	"/users.v1.UserService/RevokePermissionGroup":  "db_users.permission_group.write",
-	"/users.v1.UserService/ListUserPermissions":    "db_users.permission.read",
-	"/users.v1.UserService/HasPermission":          "db_users.permission.read",
+	// ListUserPermissions y HasPermission NO van en este map: los students
+	// necesitan poder leer SUS PROPIOS permisos (el front los consulta
+	// despues del login OTP para saber que UI mostrar). El check de
+	// "tu propio user_id o tenes db_users.permission.read" se hace dentro
+	// del handler (user_handler.go:ListUserPermissions/HasPermission).
 
 	// schools
 	"/users.v1.SchoolService/GetSchool":             "db_users.school.read",
