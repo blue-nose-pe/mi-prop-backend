@@ -69,9 +69,14 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 			}
 			s := getOrInit(stats, ex.ExamTypeCode)
 			s.Attempts++
-			if a.Score != nil && a.MaxScore != nil {
-				s.AvgScore += float64(*a.Score)
-				s.AvgMaxScore += float64(*a.MaxScore)
+			// Bug 7 fix: normalizar a porcentaje antes de promediar.
+			// Antes se sumaban scores absolutos y max_scores absolutos
+			// independientemente, lo que mezclaba exams de escalas distintas
+			// (un simulacro 30pt + un simulacro 100pt daban un "avg" sin
+			// sentido). Ahora cada attempt aporta su % al promedio.
+			if a.Score != nil && a.MaxScore != nil && *a.MaxScore > 0 {
+				s.AvgScore += (float64(*a.Score) / float64(*a.MaxScore)) * 100
+				s.AvgMaxScore += 100
 			}
 			totalAttempts++
 		}

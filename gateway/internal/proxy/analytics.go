@@ -54,6 +54,18 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 // Shape: misma estructura que AsesorDashboardResponse pero con totales
 // globales, sin asesor_id/asesor_name (en su lugar lleva total_asesores).
 func (p *Proxy) getGlobalDashboard(w http.ResponseWriter, r *http.Request) {
+	// Bug 2 fix: gating superadmin. El dashboard global lista TODOS los
+	// asesores con sus metricas, datos sensibles del equipo entero de UCSP.
+	// Antes cualquier user autenticado (incluidos estudiantes) podia
+	// invocarlo y obtener nombres + emails + scores de todo el staff.
+	if !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status:  "error",
+			Code:    "FORBIDDEN",
+			Message: "Solo superadmin puede ver el dashboard global.",
+		})
+		return
+	}
 	ctx := r.Context()
 	// 1. Lista de asesores (grupo 3).
 	asesores, err := p.cli.PermGroups.ListGroupUsers(ctx, &usersgrpcpb.ListGroupUsersRequest{

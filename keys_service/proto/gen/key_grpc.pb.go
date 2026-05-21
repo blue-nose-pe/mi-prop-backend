@@ -20,16 +20,17 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KeyService_GenerateKey_FullMethodName    = "/keys.v1.KeyService/GenerateKey"
-	KeyService_UpdateKey_FullMethodName      = "/keys.v1.KeyService/UpdateKey"
-	KeyService_DeactivateKey_FullMethodName  = "/keys.v1.KeyService/DeactivateKey"
-	KeyService_ValidateKey_FullMethodName    = "/keys.v1.KeyService/ValidateKey"
-	KeyService_IncrementUsage_FullMethodName = "/keys.v1.KeyService/IncrementUsage"
-	KeyService_GetKey_FullMethodName         = "/keys.v1.KeyService/GetKey"
-	KeyService_GetByCode_FullMethodName      = "/keys.v1.KeyService/GetByCode"
-	KeyService_ListByAsesor_FullMethodName   = "/keys.v1.KeyService/ListByAsesor"
-	KeyService_ListByColegio_FullMethodName  = "/keys.v1.KeyService/ListByColegio"
-	KeyService_SearchKeys_FullMethodName     = "/keys.v1.KeyService/SearchKeys"
+	KeyService_GenerateKey_FullMethodName          = "/keys.v1.KeyService/GenerateKey"
+	KeyService_UpdateKey_FullMethodName            = "/keys.v1.KeyService/UpdateKey"
+	KeyService_DeactivateKey_FullMethodName        = "/keys.v1.KeyService/DeactivateKey"
+	KeyService_ValidateKey_FullMethodName          = "/keys.v1.KeyService/ValidateKey"
+	KeyService_IncrementUsage_FullMethodName       = "/keys.v1.KeyService/IncrementUsage"
+	KeyService_GetKey_FullMethodName               = "/keys.v1.KeyService/GetKey"
+	KeyService_GetByCode_FullMethodName            = "/keys.v1.KeyService/GetByCode"
+	KeyService_ListByAsesor_FullMethodName         = "/keys.v1.KeyService/ListByAsesor"
+	KeyService_ListByColegio_FullMethodName        = "/keys.v1.KeyService/ListByColegio"
+	KeyService_ListUserIDsByColegio_FullMethodName = "/keys.v1.KeyService/ListUserIDsByColegio"
+	KeyService_SearchKeys_FullMethodName           = "/keys.v1.KeyService/SearchKeys"
 )
 
 // KeyServiceClient is the client API for KeyService service.
@@ -45,6 +46,11 @@ type KeyServiceClient interface {
 	GetByCode(ctx context.Context, in *GetByCodeRequest, opts ...grpc.CallOption) (*KeyResponse, error)
 	ListByAsesor(ctx context.Context, in *ListByAsesorRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
 	ListByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
+	// Devuelve distinct user_ids que rindieron tests usando keys de este
+	// colegio. Sirve al gateway para hacer el listado de "Estudiantes del
+	// Colegio X" aditivo: incluir tambien a quienes consumieron aforo de las
+	// keys del colegio, aunque su users.school_id apunte a otro.
+	ListUserIDsByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListUserIDsResponse, error)
 	SearchKeys(ctx context.Context, in *common.SearchRequest, opts ...grpc.CallOption) (*common.SearchResponse, error)
 }
 
@@ -146,6 +152,16 @@ func (c *keyServiceClient) ListByColegio(ctx context.Context, in *ListByColegioR
 	return out, nil
 }
 
+func (c *keyServiceClient) ListUserIDsByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListUserIDsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListUserIDsResponse)
+	err := c.cc.Invoke(ctx, KeyService_ListUserIDsByColegio_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *keyServiceClient) SearchKeys(ctx context.Context, in *common.SearchRequest, opts ...grpc.CallOption) (*common.SearchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(common.SearchResponse)
@@ -169,6 +185,11 @@ type KeyServiceServer interface {
 	GetByCode(context.Context, *GetByCodeRequest) (*KeyResponse, error)
 	ListByAsesor(context.Context, *ListByAsesorRequest) (*ListKeysResponse, error)
 	ListByColegio(context.Context, *ListByColegioRequest) (*ListKeysResponse, error)
+	// Devuelve distinct user_ids que rindieron tests usando keys de este
+	// colegio. Sirve al gateway para hacer el listado de "Estudiantes del
+	// Colegio X" aditivo: incluir tambien a quienes consumieron aforo de las
+	// keys del colegio, aunque su users.school_id apunte a otro.
+	ListUserIDsByColegio(context.Context, *ListByColegioRequest) (*ListUserIDsResponse, error)
 	SearchKeys(context.Context, *common.SearchRequest) (*common.SearchResponse, error)
 	mustEmbedUnimplementedKeyServiceServer()
 }
@@ -206,6 +227,9 @@ func (UnimplementedKeyServiceServer) ListByAsesor(context.Context, *ListByAsesor
 }
 func (UnimplementedKeyServiceServer) ListByColegio(context.Context, *ListByColegioRequest) (*ListKeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListByColegio not implemented")
+}
+func (UnimplementedKeyServiceServer) ListUserIDsByColegio(context.Context, *ListByColegioRequest) (*ListUserIDsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListUserIDsByColegio not implemented")
 }
 func (UnimplementedKeyServiceServer) SearchKeys(context.Context, *common.SearchRequest) (*common.SearchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchKeys not implemented")
@@ -393,6 +417,24 @@ func _KeyService_ListByColegio_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KeyService_ListUserIDsByColegio_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListByColegioRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KeyServiceServer).ListUserIDsByColegio(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KeyService_ListUserIDsByColegio_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KeyServiceServer).ListUserIDsByColegio(ctx, req.(*ListByColegioRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KeyService_SearchKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(common.SearchRequest)
 	if err := dec(in); err != nil {
@@ -453,6 +495,10 @@ var KeyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListByColegio",
 			Handler:    _KeyService_ListByColegio_Handler,
+		},
+		{
+			MethodName: "ListUserIDsByColegio",
+			Handler:    _KeyService_ListUserIDsByColegio_Handler,
 		},
 		{
 			MethodName: "SearchKeys",

@@ -17,6 +17,11 @@ service KeyService {
   rpc GetByCode     (GetByCodeRequest)    returns (KeyResponse);
   rpc ListByAsesor  (ListByAsesorRequest) returns (ListKeysResponse);
   rpc ListByColegio (ListByColegioRequest)returns (ListKeysResponse);
+  // Devuelve distinct user_ids que rindieron tests usando keys de este
+  // colegio. Sirve al gateway para hacer el listado de "Estudiantes del
+  // Colegio X" aditivo: incluir tambien a quienes consumieron aforo de las
+  // keys del colegio, aunque su users.school_id apunte a otro.
+  rpc ListUserIDsByColegio (ListByColegioRequest) returns (ListUserIDsResponse);
   rpc SearchKeys    (common.v1.SearchRequest) returns (common.v1.SearchResponse);
 }
 
@@ -57,7 +62,10 @@ message UpdateKeyRequest {
   string section   = 3;
   google.protobuf.Timestamp valid_from = 4;
   google.protobuf.Timestamp valid_to   = 5;
-  int32  max_uses  = 6;
+  // max_uses opcional para distinguir "no provisto" (nil) de "0" (ilimitado
+  // explicito). Antes era int32 zero-value y un PATCH que solo tocaba grade
+  // dejaba max_uses=0 silenciosamente, destruyendo el aforo.
+  optional int32 max_uses = 6;
 }
 
 message DeactivateKeyRequest { string id = 1; }
@@ -67,6 +75,7 @@ message GetByCodeRequest     { string code = 1; }
 message ListByAsesorRequest  { string asesor_user_id = 1; }
 message ListByColegioRequest { string school_id = 1; }
 message ListKeysResponse     { repeated Key items = 1; }
+message ListUserIDsResponse  { repeated string user_ids = 1; }
 message KeyResponse          { Key key = 1; }
 message EmptyResponse        {}
 

@@ -140,6 +140,18 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 		return att, nil // idempotente: ya estaba finalizado
 	}
 
+	// Cargar exam para saber el exam_type. El scoring academico (sumar
+	// is_correct) solo aplica a tests con concepto de "respuesta correcta"
+	// — simulacro y habitos. Para vocacional las opciones son preferencias
+	// RIASEC sin correcta/incorrecta; aplicarles la formula academica
+	// produce scores aleatorios sin sentido (Bug B). El reporte vocacional
+	// real lo hace analytics_service.GetReporteEstudiante agrupando por
+	// categoria R/I/A/S/E/C.
+	e, err := h.exams.FindByID(ctx, att.ExamID)
+	if err != nil {
+		return nil, err
+	}
+
 	// Calcular score: cargar exam_questions (puntos por pregunta) y
 	// respuestas; cruzar con question_option.is_correct.
 	eqs, err := h.examQuestions.List(ctx, att.ExamID)
@@ -159,15 +171,24 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 	}
 
 	var score int32
-	for _, a := range answers {
-		opts, err := h.options.ListByQuestion(ctx, a.QuestionID)
-		if err != nil {
-			return nil, err
-		}
-		for _, o := range opts {
-			if o.ID == a.OptionID && o.IsCorrect {
-				score += pointsByQuestion[a.QuestionID]
-				break
+	// Vocacional (exam_type_id=1) NO se puntua con is_correct. Score=0,
+	// max_score=0 dejan claro al cliente que no aplica formula academica.
+	// El analytics_service tiene el RPC dedicado GetReporteEstudiante para
+	// la lectura RIASEC.
+	const examTypeVocacional = int32(1)
+	if e.ExamTypeID == examTypeVocacional {
+		maxScore = 0
+	} else {
+		for _, a := range answers {
+			opts, err := h.options.ListByQuestion(ctx, a.QuestionID)
+			if err != nil {
+				return nil, err
+			}
+			for _, o := range opts {
+				if o.ID == a.OptionID && o.IsCorrect {
+					score += pointsByQuestion[a.QuestionID]
+					break
+				}
 			}
 		}
 	}

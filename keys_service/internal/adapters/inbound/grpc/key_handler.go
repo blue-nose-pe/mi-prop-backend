@@ -55,7 +55,7 @@ func (h *KeyHandler) UpdateKey(ctx context.Context, req *pb.UpdateKeyRequest) (*
 		ID:      domain.KeyID(req.GetId()),
 		Grade:   req.GetGrade(),
 		Section: req.GetSection(),
-		MaxUses: req.GetMaxUses(),
+		MaxUses: req.MaxUses, // puntero: nil=no provisto, *=actualizar
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()
@@ -129,6 +129,18 @@ func (h *KeyHandler) ListByColegio(ctx context.Context, req *pb.ListByColegioReq
 		return nil, apperr.ToGRPC(ctx, err)
 	}
 	return toListResponse(items), nil
+}
+
+func (h *KeyHandler) ListUserIDsByColegio(ctx context.Context, req *pb.ListByColegioRequest) (*pb.ListUserIDsResponse, error) {
+	ids, err := h.qrys.ListUserIDsByColegio(ctx, domain.SchoolID(req.GetSchoolId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, string(id))
+	}
+	return &pb.ListUserIDsResponse{UserIds: out}, nil
 }
 
 func (h *KeyHandler) SearchKeys(ctx context.Context, req *commonpb.SearchRequest) (*commonpb.SearchResponse, error) {

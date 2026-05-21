@@ -99,13 +99,15 @@ func (h *SyncHandler) SendOTP(ctx context.Context, in ports.SendOTPInput) error 
 	}
 	contactID, err := h.hs.UpsertContactByEmail(ctx, props, in.Email)
 	if err != nil {
-		// Best-effort: si HubSpot esta caido o rate-limited igual disparamos
-		// el webhook con el OTP en el payload, por si la Automation lo lee
-		// de ahi. No bloqueamos el flujo del estudiante. Pero loggeamos:
-		// el error en este punto explica por que el contacto queda vacio
-		// en CRM (typico tras GDPR-delete: la prop email queda en blacklist
-		// temporal y create devuelve un 4xx silencioso).
+		// Bug 10 fix: si el upsert falla la prop `otp_estudiante` NO queda
+		// seteada en HubSpot. El Workflow de Automation lee esa prop para
+		// armar el cuerpo del email — sin ella, el email NO se manda. Antes
+		// se loggeaba y seguia disparando el webhook (que en HubSpot va a
+		// fallar silenciosamente o mandar email vacio). Ahora propagamos el
+		// error para que users_service invalide el OTP persistido y muestre
+		// error consistente al cliente (en su sender que llama esta RPC).
 		log.Printf("[SendOTP] UpsertContactByEmail FAIL email=%s err=%v", in.Email, err)
+		return err
 	}
 	// 1b) Asociar Contact <-> Company del colegio (object 0-2). P1 lo hacia
 	//     en createHubspotContacto.js (associations.v4.basicApi.createDefault)

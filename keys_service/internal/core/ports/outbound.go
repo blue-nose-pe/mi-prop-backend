@@ -15,6 +15,12 @@ type KeyRepository interface {
 	SetActive(ctx context.Context, id domain.KeyID, active bool) error
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
+	// ListUserIDsByColegio: distinct user_ids que usaron keys del colegio.
+	// JOIN key_usage <-> [key] filtrando key.school_id = X. Lo usa el
+	// gateway para hacer "Estudiantes de Colegio X" aditivo: incluir
+	// alumnos que rindieron via keys del colegio aunque users.school_id
+	// apunte a otro lado.
+	ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
 	// IncrementUses atómico — UPDATE ... SET current_uses = current_uses + 1
 	// con WHERE que valida el límite. Devuelve filas afectadas.

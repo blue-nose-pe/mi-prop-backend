@@ -84,8 +84,8 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 	if in.ValidTo != nil {
 		k.ValidTo = in.ValidTo
 	}
-	if in.MaxUses >= 0 {
-		k.MaxUses = in.MaxUses
+	if in.MaxUses != nil {
+		k.MaxUses = *in.MaxUses
 	}
 	if k.ValidFrom != nil && k.ValidTo != nil && !k.ValidFrom.Before(*k.ValidTo) {
 		return nil, domain.ErrInvalidDateRange

@@ -34,6 +34,10 @@ import (
 	usersgrpcpb "users_service/proto/gen"
 	userscommonpb "users_service/proto/gen/common"
 
+	keysgrpcpb "keys_service/proto/gen"
+
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"google.golang.org/grpc/metadata"
 )
 
@@ -758,7 +762,56 @@ func (p *Proxy) listStudentsByColegio(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+
+	// Bug A fix: listado aditivo. Ademas de users.school_id=X, incluimos a
+	// estudiantes que rindieron tests con keys de este colegio aunque su
+	// users.school_id apunte a otro (caso: alumno se registro con una key
+	// de otro colegio antes, pero este asesor le dio su key local y la uso).
+	extra := p.fetchStudentsByKeyAttempts(r.Context(), schoolID, resp.GetResults())
+	merged := append(resp.GetResults(), extra...)
 	writeJSON(w, http.StatusOK, searchResponseToJSON[*userscommonpb.SearchResult, *userscommonpb.Paging](
-		resp.GetTotal(), resp.GetResults(), resp.GetPaging(),
+		resp.GetTotal()+uint32(len(extra)), merged, resp.GetPaging(),
 	))
 }
+
+// fetchStudentsByKeyAttempts trae users que usaron keys de este colegio
+// pero cuyo users.school_id apunta a otro lado. Best-effort: si falla
+// alguna llamada, devuelve vacio (no rompe el listado principal).
+func (p *Proxy) fetchStudentsByKeyAttempts(ctx context.Context, schoolID string, alreadyIn []*userscommonpb.SearchResult) []*userscommonpb.SearchResult {
+	uidsResp, err := p.cli.Keys.ListUserIDsByColegio(ctx, &keysgrpcpb.ListByColegioRequest{SchoolId: schoolID})
+	if err != nil || uidsResp == nil {
+		return nil
+	}
+	seen := make(map[string]bool, len(alreadyIn))
+	for _, u := range alreadyIn {
+		seen[u.GetId()] = true
+	}
+	var out []*userscommonpb.SearchResult
+	for _, uid := range uidsResp.GetUserIds() {
+		if seen[uid] {
+			continue
+		}
+		uresp, err := p.cli.Users.GetUser(ctx, &usersgrpcpb.GetUserRequest{Id: uid})
+		if err != nil || uresp.GetUser() == nil {
+			continue
+		}
+		u := uresp.GetUser()
+		props, _ := structpb.NewStruct(map[string]interface{}{
+			"email":            u.GetEmail(),
+			"first_name":       u.GetFirstName(),
+			"last_name":        u.GetLastName(),
+			"document_number":  u.GetDocumentNumber(),
+			"phone":            u.GetPhone(),
+			"school_id":        u.GetSchoolId(),
+			"active":           u.GetActive(),
+			"via_key_attempts": true, // hint para el front: viene via attempts
+		})
+		out = append(out, &userscommonpb.SearchResult{
+			Id:         u.GetId(),
+			Properties: props,
+		})
+		seen[uid] = true
+	}
+	return out
+}
+

@@ -286,12 +286,14 @@ func (h *AuthHandler) RequestStudentOTP(ctx context.Context, in ports.RequestStu
 	log.Printf("[DEBUG OTP] email=%s otp=%s user=%s — REMOVER tras fix HubSpot", string(u.Email), plain, u.ID)
 
 	if err := h.otpSender.Send(ctx, string(u.Email), plain); err != nil {
-		// Si el envío falla NO retornamos error al cliente: persistimos un
-		// log + invalidamos el OTP para que el estudiante pida otro.
-		// (alternativa: marcar el row como failed y retentar.)
+		// Bug 4 fix (anti-enumeration): NO devolver error al cliente.
+		// Antes retornaba ErrOTPDeliveryFail (500) para emails de estudiantes
+		// validos cuando el envio fallaba, mientras emails inexistentes
+		// devolvian 200 OK. Un atacante podia diferenciar (estudiante real
+		// con falla) de (no existe). Ahora tragamos el error, log interno,
+		// y el cliente recibe 200 OK uniforme.
 		log.Printf("RequestStudentOTP: send failed for user=%s err=%v", u.ID, err)
 		_ = h.otpRepo.Consume(ctx, tok.ID)
-		return domain.ErrOTPDeliveryFail
 	}
 	return nil
 }
@@ -405,17 +407,24 @@ func (h *AuthHandler) RegisterStudentWithKey(
 			return nil, err
 		}
 		if !isStudent {
-			// Email registrado pero no es estudiante (asesor / admin /
-			// coordinador). No autorizamos register-with-key para no
-			// permitir secuestro de cuentas.
-			return nil, domain.ErrEmailTaken
+			// Bug 5 fix (anti-enumeration): emails registrados como NO-estudiante
+			// (asesor/admin/coordinador) antes devolvian ErrEmailTaken (409),
+			// emails libres devolvian "created" (200), y estudiantes del mismo
+			// colegio "exists" (200). Un atacante podia descubrir si un email
+			// era staff probando con su propia key. Ahora devolvemos "exists"
+			// silencioso (no disparamos OTP) y loggeamos internamente.
+			log.Printf("RegisterStudentWithKey: email %s registered as non-student, ignoring", email)
+			return &ports.RegisterStudentWithKeyOutput{Status: "exists", UserID: existing.ID}, nil
 		}
 		if string(existing.SchoolID) != string(in.SchoolID) {
-			// Estudiante existe pero de OTRO colegio. No le cambiamos el
-			// school_id por dentro (eso seria abuso del endpoint publico:
-			// alguien con una key de su colegio podria reasignar a otro
-			// estudiante a su colegio). Bloqueamos.
-			return nil, domain.ErrEmailTaken
+			// Bug 5 fix: misma idea — estudiante de otro colegio devuelve
+			// "exists" sin disparar OTP (no migramos school_id por seguridad
+			// — ver comentario hijack). El user real igual puede usar
+			// /api/auth/student/request-otp + /verify-otp con su colegio
+			// original.
+			log.Printf("RegisterStudentWithKey: email %s belongs to other school, ignoring (existing=%s, requested=%s)",
+				email, existing.SchoolID, in.SchoolID)
+			return &ports.RegisterStudentWithKeyOutput{Status: "exists", UserID: existing.ID}, nil
 		}
 		// Reactivar si estaba desactivado (estudiante volvio).
 		if !existing.Active {

@@ -26,6 +26,7 @@ type KeyQueries interface {
 	GetByCode(ctx context.Context, code string) (*domain.Key, error)
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
+	ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
 }
 
@@ -48,7 +49,10 @@ type UpdateKeyInput struct {
 	Section   string
 	ValidFrom *time.Time
 	ValidTo   *time.Time
-	MaxUses   int32
+	// MaxUses es puntero para distinguir "no provisto" (nil) de "0 =
+	// ilimitado" (valor explicito). Antes era int32 zero-value y un PATCH
+	// que solo tocaba grade convertia la key en aforo infinito.
+	MaxUses *int32
 }
 
 type IncrementUsageInput struct {

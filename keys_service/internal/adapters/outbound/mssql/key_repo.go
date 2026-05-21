@@ -129,6 +129,32 @@ func (r *KeyRepo) ListByColegio(ctx context.Context, schoolID domain.SchoolID) (
 		string(schoolID))
 }
 
+// ListUserIDsByColegio devuelve los user_ids distintos que usaron keys
+// de este colegio (cualquier herramienta). JOIN key_usage <-> [key]
+// con filtro key.school_id. Excluye key_usage huerfanos sin user_id.
+func (r *KeyRepo) ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error) {
+	const q = `
+		SELECT DISTINCT CONVERT(NVARCHAR(36), ku.user_id)
+		  FROM key_usage ku
+		  JOIN [key] k ON ku.key_id = k.id
+		 WHERE k.school_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		   AND ku.user_id IS NOT NULL`
+	rows, err := r.db.QueryContext(ctx, q, string(schoolID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.UserID
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, domain.UserID(id))
+	}
+	return out, rows.Err()
+}
+
 func (r *KeyRepo) list(ctx context.Context, query, arg string) ([]domain.Key, error) {
 	rows, err := r.db.QueryContext(ctx, query, arg)
 	if err != nil {

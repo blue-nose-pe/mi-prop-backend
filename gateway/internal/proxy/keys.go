@@ -139,7 +139,9 @@ type updateKeyRequest struct {
 	Section   string `json:"section"`
 	ValidFrom string `json:"valid_from"`
 	ValidTo   string `json:"valid_to"`
-	MaxUses   int32  `json:"max_uses"`
+	// MaxUses opcional: nil = no tocar; *0 = ilimitado; *N = N usos.
+	// Antes era int32 y un PATCH sin max_uses lo seteaba a 0 silenciosamente.
+	MaxUses *int32 `json:"max_uses"`
 }
 
 func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
@@ -164,7 +166,7 @@ func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
 		Section:   in.Section,
 		ValidFrom: from,
 		ValidTo:   to,
-		MaxUses:   in.MaxUses,
+		MaxUses:   in.MaxUses, // *int32 → proto optional max_uses
 	})
 	if err != nil {
 		writeGRPCError(w, err)
