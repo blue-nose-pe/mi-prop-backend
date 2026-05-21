@@ -53,11 +53,17 @@ func (h *SyncHandler) UpsertContact(ctx context.Context, c domain.Contact) (doma
 }
 
 func (h *SyncHandler) SendOTP(ctx context.Context, in ports.SendOTPInput) error {
-	// 1) Si encontramos el contact, escribimos la propiedad otp_estudiante
-	//    para que la automation tenga el dato disponible. P1 lo hacía;
-	//    seguimos el patrón.
-	if recordID, err := h.hs.FindContactByEmail(ctx, in.Email); err == nil && recordID != "" {
-		_ = h.hs.UpdateContact(ctx, recordID, map[string]string{"otp_estudiante": in.OTP})
+	// 1) Garantizamos que el contacto exista con otp_estudiante seteado.
+	//    Antes solo escribiamos la prop SI el contacto ya existia: para
+	//    estudiantes nuevos (registro publico via key) el contacto no
+	//    estaba en HubSpot todavia, la prop quedaba vacia y la Automation
+	//    no encontraba el OTP -> el email nunca salia. Upsert lo arregla
+	//    creando el contacto on-the-fly con la prop seteada.
+	if _, err := h.hs.UpsertContactByEmail(ctx, map[string]string{"otp_estudiante": in.OTP}, in.Email); err != nil {
+		// Best-effort: si HubSpot esta caido o rate-limited igual disparamos
+		// el webhook con el OTP en el payload, por si la Automation lo lee
+		// de ahi. No bloqueamos el flujo del estudiante.
+		_ = err
 	}
 	// 2) Disparar webhook trigger (HubSpot Automation manda el email).
 	return h.otp.Trigger(ctx, in.Email, in.OTP)

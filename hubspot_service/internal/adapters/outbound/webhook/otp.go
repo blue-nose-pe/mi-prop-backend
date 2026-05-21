@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
@@ -59,9 +60,17 @@ func (o *OTP) Trigger(ctx context.Context, email, otp string) error {
 	}
 	defer resp.Body.Close()
 
+	body, _ := io.ReadAll(resp.Body)
+	// Loggear siempre el resultado del webhook para diagnosticar entregas
+	// que no llegan al inbox. HubSpot devuelve 202 cuando acepta el
+	// trigger, pero acepta != entrega: la Automation puede fallar despues
+	// (filtros de marketing-opt-in, contacto bounced, etc.) sin avisarnos.
+	// Imprimimos email + status + body para correlacionarlo con quejas
+	// del usuario "no me llega el codigo".
 	if resp.StatusCode != http.StatusAccepted {
-		body, _ := io.ReadAll(resp.Body)
+		log.Printf("[otp-webhook] FAIL email=%s status=%d body=%s", email, resp.StatusCode, string(body))
 		return fmt.Errorf("%w: status=%d body=%s", domain.ErrOTPDeliveryFail, resp.StatusCode, string(body))
 	}
+	log.Printf("[otp-webhook] OK accepted email=%s status=%d body=%s", email, resp.StatusCode, string(body))
 	return nil
 }

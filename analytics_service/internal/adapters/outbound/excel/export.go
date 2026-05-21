@@ -156,12 +156,20 @@ func (e *Exporter) ExportColegioComparativo(ctx context.Context, examTypeCode st
 		return nil, err
 	}
 	rows := [][]any{
-		{"Colegio", "Score promedio", "Attempts"},
+		{"Colegio", "Score promedio", "Intentos"},
 	}
 	for _, it := range c.Items {
 		rows = append(rows, []any{it.SchoolName, it.AvgScore, it.Attempts})
 	}
-	return writeSheet("Comparativo", rows)
+	// Ajustes cosméticos: columna A ancha (nombres largos como "Inst. Nacional
+	// Nuestra Señora..." se truncaban) y formato 0.00 en columna B para que
+	// 63.3333333 salga como 63.33 igual que el resto.
+	return writeMultiSheet([]xlsxSheet{{
+		Name: "Comparativo",
+		Rows: rows,
+		ColWidths: map[string]float64{"A": 40, "B": 16, "C": 12},
+		ColNumFmt: map[string]string{"B": "0.00"},
+	}})
 }
 
 // ExportReporteEstudiante construye un workbook multi-hoja con el reporte
@@ -306,9 +314,15 @@ func writeSheet(sheet string, rows [][]any) ([]byte, error) {
 // xlsxSheet describe una hoja a generar: nombre + filas. Lo usa
 // writeMultiSheet para construir workbooks con varias pestañas en una sola
 // pasada (reporte por estudiante, por ejemplo).
+//
+// ColWidths y ColNumFmt son opcionales y se aplican solo a las columnas
+// listadas (key = letra de columna, ej "A", "B"). Las demás columnas
+// quedan con el default de excelize.
 type xlsxSheet struct {
-	Name string
-	Rows [][]any
+	Name      string
+	Rows      [][]any
+	ColWidths map[string]float64
+	ColNumFmt map[string]string
 }
 
 // writeMultiSheet genera un .xlsx en memoria con N hojas. La primera hoja
@@ -329,6 +343,20 @@ func writeMultiSheet(sheets []xlsxSheet) ([]byte, error) {
 		for j, row := range s.Rows {
 			cell := fmt.Sprintf("A%d", j+1)
 			if err := f.SetSheetRow(s.Name, cell, &row); err != nil {
+				return nil, err
+			}
+		}
+		for col, w := range s.ColWidths {
+			if err := f.SetColWidth(s.Name, col, col, w); err != nil {
+				return nil, err
+			}
+		}
+		for col, fmtCode := range s.ColNumFmt {
+			styleID, err := f.NewStyle(&excelize.Style{CustomNumFmt: &fmtCode})
+			if err != nil {
+				return nil, err
+			}
+			if err := f.SetColStyle(s.Name, col, styleID); err != nil {
 				return nil, err
 			}
 		}

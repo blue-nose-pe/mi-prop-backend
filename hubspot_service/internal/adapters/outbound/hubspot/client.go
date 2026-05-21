@@ -60,6 +60,35 @@ func (c *Client) UpsertContactByDNI(ctx context.Context, props map[string]string
 	return c.createContact(ctx, props)
 }
 
+// UpsertContactByEmail busca un contacto por email; si existe lo actualiza
+// con los props recibidos, si no lo crea. Mismo patrón que UpsertContactByDNI
+// pero indexando por email — pensado para flujos donde no se tiene DNI
+// (registro publico de estudiante con key) y solo se cuenta con el correo.
+func (c *Client) UpsertContactByEmail(ctx context.Context, props map[string]string, email string) (domain.RecordID, error) {
+	id, err := c.FindContactByEmail(ctx, email)
+	if err != nil {
+		return "", err
+	}
+	if id != "" {
+		if err := c.UpdateContact(ctx, id, props); err != nil {
+			return "", err
+		}
+		return id, nil
+	}
+	// HubSpot requiere email para crear contactos via /contacts; lo
+	// inyectamos si el caller no lo paso en props (en SendOTP solo
+	// pasa otp_estudiante).
+	if _, ok := props["email"]; !ok {
+		merged := make(map[string]string, len(props)+1)
+		for k, v := range props {
+			merged[k] = v
+		}
+		merged["email"] = email
+		props = merged
+	}
+	return c.createContact(ctx, props)
+}
+
 func (c *Client) createContact(ctx context.Context, props map[string]string) (domain.RecordID, error) {
 	var resp objectResponse
 	if err := c.do(ctx, http.MethodPost, "/crm/v3/objects/contacts",

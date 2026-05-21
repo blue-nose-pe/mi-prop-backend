@@ -17,10 +17,13 @@
 //   GET    /api/users/{id}/permissions/check
 //   GET    /api/schools/{id}
 //   GET    /api/asesores/{id}/colegios     - colegios asignados al asesor (SCD-2 vigente)
+//   POST   /api/asesores/students          - asesor crea estudiante en uno de sus colegios
 //   GET    /api/colegios/{id}/students     - estudiantes activos del colegio
 package proxy
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"net/http"
 	"strconv"
 
@@ -66,6 +69,7 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 
 	// Sub-recursos por id de asesor / colegio.
 	mux.HandleFunc("GET /api/asesores/{id}/colegios", p.listColegiosByAsesor)
+	mux.HandleFunc("POST /api/asesores/students", p.createStudentByAsesor)
 	mux.HandleFunc("GET /api/colegios/{id}/students", p.listStudentsByColegio)
 }
 
@@ -563,6 +567,106 @@ func (p *Proxy) assignAsesorToSchool(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// createStudentByAsesor — POST /api/asesores/students
+//
+// Crea un usuario con permission_group_id=1 (student) dentro de uno de los
+// colegios asignados al asesor que hace la request. Pensado para que el
+// asesor de un colegio pueda dar de alta estudiantes manualmente sin
+// depender del flujo de auto-registro con key publica.
+//
+// Body: {"school_id", "email", "first_name", "last_name", "document_number"?, "phone"?}
+//
+// Autorizacion:
+//   - JWT obligatorio (no esta en la skip-list).
+//   - Si el caller NO es superadmin: school_id DEBE estar entre los
+//     colegios asignados al asesor (ListSchoolsByAsesor). Si no, 403.
+//   - Superadmin puede crear estudiantes en cualquier colegio (uso ops).
+//
+// Password: se genera una random de 48 chars hex y se descarta. El
+// estudiante hace login solo via OTP (request-otp + verify-otp), nunca
+// con password. Esto matchea el comportamiento de RegisterStudentWithKey.
+func (p *Proxy) createStudentByAsesor(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		SchoolID       string `json:"school_id"`
+		Email          string `json:"email"`
+		FirstName      string `json:"first_name"`
+		LastName       string `json:"last_name"`
+		DocumentNumber string `json:"document_number"`
+		Phone          string `json:"phone"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	if in.SchoolID == "" || in.Email == "" || in.FirstName == "" || in.LastName == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status:  "error",
+			Code:    "VALIDATION_ERROR",
+			Message: "school_id, email, first_name y last_name son obligatorios",
+		})
+		return
+	}
+
+	asesorID := userIDFromContext(r)
+	if asesorID == "" {
+		writeJSON(w, http.StatusUnauthorized, errorBody{Status: "error", Code: "UNAUTHORIZED", Message: "no auth"})
+		return
+	}
+
+	// Autorizacion por colegio: si el caller NO es superadmin, validamos
+	// que el school_id este en su lista de asignaciones SCD-2 vigentes.
+	// Esto bloquea que un asesor cree estudiantes en colegios ajenos.
+	if !isSuperadminContext(r) {
+		sresp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{
+			AsesorId: asesorID,
+		})
+		if err != nil {
+			writeGRPCError(w, err)
+			return
+		}
+		found := false
+		for _, s := range sresp.GetItems() {
+			if s.GetId() == in.SchoolID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			writeJSON(w, http.StatusForbidden, errorBody{
+				Status:  "error",
+				Code:    "FORBIDDEN_SCHOOL",
+				Message: "no podes crear estudiantes en un colegio que no te esta asignado",
+			})
+			return
+		}
+	}
+
+	// Password descartable (24 bytes -> 48 chars hex). El estudiante no
+	// la usa nunca; su login es OTP-only.
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorBody{Status: "error", Code: "INTERNAL", Message: "rand"})
+		return
+	}
+	randomPwd := hex.EncodeToString(buf)
+
+	resp, err := p.cli.Users.CreateUser(r.Context(), &usersgrpcpb.CreateUserRequest{
+		Email:             in.Email,
+		Password:          randomPwd,
+		FirstName:         in.FirstName,
+		LastName:          in.LastName,
+		DocumentNumber:    in.DocumentNumber,
+		Phone:             in.Phone,
+		SchoolId:          in.SchoolID,
+		PermissionGroupId: 1, // student_permissions (= /api/students shortcut)
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"user": protoUserToJSON(resp.GetUser())})
 }
 
 // listStudentsByColegio — GET /api/colegios/{id}/students

@@ -37,6 +37,7 @@ func New(c *Clients) *Proxy { return &Proxy{cli: c} }
 func (p *Proxy) RegisterAll(mux *http.ServeMux) {
 	p.RegisterAuth(mux)
 	p.RegisterHealth(mux)
+	p.RegisterCareers(mux)
 	p.RegisterUsers(mux)
 	p.RegisterVisitas(mux)
 	p.RegisterPermissionGroups(mux)

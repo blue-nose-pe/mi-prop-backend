@@ -14,6 +14,11 @@ import (
 type HubspotClient interface {
 	// UpsertContactByDNI: busca por DNI, crea si no existe, actualiza si sí.
 	UpsertContactByDNI(ctx context.Context, props map[string]string, dni string) (domain.RecordID, error)
+	// UpsertContactByEmail: misma semantica que ByDNI pero buscando por email.
+	// Lo usa SendOTP para garantizar que el contacto exista (con la prop
+	// otp_estudiante) antes de disparar el webhook, sino la Automation de
+	// HubSpot no encuentra a quien mandarle el correo y el OTP nunca llega.
+	UpsertContactByEmail(ctx context.Context, props map[string]string, email string) (domain.RecordID, error)
 	UpdateContact(ctx context.Context, recordID domain.RecordID, props map[string]string) error
 	FindContactByDNI(ctx context.Context, dni string) (domain.RecordID, error)
 	FindContactByEmail(ctx context.Context, email string) (domain.RecordID, error)

@@ -2283,6 +2283,81 @@ paths:
                     items: { $ref: '#/components/schemas/User' }
                   total: { type: integer }
 
+  /api/asesores/students:
+    post:
+      tags: [Users]
+      summary: Asesor crea estudiante en uno de sus colegios
+      description: |
+        Crea un usuario con `permission_group_id=1` (estudiante) dentro de
+        uno de los colegios asignados al asesor que hace la request.
+        Pensado para que el asesor de un colegio pueda dar de alta
+        estudiantes manualmente, sin esperar al flujo público de
+        auto-registro con key.
+
+        **Autorización:**
+        - JWT obligatorio.
+        - Si el caller NO es `superadmin`, el `school_id` debe estar entre
+          los colegios asignados al asesor (assignment SCD-2 vigente). Si
+          no, responde `403 FORBIDDEN_SCHOOL`.
+        - Superadmin puede crear estudiantes en cualquier colegio.
+
+        **Password:** la cuenta se crea con una password aleatoria de 48
+        chars hex que se descarta. El estudiante hace login solo vía OTP
+        (`/api/auth/student/request-otp` + `/api/auth/student/verify-otp`),
+        nunca con password. Idéntico al comportamiento del flujo
+        `register-with-key`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [school_id, email, first_name, last_name]
+              properties:
+                school_id:
+                  type: string
+                  format: uuid
+                  description: "Colegio donde se da de alta. Debe pertenecer al asesor (o ser superadmin)."
+                email:
+                  type: string
+                  format: email
+                first_name:
+                  type: string
+                last_name:
+                  type: string
+                document_number:
+                  type: string
+                  description: "DNI / documento; opcional."
+                phone:
+                  type: string
+                  description: "Opcional."
+            example:
+              school_id: "8f9c5a40-1f12-46d3-9ad6-0b3d6e7a9e51"
+              email: "estudiante.nuevo@ucsp.edu.pe"
+              first_name: "Lucia"
+              last_name: "Quispe"
+              document_number: "72100012"
+              phone: "+51987654321"
+      responses:
+        '201':
+          description: Estudiante creado.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: '#/components/schemas/User' }
+        '400':
+          description: Body invalido (faltan campos obligatorios).
+        '401':
+          description: Sin JWT.
+        '403':
+          description: |
+            `FORBIDDEN_SCHOOL` — el `school_id` no es uno de los colegios
+            asignados al asesor que hace la request.
+        '409':
+          description: Email ya existe.
+
   /api/coordinadores:
     get:
       tags: [Users]
