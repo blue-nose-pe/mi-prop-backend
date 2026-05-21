@@ -19,6 +19,12 @@ type HubspotClient interface {
 	// otp_estudiante) antes de disparar el webhook, sino la Automation de
 	// HubSpot no encuentra a quien mandarle el correo y el OTP nunca llega.
 	UpsertContactByEmail(ctx context.Context, props map[string]string, email string) (domain.RecordID, error)
+	// AssociateContactToCompany crea la relacion default Contact <-> Company
+	// (object types 0-1 y 0-2). La usa SendOTP despues del upsert cuando
+	// el caller provee el record_id del colegio (school.hubspot_record_id),
+	// para que el contacto aparezca con la Company correspondiente en el
+	// sidebar de HubSpot — mismo patron que P1 (createHubspotContacto.js).
+	AssociateContactToCompany(ctx context.Context, contactID, companyID domain.RecordID) error
 	UpdateContact(ctx context.Context, recordID domain.RecordID, props map[string]string) error
 	FindContactByDNI(ctx context.Context, dni string) (domain.RecordID, error)
 	FindContactByEmail(ctx context.Context, email string) (domain.RecordID, error)

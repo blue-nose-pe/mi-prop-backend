@@ -190,6 +190,11 @@ message School {
   string hubspot_record_id = 7;
   string city              = 8;
   string category          = 9;
+  // INT IDENTITY (migration 020). Lo usa la integracion con HubSpot
+  // donde la prop custom mi_proposito___id_colegio esta tipada como
+  // INTEGER (heredado de P1 que usaba MySQL autoincrement). NUNCA es PK
+  // semantica — id (UUID) sigue siendo la PK.
+  int32  int_id            = 10;
 }
 
 // AuthService — separado de UserService porque los endpoints de auth

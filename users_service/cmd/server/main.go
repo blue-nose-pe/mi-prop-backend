@@ -135,7 +135,7 @@ func main() {
 
 	// ---------- 3. CORE — CQRS: commands y queries son piezas separadas ----------
 	userCmds := command.NewUserHandler(userRepo, permRepo, cache, hasher, hubspotSync)
-	authCmds := command.NewAuthHandler(userRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier)
+	authCmds := command.NewAuthHandler(userRepo, schoolRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier)
 	permCmds := command.NewPermissionHandler(userRepo, permRepo)
 	permGroupCmds := command.NewPermissionGroupHandler(permRepo)
 	assignmentCmds := command.NewAssignmentHandler(userRepo, assignmentRepo)
@@ -273,4 +273,8 @@ var _ ports.OTPSender = noopOTPSender{}
 func (noopOTPSender) Send(_ context.Context, email, otp string) error {
 	log.Printf("[otpsender:noop] would send OTP %q to %q", otp, email)
 	return nil
+}
+
+func (n noopOTPSender) SendWithContact(ctx context.Context, in ports.OTPSendInput) error {
+	return n.Send(ctx, in.Email, in.PlainOTP)
 }

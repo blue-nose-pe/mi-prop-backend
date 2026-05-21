@@ -20,6 +20,7 @@ func NewSchoolRepo(db *sql.DB) *SchoolRepo { return &SchoolRepo{db: db} }
 
 func (r *SchoolRepo) FindByID(ctx context.Context, id domain.SchoolID) (*domain.School, error) {
 	const q = `SELECT CONVERT(NVARCHAR(36), id),
+	                  int_id,
 	                  CONVERT(NVARCHAR(36), user_id),
 	                  name, ISNULL(city, ''), ISNULL(category, ''),
 	                  active, created_at, updated_at,
@@ -34,7 +35,7 @@ func (r *SchoolRepo) FindByID(ctx context.Context, id domain.SchoolID) (*domain.
 		hubspotID string
 	)
 	err := r.db.QueryRowContext(ctx, q, string(id)).
-		Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID)
+		Scan(&idStr, &s.IntID, &userIDStr, &s.Name, &s.City, &s.Category, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrSchoolNotFound
 	}

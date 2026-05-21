@@ -25,6 +25,7 @@ import (
 //     para estudiantes (OTP por email vía HubSpot webhook).
 type AuthHandler struct {
 	users        ports.UserRepository
+	schools      ports.SchoolRepository // para resolver school.IntID en sendStudentOTPFull
 	perms        ports.PermissionRepository
 	cache        ports.UserCache
 	hasher       ports.PasswordHasher
@@ -42,6 +43,7 @@ var _ ports.AuthCommands = (*AuthHandler)(nil)
 
 func NewAuthHandler(
 	users ports.UserRepository,
+	schools ports.SchoolRepository,
 	perms ports.PermissionRepository,
 	cache ports.UserCache,
 	hasher ports.PasswordHasher,
@@ -55,6 +57,7 @@ func NewAuthHandler(
 ) *AuthHandler {
 	return &AuthHandler{
 		users:        users,
+		schools:      schools,
 		perms:        perms,
 		cache:        cache,
 		hasher:       hasher,
@@ -416,8 +419,17 @@ func (h *AuthHandler) RegisterStudentWithKey(
 			}
 		}
 		// Mismo flujo que RequestStudentOTP: generar codigo, persistir,
-		// disparar envio.
-		if err := h.sendStudentOTP(ctx, existing, in.IP); err != nil {
+		// disparar envio. Pasamos los datos del payload por si son mas
+		// completos que los del user existente (ej: el front rellena
+		// document_number/phone en el re-registro y nuestra BD los tenia
+		// vacios del registro anterior).
+		if err := h.sendStudentOTPFull(ctx, existing, ports.OTPSendInput{
+			FirstName:      strings.TrimSpace(firstOrFallback(in.FirstName, existing.FirstName)),
+			LastName:       strings.TrimSpace(firstOrFallback(in.LastName, existing.LastName)),
+			DocumentNumber: strings.TrimSpace(firstOrFallback(in.DocumentNumber, existing.DocumentNumber)),
+			Phone:          strings.TrimSpace(firstOrFallback(in.Phone, existing.Phone)),
+			SchoolID:       string(existing.SchoolID),
+		}, in.IP); err != nil {
 			return nil, err
 		}
 		return &ports.RegisterStudentWithKeyOutput{
@@ -465,7 +477,13 @@ func (h *AuthHandler) RegisterStudentWithKey(
 		return nil, err
 	}
 
-	if err := h.sendStudentOTP(ctx, u, in.IP); err != nil {
+	if err := h.sendStudentOTPFull(ctx, u, ports.OTPSendInput{
+		FirstName:      firstName,
+		LastName:       lastName,
+		DocumentNumber: strings.TrimSpace(in.DocumentNumber),
+		Phone:          strings.TrimSpace(in.Phone),
+		SchoolID:       string(in.SchoolID),
+	}, in.IP); err != nil {
 		return nil, err
 	}
 
@@ -476,9 +494,20 @@ func (h *AuthHandler) RegisterStudentWithKey(
 }
 
 // sendStudentOTP centraliza la generacion + persist + envio del OTP.
-// Lo extraemos de RequestStudentOTP para que RegisterStudentWithKey lo
-// reuse sin duplicar logica.
+// Variante "minimal" — solo email + otp, sin datos del estudiante. La
+// usa RequestStudentOTP (login posterior) donde el contacto ya esta en
+// HubSpot con info completa del registro inicial.
 func (h *AuthHandler) sendStudentOTP(ctx context.Context, u *domain.User, ip string) error {
+	return h.sendStudentOTPFull(ctx, u, ports.OTPSendInput{}, ip)
+}
+
+// sendStudentOTPFull es la variante con datos del estudiante. La usa
+// RegisterStudentWithKey para que hubspot_service upsertee el contacto
+// con nombre/apellido/dni/phone, evitando que aparezca vacio en CRM.
+// Si extra.FirstName/... vienen vacios, el adapter ignora los campos
+// y la upsert solo refresca otp_estudiante (mismo efecto que el flow
+// minimal de Request OTP).
+func (h *AuthHandler) sendStudentOTPFull(ctx context.Context, u *domain.User, extra ports.OTPSendInput, ip string) error {
 	if err := h.otpRepo.InvalidateAllForUser(ctx, u.ID); err != nil {
 		return err
 	}
@@ -500,12 +529,34 @@ func (h *AuthHandler) sendStudentOTP(ctx context.Context, u *domain.User, ip str
 	if err := h.otpRepo.Save(ctx, tok); err != nil {
 		return err
 	}
-	if err := h.otpSender.Send(ctx, string(u.Email), plain); err != nil {
+	extra.Email = string(u.Email)
+	extra.PlainOTP = plain
+	// Resolver datos del colegio para que hubspot_service pueda popular
+	// la prop mi_proposito___id_colegio (INTEGER, P1 usaba autoincr de
+	// MySQL) y asociar Contact <-> Company. Best-effort: si falla la
+	// query, ambos campos quedan vacios y hubspot_service los ignora.
+	if u.SchoolID != "" && h.schools != nil {
+		if sch, err := h.schools.FindByID(ctx, u.SchoolID); err == nil && sch != nil {
+			extra.SchoolIntID = sch.IntID
+			extra.SchoolRecordID = sch.HubspotRecordID
+		}
+	}
+	if err := h.otpSender.SendWithContact(ctx, extra); err != nil {
 		log.Printf("sendStudentOTP: send failed for user=%s err=%v", u.ID, err)
 		_ = h.otpRepo.Consume(ctx, tok.ID)
 		return domain.ErrOTPDeliveryFail
 	}
 	return nil
+}
+
+// firstOrFallback devuelve a si no es vacio (tras trim), sino b. Usado
+// para preferir lo que vino del payload del request sobre lo que ya
+// estaba en BD cuando ambos coexisten (re-registro).
+func firstOrFallback(a, b string) string {
+	if strings.TrimSpace(a) != "" {
+		return a
+	}
+	return b
 }
 
 // generateOTPCode produce 6 dígitos numéricos cripto-aleatorios.

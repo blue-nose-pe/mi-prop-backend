@@ -59,12 +59,29 @@ func (g *Grpc) Close() error {
 // dejara SendOTP en su skip-list — alternativamente se inyecta un service
 // token. Por ahora se confía en el skip-list/network policy).
 func (g *Grpc) Send(ctx context.Context, email, plainOTP string) error {
+	return g.SendWithContact(ctx, ports.OTPSendInput{Email: email, PlainOTP: plainOTP})
+}
+
+// SendWithContact es la version completa: forwardea nombre/apellido/dni/
+// phone para que hubspot_service upsertee el contacto con info completa.
+// Cuando vienen vacios, el lado hubspot_service ignora la prop.
+func (g *Grpc) SendWithContact(ctx context.Context, in ports.OTPSendInput) error {
 	out := ctx
 	if md, ok := metadata.FromIncomingContext(ctx); ok {
 		if v := md.Get("x-correlation-id"); len(v) > 0 {
 			out = metadata.AppendToOutgoingContext(out, "x-correlation-id", v[0])
 		}
 	}
-	_, err := g.cli.SendOTP(out, &hubspotpb.SendOTPRequest{Email: email, Otp: plainOTP})
+	_, err := g.cli.SendOTP(out, &hubspotpb.SendOTPRequest{
+		Email:          in.Email,
+		Otp:            in.PlainOTP,
+		FirstName:      in.FirstName,
+		LastName:       in.LastName,
+		DocumentNumber: in.DocumentNumber,
+		Phone:          in.Phone,
+		SchoolId:       in.SchoolID,
+		SchoolIntId:    in.SchoolIntID,
+		SchoolRecordId: in.SchoolRecordID,
+	})
 	return err
 }

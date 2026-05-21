@@ -22,13 +22,19 @@
 package proxy
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
+	hubspotpb "hubspot_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 	userscommonpb "users_service/proto/gen/common"
+
+	"google.golang.org/grpc/metadata"
 )
 
 func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
@@ -666,6 +672,50 @@ func (p *Proxy) createStudentByAsesor(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+
+	// Hidratar el contacto en HubSpot con TODOS los props + asociacion al
+	// colegio. users_service.CreateUser dispara un upsert minimo
+	// async (email+firstname+lastname+dni) que NO incluye phone, ni los
+	// flags `origina_de_mi_proposito_`/`sincronizado_por_mi_proposito_`,
+	// ni el id del colegio, ni la asociacion Contact <-> Company. Sin esto
+	// el contacto queda incompleto en el CRM y el cliente UCSP no lo ve
+	// vinculado a su colegio. Best-effort: si HubSpot falla, el user
+	// ya esta creado y devolvemos 201 igual.
+	// La goroutine corre DESPUES de devolver el 201, asi que NO podemos
+	// reusar r.Context() (se cancela al cerrar la response). Usamos un
+	// context.Background() con timeout propio. 15s alcanza para 2 RPCs
+	// (GetSchool + SyncStudentContact) que llaman a HubSpot.
+	//
+	// Capturamos el Bearer del request antes de lanzar la goroutine y lo
+	// re-adjuntamos a la outgoing metadata, porque users_service/hubspot
+	// requieren JWT del caller (middleware.JWT lo agrega solo cuando hay
+	// un r.Context() vivo — en background no existe).
+	authz := r.Header.Get("Authorization")
+	go func(schoolID, email, firstName, lastName, docNumber, phone, authzHeader string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if authzHeader != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", authzHeader)
+		}
+		schoolResp, err := p.cli.Schools.GetSchool(ctx, &usersgrpcpb.GetSchoolRequest{Id: schoolID})
+		if err != nil || schoolResp == nil || schoolResp.GetSchool() == nil {
+			log.Printf("[asesor-create-student] GetSchool FAIL id=%s err=%v", schoolID, err)
+			return
+		}
+		s := schoolResp.GetSchool()
+		if _, err := p.cli.Hubspot.SyncStudentContact(ctx, &hubspotpb.SyncStudentContactRequest{
+			Email:          email,
+			FirstName:      firstName,
+			LastName:       lastName,
+			DocumentNumber: docNumber,
+			Phone:          phone,
+			SchoolIntId:    s.GetIntId(),
+			SchoolRecordId: s.GetHubspotRecordId(),
+		}); err != nil {
+			log.Printf("[asesor-create-student] SyncStudentContact FAIL email=%s err=%v", email, err)
+		}
+	}(in.SchoolID, in.Email, in.FirstName, in.LastName, in.DocumentNumber, in.Phone, authz)
+
 	writeJSON(w, http.StatusCreated, map[string]any{"user": protoUserToJSON(resp.GetUser())})
 }
 

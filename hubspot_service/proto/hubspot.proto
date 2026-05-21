@@ -15,6 +15,14 @@ service HubspotService {
   // Síncrono: el alumno está esperando recibir el email.
   rpc SendOTP (SendOTPRequest) returns (EmptyResponse);
 
+  // Síncrono: upsert del contacto del estudiante + asociacion a la
+  // Company del colegio, SIN disparar el webhook OTP. Lo usa el flujo
+  // "asesor crea estudiante" (POST /api/asesores/students), donde el
+  // student no necesita verificar email — solo queremos que HubSpot
+  // tenga el contacto completo + relacion al colegio para que el cliente
+  // UCSP lo vea en el CRM. Mismo set de props que SendOTP minus el OTP.
+  rpc SyncStudentContact (SyncStudentContactRequest) returns (EmptyResponse);
+
   // Asíncrono (encola para retry con backoff exponencial).
   rpc SyncExamResult (SyncExamResultRequest) returns (EmptyResponse);
   rpc UpsertSchool   (UpsertSchoolRequest)   returns (EmptyResponse);
@@ -39,7 +47,50 @@ message UpsertContactRequest {
 message UpsertContactResponse { string record_id = 1; }
 message GetContactByDNIRequest { string dni = 1; }
 
-message SendOTPRequest { string email = 1; string otp = 2; }
+// SendOTPRequest — email + otp son obligatorios. Los demas campos son
+// opcionales: cuando se proveen (tipicamente en register-with-key) se
+// upsertean en el contacto de HubSpot junto con otp_estudiante, asi el
+// contacto queda con nombre/apellido/dni/phone seteados desde el primer
+// momento en vez de aparecer vacio en el CRM hasta el primer login. En
+// request-otp (login posterior) van vacios y la upsert solo refresca
+// otp_estudiante sin pisar lo que ya estaba.
+message SendOTPRequest {
+  string email           = 1;
+  string otp             = 2;
+  string first_name      = 3;
+  string last_name       = 4;
+  string document_number = 5;
+  string phone           = 6;
+  // UUID del colegio (uso interno; NO se manda a HubSpot porque su prop
+  // mi_proposito___id_colegio esta tipada como INTEGER, no string).
+  string school_id       = 7;
+  // INT IDENTITY de la tabla school (users_service). ESTE es el que se
+  // mapea a mi_proposito___id_colegio en HubSpot, por compat con P1 que
+  // usaba autoincr de MySQL. 0 = no setear la prop.
+  int32  school_int_id   = 8;
+  // record_id de la Company del colegio en HubSpot (object type 0-2).
+  // Cuando viene no-vacio, hubspot_service crea la asociacion
+  // Contact <-> Company despues del upsert, replicando lo que P1 hacia en
+  // createHubspotContacto.js (associations.v4.basicApi.createDefault).
+  // Vacio => no se asocia (estudiante sin colegio).
+  string school_record_id = 9;
+}
+
+// SyncStudentContactRequest — payload para hidratar/actualizar un contacto
+// estudiante en HubSpot sin generar OTP. Pensado para el flujo "asesor
+// crea estudiante": copia el mismo set de props que SendOTP setea
+// (firstname/lastname/dni/phone/mi_proposito___id_colegio + flags de
+// origen) y crea la asociacion Contact <-> Company si school_record_id
+// viene seteado. Solo email es obligatorio.
+message SyncStudentContactRequest {
+  string email           = 1;
+  string first_name      = 2;
+  string last_name       = 3;
+  string document_number = 4;
+  string phone           = 5;
+  int32  school_int_id   = 6;
+  string school_record_id = 7;
+}
 
 message SyncExamResultRequest {
   string dni                = 1;

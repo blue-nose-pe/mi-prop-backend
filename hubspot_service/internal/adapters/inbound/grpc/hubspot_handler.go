@@ -51,8 +51,30 @@ func (h *HubspotHandler) GetContactByDNI(ctx context.Context, req *pb.GetContact
 
 func (h *HubspotHandler) SendOTP(ctx context.Context, req *pb.SendOTPRequest) (*pb.EmptyResponse, error) {
 	if err := h.cmds.SendOTP(ctx, ports.SendOTPInput{
-		Email: req.GetEmail(),
-		OTP:   req.GetOtp(),
+		Email:          req.GetEmail(),
+		OTP:            req.GetOtp(),
+		FirstName:      req.GetFirstName(),
+		LastName:       req.GetLastName(),
+		DocumentNumber: req.GetDocumentNumber(),
+		Phone:          req.GetPhone(),
+		SchoolID:       req.GetSchoolId(),
+		SchoolIntID:    req.GetSchoolIntId(),
+		SchoolRecordID: req.GetSchoolRecordId(),
+	}); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
+func (h *HubspotHandler) SyncStudentContact(ctx context.Context, req *pb.SyncStudentContactRequest) (*pb.EmptyResponse, error) {
+	if err := h.cmds.SyncStudentContact(ctx, ports.SyncStudentContactInput{
+		Email:          req.GetEmail(),
+		FirstName:      req.GetFirstName(),
+		LastName:       req.GetLastName(),
+		DocumentNumber: req.GetDocumentNumber(),
+		Phone:          req.GetPhone(),
+		SchoolIntID:    req.GetSchoolIntId(),
+		SchoolRecordID: req.GetSchoolRecordId(),
 	}); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}

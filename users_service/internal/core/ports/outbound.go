@@ -304,8 +304,34 @@ type OTPHasher interface {
 // OTPSender: envía el OTP al user (típicamente vía HubSpot webhook → email).
 // La implementación concreta vive en internal/adapters/outbound/otpsender
 // y dialea hubspot_service.HubspotService/SendOTP.
+//
+// El metodo "Send" minimal se mantiene por compatibilidad con tests y el
+// noop sender. SendWithContact se usa desde sendStudentOTP cuando
+// tenemos los datos del estudiante (registro o reactivacion). El adapter
+// real los forwardea al proto SendOTPRequest para que hubspot_service
+// upsertee el contacto con nombre/apellido/dni/phone, evitando que
+// quede vacio en HubSpot.
 type OTPSender interface {
 	Send(ctx context.Context, email, plainOTP string) error
+	SendWithContact(ctx context.Context, in OTPSendInput) error
+}
+
+// OTPSendInput — payload que sendStudentOTP arma con los datos del user
+// recien creado/encontrado. Email/PlainOTP son obligatorios; el resto se
+// envia cuando esta disponible.
+type OTPSendInput struct {
+	Email          string
+	PlainOTP       string
+	FirstName      string
+	LastName       string
+	DocumentNumber string
+	Phone          string
+	SchoolID       string // UUID del colegio (uso interno, no se manda a HubSpot)
+	SchoolIntID    int32  // INT IDENTITY de la tabla school; se mapea a
+	                       // mi_proposito___id_colegio (INTEGER en HubSpot)
+	SchoolRecordID string // school.hubspot_record_id; el hubspot_service lo
+	                       // usa para asociar Contact <-> Company despues
+	                       // del upsert del estudiante.
 }
 
 // StudentClassifier: decide si un user loguea via OTP (estudiante) o via

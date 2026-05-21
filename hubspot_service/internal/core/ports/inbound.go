@@ -15,14 +15,42 @@ import (
 type SyncCommands interface {
 	UpsertContact(ctx context.Context, c domain.Contact) (domain.RecordID, error)
 	SendOTP(ctx context.Context, in SendOTPInput) error
+	SyncStudentContact(ctx context.Context, in SyncStudentContactInput) error
 	EnqueueExamResult(ctx context.Context, r domain.ExamResult) error
 	EnqueueAsesor(ctx context.Context, a domain.AsesorPayload) error
 	EnqueueColegio(ctx context.Context, c domain.ColegioPayload) error
 }
 
+// SyncStudentContactInput — payload para sincronizar el contacto del
+// estudiante a HubSpot sin OTP. Reutilizado en el flujo "asesor crea
+// estudiante" (POST /api/asesores/students). Mismo upsert+associate que
+// SendOTP, sin disparar el webhook.
+type SyncStudentContactInput struct {
+	Email          string
+	FirstName      string
+	LastName       string
+	DocumentNumber string
+	Phone          string
+	SchoolIntID    int32
+	SchoolRecordID string
+}
+
 type SendOTPInput struct {
 	Email string
 	OTP   string
+	// Datos del estudiante. Opcionales en request-otp (login posterior,
+	// el contacto ya existe en HubSpot con esa info); obligatorios desde
+	// el front en register-with-key. Cuando vienen no-vacios la upsert
+	// los persiste en el contacto para que no aparezca en blanco en CRM.
+	FirstName      string
+	LastName       string
+	DocumentNumber string
+	Phone          string
+	SchoolID       string // UUID interno (no se manda a HubSpot)
+	SchoolIntID    int32  // INT IDENTITY de school; mapea a mi_proposito___id_colegio
+	SchoolRecordID string // record_id de la Company en HubSpot. Si viene
+	                       // no-vacio, asociamos Contact <-> Company despues
+	                       // del upsert (replica del P1).
 }
 
 // =============== Read side ===============

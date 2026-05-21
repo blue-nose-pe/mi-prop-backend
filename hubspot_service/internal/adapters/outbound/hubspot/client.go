@@ -64,6 +64,13 @@ func (c *Client) UpsertContactByDNI(ctx context.Context, props map[string]string
 // con los props recibidos, si no lo crea. Mismo patrón que UpsertContactByDNI
 // pero indexando por email — pensado para flujos donde no se tiene DNI
 // (registro publico de estudiante con key) y solo se cuenta con el correo.
+//
+// Maneja la race condition con otros writers (typicamente users_service
+// hace un UpsertContactByDNI paralelo en su syncToHubspotAsync): si el
+// search devuelve vacio pero el create recibe 409 "Contact already
+// exists. Existing ID: NNN", extraemos el ID y caemos a UpdateContact.
+// Sin esto, el flujo del asesor-crea-estudiante perdia las props
+// adicionales que SyncStudentContact intentaba escribir.
 func (c *Client) UpsertContactByEmail(ctx context.Context, props map[string]string, email string) (domain.RecordID, error) {
 	id, err := c.FindContactByEmail(ctx, email)
 	if err != nil {
@@ -86,7 +93,67 @@ func (c *Client) UpsertContactByEmail(ctx context.Context, props map[string]stri
 		merged["email"] = email
 		props = merged
 	}
-	return c.createContact(ctx, props)
+	rid, err := c.createContact(ctx, props)
+	if err == nil {
+		return rid, nil
+	}
+	// Race condition recovery: HubSpot puede devolver dos formatos cuando
+	// otro caller acaba de crear el contacto entre nuestro search y create:
+	//   409 CONFLICT: "Contact already exists. Existing ID: NNN"
+	//   400 VALIDATION_ERROR: "... NNN already has that value." (cuando el
+	//                          email choca contra un contact existente)
+	// Probamos extraer el ID del mensaje; si no, hacemos un re-search por
+	// email (el indexing de HubSpot suele propagar en <1s, y el contact
+	// ya existe a estas alturas). Sin esto los props del student que
+	// queriamos setear se perderian.
+	delete(props, "email") // el update no debe pisar email — ya esta seteado
+	if existing := extractExistingIDFromError(err.Error()); existing != "" {
+		if uerr := c.UpdateContact(ctx, domain.RecordID(existing), props); uerr != nil {
+			return "", fmt.Errorf("upsert race recovery update failed: %w (original: %v)", uerr, err)
+		}
+		return domain.RecordID(existing), nil
+	}
+	// Fallback: re-search por email (el indexing pudo haber propagado).
+	if existing, ferr := c.FindContactByEmail(ctx, email); ferr == nil && existing != "" {
+		if uerr := c.UpdateContact(ctx, existing, props); uerr != nil {
+			return "", fmt.Errorf("upsert race re-search update failed: %w (original: %v)", uerr, err)
+		}
+		return existing, nil
+	}
+	return "", err
+}
+
+// extractExistingIDFromError parsea los dos formatos de error con los que
+// HubSpot reporta "ese email ya pertenece a otro contacto":
+//   - "Existing ID: NNN"            (409 CONFLICT en /contacts create)
+//   - "NNN already has that value." (400 VALIDATION_ERROR en /contacts create)
+// Si no encuentra ninguno devuelve "".
+func extractExistingIDFromError(msg string) string {
+	if marker := "Existing ID: "; strings.Contains(msg, marker) {
+		i := strings.Index(msg, marker)
+		rest := msg[i+len(marker):]
+		end := 0
+		for end < len(rest) && rest[end] >= '0' && rest[end] <= '9' {
+			end++
+		}
+		if end > 0 {
+			return rest[:end]
+		}
+	}
+	if marker := " already has that value"; strings.Contains(msg, marker) {
+		// El ID viene justo antes del marker: "... 12345 already has..."
+		i := strings.Index(msg, marker)
+		// Walk back over digits.
+		end := i
+		start := end
+		for start > 0 && msg[start-1] >= '0' && msg[start-1] <= '9' {
+			start--
+		}
+		if end-start > 0 {
+			return msg[start:end]
+		}
+	}
+	return ""
 }
 
 func (c *Client) createContact(ctx context.Context, props map[string]string) (domain.RecordID, error) {
@@ -101,6 +168,20 @@ func (c *Client) createContact(ctx context.Context, props map[string]string) (do
 func (c *Client) UpdateContact(ctx context.Context, recordID domain.RecordID, props map[string]string) error {
 	path := "/crm/v3/objects/contacts/" + string(recordID)
 	return c.do(ctx, http.MethodPatch, path, objectRequest{Properties: props}, nil)
+}
+
+// AssociateContactToCompany crea la asociacion default Contact -> Company
+// en HubSpot. Equivalente a hubspotClient.crm.associations.v4.basicApi.
+// createDefault('0-1', contactID, '0-2', companyID) en JS (P1). Idempotente
+// del lado de HubSpot: si la asociacion ya existe, el PUT no hace nada y
+// devuelve 200/201.
+func (c *Client) AssociateContactToCompany(ctx context.Context, contactID, companyID domain.RecordID) error {
+	if contactID == "" || companyID == "" {
+		return nil
+	}
+	path := fmt.Sprintf("/crm/v4/objects/contacts/%s/associations/default/companies/%s",
+		string(contactID), string(companyID))
+	return c.do(ctx, http.MethodPut, path, nil, nil)
 }
 
 func (c *Client) FindContactByDNI(ctx context.Context, dni string) (domain.RecordID, error) {

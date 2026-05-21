@@ -19,14 +19,15 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	HubspotService_UpsertContact_FullMethodName   = "/hubspot.v1.HubspotService/UpsertContact"
-	HubspotService_GetContactByDNI_FullMethodName = "/hubspot.v1.HubspotService/GetContactByDNI"
-	HubspotService_SendOTP_FullMethodName         = "/hubspot.v1.HubspotService/SendOTP"
-	HubspotService_SyncExamResult_FullMethodName  = "/hubspot.v1.HubspotService/SyncExamResult"
-	HubspotService_UpsertSchool_FullMethodName    = "/hubspot.v1.HubspotService/UpsertSchool"
-	HubspotService_UpsertAsesor_FullMethodName    = "/hubspot.v1.HubspotService/UpsertAsesor"
-	HubspotService_GetFailedSyncs_FullMethodName  = "/hubspot.v1.HubspotService/GetFailedSyncs"
-	HubspotService_RetryFailed_FullMethodName     = "/hubspot.v1.HubspotService/RetryFailed"
+	HubspotService_UpsertContact_FullMethodName      = "/hubspot.v1.HubspotService/UpsertContact"
+	HubspotService_GetContactByDNI_FullMethodName    = "/hubspot.v1.HubspotService/GetContactByDNI"
+	HubspotService_SendOTP_FullMethodName            = "/hubspot.v1.HubspotService/SendOTP"
+	HubspotService_SyncStudentContact_FullMethodName = "/hubspot.v1.HubspotService/SyncStudentContact"
+	HubspotService_SyncExamResult_FullMethodName     = "/hubspot.v1.HubspotService/SyncExamResult"
+	HubspotService_UpsertSchool_FullMethodName       = "/hubspot.v1.HubspotService/UpsertSchool"
+	HubspotService_UpsertAsesor_FullMethodName       = "/hubspot.v1.HubspotService/UpsertAsesor"
+	HubspotService_GetFailedSyncs_FullMethodName     = "/hubspot.v1.HubspotService/GetFailedSyncs"
+	HubspotService_RetryFailed_FullMethodName        = "/hubspot.v1.HubspotService/RetryFailed"
 )
 
 // HubspotServiceClient is the client API for HubspotService service.
@@ -41,6 +42,13 @@ type HubspotServiceClient interface {
 	GetContactByDNI(ctx context.Context, in *GetContactByDNIRequest, opts ...grpc.CallOption) (*UpsertContactResponse, error)
 	// Síncrono: el alumno está esperando recibir el email.
 	SendOTP(ctx context.Context, in *SendOTPRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// Síncrono: upsert del contacto del estudiante + asociacion a la
+	// Company del colegio, SIN disparar el webhook OTP. Lo usa el flujo
+	// "asesor crea estudiante" (POST /api/asesores/students), donde el
+	// student no necesita verificar email — solo queremos que HubSpot
+	// tenga el contacto completo + relacion al colegio para que el cliente
+	// UCSP lo vea en el CRM. Mismo set de props que SendOTP minus el OTP.
+	SyncStudentContact(ctx context.Context, in *SyncStudentContactRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	// Asíncrono (encola para retry con backoff exponencial).
 	SyncExamResult(ctx context.Context, in *SyncExamResultRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	UpsertSchool(ctx context.Context, in *UpsertSchoolRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
@@ -82,6 +90,16 @@ func (c *hubspotServiceClient) SendOTP(ctx context.Context, in *SendOTPRequest, 
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EmptyResponse)
 	err := c.cc.Invoke(ctx, HubspotService_SendOTP_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hubspotServiceClient) SyncStudentContact(ctx context.Context, in *SyncStudentContactRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, HubspotService_SyncStudentContact_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -150,6 +168,13 @@ type HubspotServiceServer interface {
 	GetContactByDNI(context.Context, *GetContactByDNIRequest) (*UpsertContactResponse, error)
 	// Síncrono: el alumno está esperando recibir el email.
 	SendOTP(context.Context, *SendOTPRequest) (*EmptyResponse, error)
+	// Síncrono: upsert del contacto del estudiante + asociacion a la
+	// Company del colegio, SIN disparar el webhook OTP. Lo usa el flujo
+	// "asesor crea estudiante" (POST /api/asesores/students), donde el
+	// student no necesita verificar email — solo queremos que HubSpot
+	// tenga el contacto completo + relacion al colegio para que el cliente
+	// UCSP lo vea en el CRM. Mismo set de props que SendOTP minus el OTP.
+	SyncStudentContact(context.Context, *SyncStudentContactRequest) (*EmptyResponse, error)
 	// Asíncrono (encola para retry con backoff exponencial).
 	SyncExamResult(context.Context, *SyncExamResultRequest) (*EmptyResponse, error)
 	UpsertSchool(context.Context, *UpsertSchoolRequest) (*EmptyResponse, error)
@@ -175,6 +200,9 @@ func (UnimplementedHubspotServiceServer) GetContactByDNI(context.Context, *GetCo
 }
 func (UnimplementedHubspotServiceServer) SendOTP(context.Context, *SendOTPRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendOTP not implemented")
+}
+func (UnimplementedHubspotServiceServer) SyncStudentContact(context.Context, *SyncStudentContactRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncStudentContact not implemented")
 }
 func (UnimplementedHubspotServiceServer) SyncExamResult(context.Context, *SyncExamResultRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SyncExamResult not implemented")
@@ -262,6 +290,24 @@ func _HubspotService_SendOTP_Handler(srv interface{}, ctx context.Context, dec f
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(HubspotServiceServer).SendOTP(ctx, req.(*SendOTPRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HubspotService_SyncStudentContact_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncStudentContactRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HubspotServiceServer).SyncStudentContact(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HubspotService_SyncStudentContact_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HubspotServiceServer).SyncStudentContact(ctx, req.(*SyncStudentContactRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -374,6 +420,10 @@ var HubspotService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SendOTP",
 			Handler:    _HubspotService_SendOTP_Handler,
+		},
+		{
+			MethodName: "SyncStudentContact",
+			Handler:    _HubspotService_SyncStudentContact_Handler,
 		},
 		{
 			MethodName: "SyncExamResult",

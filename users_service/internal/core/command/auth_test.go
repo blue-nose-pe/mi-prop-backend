@@ -28,7 +28,7 @@ func newAuthHandlerWithMocks() (
 	verifier := &testutil.TokenVerifierMock{}
 	// Tests existentes no ejercitan OTP. Pasamos nil-implementations seguras
 	// para los nuevos puertos: stubs que devuelven valores neutrales.
-	h := NewAuthHandler(users, perms, cache, hasher, issuer, verifier, refresh,
+	h := NewAuthHandler(users, stubSchoolRepo{}, perms, cache, hasher, issuer, verifier, refresh,
 		stubOTPRepo{}, stubOTPHasher{}, stubOTPSender{}, stubClassifier{})
 	return h, users, perms, refresh, issuer, verifier
 }
@@ -51,6 +51,31 @@ func (stubOTPHasher) Compare(_ string, _ string) bool  { return false }
 type stubOTPSender struct{}
 
 func (stubOTPSender) Send(_ context.Context, _ string, _ string) error { return nil }
+func (s stubOTPSender) SendWithContact(ctx context.Context, in ports.OTPSendInput) error {
+	return s.Send(ctx, in.Email, in.PlainOTP)
+}
+
+// stubSchoolRepo cumple con ports.SchoolRepository sin tocar BD. Solo se
+// usa para que NewAuthHandler tenga un puerto valido en tests; ninguno
+// de los flujos auth viejos llama a FindByID/List/etc.
+type stubSchoolRepo struct{}
+
+func (stubSchoolRepo) FindByID(_ context.Context, _ domain.SchoolID) (*domain.School, error) {
+	return nil, domain.ErrSchoolNotFound
+}
+func (stubSchoolRepo) List(_ context.Context, _ ports.ListSchoolsInput) ([]domain.School, uint32, error) {
+	return nil, 0, nil
+}
+func (stubSchoolRepo) Create(_ context.Context, _ *domain.School) (domain.SchoolID, error) {
+	return "", nil
+}
+func (stubSchoolRepo) Update(_ context.Context, _ *domain.School) error              { return nil }
+func (stubSchoolRepo) ListByAsesor(_ context.Context, _ domain.UserID) ([]domain.School, error) {
+	return nil, nil
+}
+func (stubSchoolRepo) SetHubspotRecordID(_ context.Context, _ domain.SchoolID, _ string) error {
+	return nil
+}
 
 type stubClassifier struct{}
 

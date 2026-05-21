@@ -4,6 +4,8 @@ package command
 
 import (
 	"context"
+	"log"
+	"strconv"
 
 	"hubspot_service/internal/core/domain"
 	"hubspot_service/internal/core/ports"
@@ -59,14 +61,105 @@ func (h *SyncHandler) SendOTP(ctx context.Context, in ports.SendOTPInput) error 
 	//    estaba en HubSpot todavia, la prop quedaba vacia y la Automation
 	//    no encontraba el OTP -> el email nunca salia. Upsert lo arregla
 	//    creando el contacto on-the-fly con la prop seteada.
-	if _, err := h.hs.UpsertContactByEmail(ctx, map[string]string{"otp_estudiante": in.OTP}, in.Email); err != nil {
+	//
+	//    Cuando el caller (users_service) provee datos personales
+	//    (register-with-key), los incluimos en la upsert: asi el contacto
+	//    arranca con nombre/apellido/dni/phone en HubSpot en vez de vacio.
+	//    En request-otp (login posterior) van vacios y solo refrescamos
+	//    otp_estudiante — no pisamos lo que ya estaba en HubSpot.
+	// Flags de origen siempre seteados: matchea exactamente lo que P1
+	// hacia en utils/hubspot_sync/createHubspotContacto.js (lineas 29 y 33).
+	// Los workflows del portal UCSP filtran por estas props para identificar
+	// contactos creados desde Mi Proposito vs CRM manual / otros sistemas.
+	props := map[string]string{
+		"otp_estudiante":                 in.OTP,
+		"origina_de_mi_proposito_":       "true",
+		"sincronizado_por_mi_proposito_": "true",
+	}
+	if in.FirstName != "" {
+		props["firstname"] = in.FirstName
+	}
+	if in.LastName != "" {
+		props["lastname"] = in.LastName
+	}
+	if in.DocumentNumber != "" {
+		// El custom field "Numero de Documento" del portal UCSP usa la
+		// internal name "dni" (mismo seteo que UpsertContactByDNI).
+		props["dni"] = in.DocumentNumber
+	}
+	// mi_proposito___id_colegio: prop INTEGER en HubSpot (heredada de P1
+	// que usaba autoincr de MySQL). users_service ahora envia el int_id
+	// resuelto desde la tabla school (migration 020). 0 = sin colegio
+	// asignado al user, no setear la prop.
+	if in.SchoolIntID > 0 {
+		props["mi_proposito___id_colegio"] = strconv.Itoa(int(in.SchoolIntID))
+	}
+	if in.Phone != "" {
+		props["phone"] = in.Phone
+	}
+	contactID, err := h.hs.UpsertContactByEmail(ctx, props, in.Email)
+	if err != nil {
 		// Best-effort: si HubSpot esta caido o rate-limited igual disparamos
 		// el webhook con el OTP en el payload, por si la Automation lo lee
-		// de ahi. No bloqueamos el flujo del estudiante.
-		_ = err
+		// de ahi. No bloqueamos el flujo del estudiante. Pero loggeamos:
+		// el error en este punto explica por que el contacto queda vacio
+		// en CRM (typico tras GDPR-delete: la prop email queda en blacklist
+		// temporal y create devuelve un 4xx silencioso).
+		log.Printf("[SendOTP] UpsertContactByEmail FAIL email=%s err=%v", in.Email, err)
+	}
+	// 1b) Asociar Contact <-> Company del colegio (object 0-2). P1 lo hacia
+	//     en createHubspotContacto.js (associations.v4.basicApi.createDefault)
+	//     para que el estudiante apareciera vinculado al Colegio en el
+	//     sidebar de HubSpot. Sin esto, el contacto queda con la prop
+	//     mi_proposito___id_colegio seteada pero "huerfano" — sin Company
+	//     visible en la UI. Best-effort: si falla la asociacion no rompemos
+	//     el flujo de OTP.
+	if in.SchoolRecordID != "" && contactID != "" {
+		if err := h.hs.AssociateContactToCompany(ctx, contactID, domain.RecordID(in.SchoolRecordID)); err != nil {
+			log.Printf("[SendOTP] AssociateContactToCompany FAIL contact=%s company=%s err=%v", contactID, in.SchoolRecordID, err)
+		}
 	}
 	// 2) Disparar webhook trigger (HubSpot Automation manda el email).
 	return h.otp.Trigger(ctx, in.Email, in.OTP)
+}
+
+// SyncStudentContact — mismo upsert + asociacion que SendOTP, sin OTP.
+// Pensado para el flujo "asesor crea estudiante": el contacto entra a
+// HubSpot completo (firstname/lastname/dni/phone/colegio + flags de
+// origen + Company association) pero no se dispara webhook OTP porque
+// el estudiante no necesita verificar email — el asesor ya lo dio de
+// alta manualmente.
+func (h *SyncHandler) SyncStudentContact(ctx context.Context, in ports.SyncStudentContactInput) error {
+	props := map[string]string{
+		"origina_de_mi_proposito_":       "true",
+		"sincronizado_por_mi_proposito_": "true",
+	}
+	if in.FirstName != "" {
+		props["firstname"] = in.FirstName
+	}
+	if in.LastName != "" {
+		props["lastname"] = in.LastName
+	}
+	if in.DocumentNumber != "" {
+		props["dni"] = in.DocumentNumber
+	}
+	if in.Phone != "" {
+		props["phone"] = in.Phone
+	}
+	if in.SchoolIntID > 0 {
+		props["mi_proposito___id_colegio"] = strconv.Itoa(int(in.SchoolIntID))
+	}
+	contactID, err := h.hs.UpsertContactByEmail(ctx, props, in.Email)
+	if err != nil {
+		log.Printf("[SyncStudentContact] UpsertContactByEmail FAIL email=%s err=%v", in.Email, err)
+		return err
+	}
+	if in.SchoolRecordID != "" && contactID != "" {
+		if err := h.hs.AssociateContactToCompany(ctx, contactID, domain.RecordID(in.SchoolRecordID)); err != nil {
+			log.Printf("[SyncStudentContact] AssociateContactToCompany FAIL contact=%s company=%s err=%v", contactID, in.SchoolRecordID, err)
+		}
+	}
+	return nil
 }
 
 func (h *SyncHandler) EnqueueExamResult(ctx context.Context, r domain.ExamResult) error {

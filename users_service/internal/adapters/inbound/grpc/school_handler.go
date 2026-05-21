@@ -162,6 +162,7 @@ func schoolToProto(s *domain.School) *pb.School {
 		Category:        s.Category,
 		Active:          s.Active,
 		HubspotRecordId: s.HubspotRecordID,
+		IntId:           s.IntID,
 		CreatedAt:       timestamppb.New(s.CreatedAt),
 	}
 	if s.UpdatedAt != nil {
