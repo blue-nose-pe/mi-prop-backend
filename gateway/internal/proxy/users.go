@@ -733,6 +733,13 @@ func (p *Proxy) listStudentsByColegio(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_ID", Message: "id is required"})
 		return
 	}
+	// Bug 1 fix: solo staff con jurisdiccion sobre este colegio.
+	if !p.enforceColegioScope(r, schoolID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this colegio",
+		})
+		return
+	}
 	q := r.URL.Query()
 	limit := parseUint32Query(q.Get("limit"), 200)
 	if limit > 1000 {

@@ -267,6 +267,22 @@ func firstNonEmpty(values ...string) string {
 }
 
 func clientIPFromRequest(r *http.Request) string {
+	// Bug 12 fix: NGINX Ingress sobrescribe X-Real-Ip con el IP del cliente
+	// real (no es prependible por el cliente porque NGINX la reemplaza).
+	// X-Forwarded-For en cambio es una cadena que el cliente puede prefijar
+	// libremente — si un atacante manda X-Forwarded-For: 8.8.8.8 burla el
+	// rate-limit por IP y ofusca los logs de auditoria.
+	//
+	// Priorizamos X-Real-Ip (NGINX), caemos a r.RemoteAddr (que en cluster
+	// es la IP del pod NGINX), y X-Forwarded-For solo como ultimo recurso
+	// para entornos sin Ingress (dev local). Esto cierra el spoof trivial
+	// sin requerir cambiar la config de NGINX/APIM.
+	if v := r.Header.Get("X-Real-Ip"); v != "" {
+		return v
+	}
+	if v := r.RemoteAddr; v != "" {
+		return v
+	}
 	if v := r.Header.Get("X-Forwarded-For"); v != "" {
 		for i := 0; i < len(v); i++ {
 			if v[i] == ',' {
@@ -275,10 +291,7 @@ func clientIPFromRequest(r *http.Request) string {
 		}
 		return v
 	}
-	if v := r.Header.Get("X-Real-Ip"); v != "" {
-		return v
-	}
-	return r.RemoteAddr
+	return ""
 }
 
 // protoUserToJSON convierte un *userspb.User a un map JSON-friendly.

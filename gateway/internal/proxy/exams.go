@@ -482,9 +482,34 @@ func (p *Proxy) startAttempt(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
 		return
 	}
+	// Bug 3 fix: el user_id viene SIEMPRE del JWT del caller, nunca del
+	// body. Antes el body controlaba quien era el "owner" del attempt;
+	// un estudiante autenticado podia mandar `user_id` de otra persona,
+	// consumir su aforo de keys y rendir simulacro en su nombre. Para
+	// roles staff que quieran arrancar un attempt en nombre de un alumno,
+	// hay que crear un endpoint admin separado con permisos explicitos.
+	callerID := userIDFromContext(r)
+	if callerID == "" {
+		writeJSON(w, http.StatusUnauthorized, errorBody{Status: "error", Code: "UNAUTHENTICATED", Message: "authenticated user required"})
+		return
+	}
+	effectiveUserID := callerID
+	if isSuperadminContext(r) && in.UserID != "" {
+		// Superadmin puede arrancar attempt en nombre de un alumno (caso
+		// admin que ayuda en sesion presencial). Pasa el user_id del body.
+		effectiveUserID = in.UserID
+	} else if in.UserID != "" && in.UserID != callerID {
+		// User comun mandando user_id distinto al suyo: bloqueamos.
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status:  "error",
+			Code:    "FORBIDDEN",
+			Message: "cannot start attempt on behalf of another user",
+		})
+		return
+	}
 	resp, err := p.cli.Attempts.StartAttempt(r.Context(), &examsgrpcpb.StartAttemptRequest{
 		ExamId:  in.ExamID,
-		UserId:  in.UserID,
+		UserId:  effectiveUserID,
 		KeyCode: in.KeyCode,
 	})
 	if err != nil {
@@ -502,7 +527,19 @@ func (p *Proxy) getAttempt(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"attempt": protoAttemptToJSON(resp.GetAttempt())})
+	// Bug 1 fix: ownership del attempt. Permitimos solo si:
+	//   - el caller es el dueño del attempt, o
+	//   - el caller es superadmin
+	// Asesores/coordinadores podran ver attempts de sus alumnos via los
+	// endpoints de analytics (que ya tienen sus propios scopes).
+	att := resp.GetAttempt()
+	if att != nil && att.GetUserId() != userIDFromContext(r) && !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "attempt belongs to another user",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"attempt": protoAttemptToJSON(att)})
 }
 
 type answerAttemptRequest struct {
@@ -514,6 +551,13 @@ func (p *Proxy) answerAttempt(w http.ResponseWriter, r *http.Request) {
 	var in answerAttemptRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	// Bug 1 fix: solo el dueño del attempt (o superadmin) puede responder.
+	if !p.callerOwnsAttempt(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "attempt belongs to another user",
+		})
 		return
 	}
 	if _, err := p.cli.Attempts.Answer(r.Context(), &examsgrpcpb.AnswerRequest{
@@ -528,6 +572,13 @@ func (p *Proxy) answerAttempt(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) finishAttempt(w http.ResponseWriter, r *http.Request) {
+	// Bug 1 fix: solo el dueño del attempt (o superadmin) puede finalizar.
+	if !p.callerOwnsAttempt(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "attempt belongs to another user",
+		})
+		return
+	}
 	resp, err := p.cli.Attempts.FinishAttempt(r.Context(), &examsgrpcpb.FinishAttemptRequest{
 		AttemptId: r.PathValue("id"),
 	})
@@ -538,9 +589,40 @@ func (p *Proxy) finishAttempt(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"attempt": protoAttemptToJSON(resp.GetAttempt())})
 }
 
+// callerOwnsAttempt resuelve el ownership del attempt en el path.
+// Lookup adicional al exams-service, costo aceptable porque attemptId
+// no es enumerable. Devuelve true tambien para superadmin.
+func (p *Proxy) callerOwnsAttempt(r *http.Request) bool {
+	if isSuperadminContext(r) {
+		return true
+	}
+	caller := userIDFromContext(r)
+	if caller == "" {
+		return false
+	}
+	resp, err := p.cli.Attempts.GetAttempt(r.Context(), &examsgrpcpb.GetAttemptRequest{
+		AttemptId: r.PathValue("id"),
+	})
+	if err != nil || resp.GetAttempt() == nil {
+		return false
+	}
+	return resp.GetAttempt().GetUserId() == caller
+}
+
 func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {
+	// Bug 1 fix: solo self o superadmin pueden listar attempts de un user.
+	// Staff (asesor/coordinador) que necesite ver historial de sus alumnos
+	// tiene que usar los endpoints de analytics, que tienen scope por
+	// colegio asignado.
+	targetID := r.PathValue("id")
+	if targetID != userIDFromContext(r) && !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "cannot list attempts of another user",
+		})
+		return
+	}
 	resp, err := p.cli.Attempts.ListByUser(r.Context(), &examsgrpcpb.ListAttemptsByUserRequest{
-		UserId: r.PathValue("id"),
+		UserId: targetID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -558,6 +640,13 @@ func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {
 // para que el front compute correctas/incorrectas + render por modulo
 // sin volver a tocar el banco de preguntas.
 func (p *Proxy) listAttemptAnswers(w http.ResponseWriter, r *http.Request) {
+	// Bug 1 fix: solo dueño del attempt (o superadmin) ve las respuestas.
+	if !p.callerOwnsAttempt(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "attempt belongs to another user",
+		})
+		return
+	}
 	resp, err := p.cli.Attempts.ListEnrichedAnswers(r.Context(), &examsgrpcpb.ListEnrichedAnswersRequest{
 		AttemptId: r.PathValue("id"),
 	})
@@ -582,6 +671,17 @@ func (p *Proxy) listAttemptAnswers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) listAttemptsByExam(w http.ResponseWriter, r *http.Request) {
+	// Bug 1 fix: este endpoint listaba TODOS los attempts de un exam,
+	// exponiendo nombres y scores de estudiantes de colegios donde el
+	// caller no tiene jurisdiccion. Politica conservadora: solo superadmin.
+	// Asesores que necesiten ver sus alumnos pasan por
+	// /api/analytics/asesor/{id}/dashboard que ya filtra por su scope.
+	if !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "only superadmin can list all attempts of an exam",
+		})
+		return
+	}
 	resp, err := p.cli.Attempts.ListByExam(r.Context(), &examsgrpcpb.ListAttemptsByExamRequest{
 		ExamId: r.PathValue("id"),
 	})

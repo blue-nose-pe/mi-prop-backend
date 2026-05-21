@@ -46,8 +46,17 @@ func (p *Proxy) RegisterKeys(mux *http.ServeMux) {
 // /api/keys/{id}/attempts porque ese ultimo conflictaria con
 // /api/keys/by-code/{code} en Go ServeMux 1.22+ (ambiguity rule).
 func (p *Proxy) listAttemptsByKey(w http.ResponseWriter, r *http.Request) {
+	// Bug 1 fix: solo superadmin o el asesor dueño de la key pueden ver
+	// sus attempts. Lookup la key para conocer asesor_user_id y school_id.
+	keyID := r.PathValue("id")
+	if !p.callerOwnsKeyOrSuperadmin(r, keyID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this key's attempts",
+		})
+		return
+	}
 	resp, err := p.cli.Attempts.ListByKey(r.Context(), &examsgrpcpb.ListAttemptsByKeyRequest{
-		KeyId: r.PathValue("id"),
+		KeyId: keyID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -239,8 +248,16 @@ func (p *Proxy) listKeysByAsesor(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) listKeysByColegio(w http.ResponseWriter, r *http.Request) {
+	// Bug 1 fix: solo asesores/coordinadores del colegio + superadmin.
+	schoolID := r.PathValue("id")
+	if !p.enforceColegioScope(r, schoolID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this colegio's keys",
+		})
+		return
+	}
 	resp, err := p.cli.Keys.ListByColegio(r.Context(), &keysgrpcpb.ListByColegioRequest{
-		SchoolId: r.PathValue("id"),
+		SchoolId: schoolID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)

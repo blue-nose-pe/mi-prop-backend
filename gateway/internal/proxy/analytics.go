@@ -178,8 +178,15 @@ func (p *Proxy) getAsesorDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getColegioDashboard(w http.ResponseWriter, r *http.Request) {
+	schoolID := r.PathValue("id")
+	if !p.enforceColegioScope(r, schoolID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this colegio",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.GetColegioDashboard(r.Context(), &analyticsgrpcpb.GetColegioDashboardRequest{
-		SchoolId: r.PathValue("id"),
+		SchoolId: schoolID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -196,8 +203,15 @@ func (p *Proxy) getColegioDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getEstudianteDashboard(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("id")
+	if !enforceUserScope(r, userID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this user's dashboard",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.GetEstudianteDashboard(r.Context(), &analyticsgrpcpb.GetEstudianteDashboardRequest{
-		UserId: r.PathValue("id"),
+		UserId: userID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -241,8 +255,15 @@ func (p *Proxy) getComparativo(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getEstudianteHistorico(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("id")
+	if !enforceUserScope(r, userID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this user's historial",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.GetHistoricoEstudiante(r.Context(), &analyticsgrpcpb.GetHistoricoEstudianteRequest{
-		UserId: r.PathValue("id"),
+		UserId: userID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -260,9 +281,16 @@ func (p *Proxy) getEstudianteHistorico(w http.ResponseWriter, r *http.Request) {
 //   - exam_type_code (opcional, "" agrega todos los tipos)
 //   - periods (opcional, default 8 quarters)
 func (p *Proxy) getColegioHistorico(w http.ResponseWriter, r *http.Request) {
+	schoolID := r.PathValue("id")
+	if !p.enforceColegioScope(r, schoolID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this colegio",
+		})
+		return
+	}
 	q := r.URL.Query()
 	resp, err := p.cli.Analytics.GetHistoricoColegio(r.Context(), &analyticsgrpcpb.GetHistoricoColegioRequest{
-		SchoolId:     r.PathValue("id"),
+		SchoolId:     schoolID,
 		ExamTypeCode: q.Get("exam_type_code"),
 		Periods:      int32(parseUint32Query(q.Get("periods"), 0)),
 	})
@@ -297,8 +325,15 @@ func (p *Proxy) getColegioHistorico(w http.ResponseWriter, r *http.Request) {
 // Lista tests publicados+activos que estudiantes de los colegios del
 // asesor todavia no han rendido.
 func (p *Proxy) getAsesorPendientes(w http.ResponseWriter, r *http.Request) {
+	asesorID := enforceAsesorScope(r, r.PathValue("id"))
+	if asesorID == "" || (asesorID != r.PathValue("id") && !isSuperadminContext(r)) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this asesor",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.GetAsesorPendientes(r.Context(), &analyticsgrpcpb.GetAsesorPendientesRequest{
-		AsesorId: r.PathValue("id"),
+		AsesorId: asesorID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -346,8 +381,15 @@ func (p *Proxy) getAsesorPendientes(w http.ResponseWriter, r *http.Request) {
 // Query params:
 //   - attempt_id (opcional; si vacio, usa el ultimo attempt submitted del user)
 func (p *Proxy) getReporteEstudiante(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("id")
+	if !enforceUserScope(r, userID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this user's reporte",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.GetReporteEstudiante(r.Context(), &analyticsgrpcpb.GetReporteEstudianteRequest{
-		UserId:    r.PathValue("id"),
+		UserId:    userID,
 		AttemptId: r.URL.Query().Get("attempt_id"),
 	})
 	if err != nil {
@@ -443,8 +485,15 @@ func (p *Proxy) getColegiosHistorico(w http.ResponseWriter, r *http.Request) {
 // ---------- Exports XLSX (binarios) ----------
 
 func (p *Proxy) exportAsesorXLSX(w http.ResponseWriter, r *http.Request) {
+	asesorID := enforceAsesorScope(r, r.PathValue("id"))
+	if asesorID != r.PathValue("id") && !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this asesor",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.ExportAsesorXLSX(r.Context(), &analyticsgrpcpb.ExportAsesorXLSXRequest{
-		AsesorId: r.PathValue("id"),
+		AsesorId: asesorID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -454,8 +503,15 @@ func (p *Proxy) exportAsesorXLSX(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) exportColegioXLSX(w http.ResponseWriter, r *http.Request) {
+	schoolID := r.PathValue("id")
+	if !p.enforceColegioScope(r, schoolID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this colegio",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.ExportColegioXLSX(r.Context(), &analyticsgrpcpb.ExportColegioXLSXRequest{
-		SchoolId: r.PathValue("id"),
+		SchoolId: schoolID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -484,8 +540,15 @@ func (p *Proxy) exportComparativoXLSX(w http.ResponseWriter, r *http.Request) {
 // Genera el reporte "Tour Vocacional UCSP" del estudiante en formato Excel
 // (Resumen + RIASEC + Top areas + Secciones). attempt_id opcional via query.
 func (p *Proxy) exportReporteEstudianteXLSX(w http.ResponseWriter, r *http.Request) {
+	userID := r.PathValue("id")
+	if !enforceUserScope(r, userID) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this user's reporte",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.ExportReporteEstudianteXLSX(r.Context(), &analyticsgrpcpb.ExportReporteEstudianteXLSXRequest{
-		UserId:    r.PathValue("id"),
+		UserId:    userID,
 		AttemptId: r.URL.Query().Get("attempt_id"),
 	})
 	if err != nil {

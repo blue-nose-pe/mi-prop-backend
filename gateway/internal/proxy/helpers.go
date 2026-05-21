@@ -9,6 +9,10 @@ import (
 
 	"gateway/internal/middleware"
 
+	usersgrpcpb "users_service/proto/gen"
+
+	keysgrpcpb "keys_service/proto/gen"
+
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -165,6 +169,77 @@ func enforceAsesorScope(r *http.Request, requested string) string {
 		return requested
 	}
 	return userIDFromContext(r)
+}
+
+// enforceUserScope devuelve true si el caller puede acceder a recursos
+// del user_id `target`: superadmin o self. Lo usan los endpoints que
+// toman {id} de path y exponen data sensible del estudiante (attempts,
+// dashboards individuales, historicos, reporte vocacional).
+func enforceUserScope(r *http.Request, target string) bool {
+	if isSuperadminContext(r) {
+		return true
+	}
+	caller := userIDFromContext(r)
+	return caller != "" && caller == target
+}
+
+// callerOwnsKeyOrSuperadmin: lookup la key y compara asesor_user_id con
+// el caller. Tambien acepta asesor que tenga el colegio asignado al
+// momento (porque alguien podria heredar keys que el asesor original
+// genero). Best-effort: si la key no se puede leer, deniega.
+func (p *Proxy) callerOwnsKeyOrSuperadmin(r *http.Request, keyID string) bool {
+	if isSuperadminContext(r) {
+		return true
+	}
+	caller := userIDFromContext(r)
+	if caller == "" || keyID == "" {
+		return false
+	}
+	resp, err := p.cli.Keys.GetKey(r.Context(), &keysgrpcpb.GetKeyRequest{Id: keyID})
+	if err != nil || resp.GetKey() == nil {
+		return false
+	}
+	k := resp.GetKey()
+	if k.GetAsesorUserId() == caller {
+		return true
+	}
+	// Fallback: si el caller tiene el school de la key asignado, tambien
+	// puede ver attempts/uses (sirve para coordinadores y asesores nuevos
+	// que heredaron una key generada por otro asesor del mismo colegio).
+	return p.enforceColegioScope(r, k.GetSchoolId())
+}
+
+// enforceColegioScope devuelve true si el caller puede ver/modificar
+// recursos del colegio target. Politica:
+//   - superadmin: cualquier colegio
+//   - cualquier user autenticado con assignment vigente al colegio (sea
+//     asesor o coordinador). Llama users-service.ListSchoolsByAsesor del
+//     caller y chequea inclusion.
+//
+// Costo: 1 RPC extra al users-service por request. Para optimizar, se
+// puede cachear (school list rara vez cambia). Por ahora best-effort
+// sincronico — si la consulta falla, devuelve false (cerrado por
+// defecto).
+func (p *Proxy) enforceColegioScope(r *http.Request, targetSchoolID string) bool {
+	if isSuperadminContext(r) {
+		return true
+	}
+	caller := userIDFromContext(r)
+	if caller == "" || targetSchoolID == "" {
+		return false
+	}
+	resp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{
+		AsesorId: caller,
+	})
+	if err != nil {
+		return false
+	}
+	for _, s := range resp.GetItems() {
+		if s.GetId() == targetSchoolID {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeSearchRequest deserializa el body JSON estilo HubSpot
