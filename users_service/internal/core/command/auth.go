@@ -280,6 +280,10 @@ func (h *AuthHandler) RequestStudentOTP(ctx context.Context, in ports.RequestStu
 	if err := h.otpRepo.Save(ctx, tok); err != nil {
 		return err
 	}
+	// [DEBUG TEMPORAL] mismo log que en sendStudentOTPFull. Workaround
+	// porque HubSpot UCSP no entrega el correo (hs_marketable_status=
+	// false). REVERTIR cuando UCSP arregle la config del portal.
+	log.Printf("[DEBUG OTP] email=%s otp=%s user=%s — REMOVER tras fix HubSpot", string(u.Email), plain, u.ID)
 
 	if err := h.otpSender.Send(ctx, string(u.Email), plain); err != nil {
 		// Si el envío falla NO retornamos error al cliente: persistimos un
@@ -529,6 +533,14 @@ func (h *AuthHandler) sendStudentOTPFull(ctx context.Context, u *domain.User, ex
 	if err := h.otpRepo.Save(ctx, tok); err != nil {
 		return err
 	}
+	// [DEBUG TEMPORAL] Imprimimos el OTP plain en los logs del pod para
+	// que los testers puedan recuperarlo via `kubectl logs` mientras
+	// HubSpot UCSP no entregue el correo (la cuenta esta marcando los
+	// nuevos contactos como hs_marketable_status=false y el Workflow no
+	// los manda). REVERTIR cuando el cliente arregle la config del
+	// portal o el Workflow pase a transactional email. Buscar:
+	//   kubectl logs deployment/miproposito-users-service -n miproposito | grep "DEBUG OTP"
+	log.Printf("[DEBUG OTP] email=%s otp=%s user=%s — REMOVER tras fix HubSpot", string(u.Email), plain, u.ID)
 	extra.Email = string(u.Email)
 	extra.PlainOTP = plain
 	// Resolver datos del colegio para que hubspot_service pueda popular
