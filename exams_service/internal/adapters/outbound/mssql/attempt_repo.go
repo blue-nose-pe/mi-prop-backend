@@ -231,6 +231,24 @@ func (r *AttemptRepo) CountActiveByExam(ctx context.Context, examID domain.ExamI
 	return count, err
 }
 
+// FindActiveByExamUser devuelve el attempt mas reciente sin submit del
+// user para ese exam. Si no hay → (nil, nil). Si la BD retorna error
+// distinto a sql.ErrNoRows → propaga.
+func (r *AttemptRepo) FindActiveByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT TOP 1 `+attemptCols+` FROM exam_attempt
+		  WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		    AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		    AND submitted_at IS NULL
+		  ORDER BY started_at DESC`,
+		string(examID), string(userID))
+	att, err := scanAttempt(row)
+	if errors.Is(err, domain.ErrAttemptNotFound) {
+		return nil, nil
+	}
+	return att, err
+}
+
 func scanAttempt(s rowScanner) (*domain.ExamAttempt, error) {
 	var (
 		a          domain.ExamAttempt

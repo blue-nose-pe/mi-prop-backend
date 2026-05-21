@@ -21,6 +21,10 @@ func (h *AttemptHandler) Get(ctx context.Context, id domain.AttemptID) (*domain.
 	return h.attempts.FindByID(ctx, id)
 }
 
+func (h *AttemptHandler) GetActiveByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error) {
+	return h.attempts.FindActiveByExamUser(ctx, examID, userID)
+}
+
 func (h *AttemptHandler) ListByUser(ctx context.Context, userID domain.UserID) ([]domain.ExamAttempt, error) {
 	return h.attempts.ListByUser(ctx, userID)
 }

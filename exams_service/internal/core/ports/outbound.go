@@ -75,6 +75,13 @@ type AttemptRepository interface {
 	ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.EnrichedAnswer, error)
 	Finish(ctx context.Context, id domain.AttemptID, score, maxScore int32, when time.Time) error
 	CountActiveByExam(ctx context.Context, examID domain.ExamID) (int32, error)
+	// FindActiveByExamUser devuelve el attempt activo (submitted_at IS NULL)
+	// mas reciente del user para ese exam, o (nil, nil) si no hay ninguno.
+	// Lo usa Start para devolver idempotente cuando el alumno refresca o
+	// reintenta — sin esto, cada refresh creaba un nuevo attempt + nuevo
+	// uso de la key, lo que permitia que un solo alumno consumiera N usos
+	// del aforo.
+	FindActiveByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error)
 }
 
 // =============== Cross-service clients (gRPC) ===============

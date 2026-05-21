@@ -112,13 +112,29 @@ type AddExamQuestionInput struct {
 // =============== ATTEMPT ===============
 
 type AttemptCommands interface {
-	Start(ctx context.Context, in StartAttemptInput) (*domain.ExamAttempt, error)
+	// Start crea (o reutiliza, si ya hay uno activo del mismo user para el
+	// mismo exam) un attempt. El handler gRPC usa StartAttemptResult.Reused
+	// para decidir si debe contar el uso en keys_service.
+	Start(ctx context.Context, in StartAttemptInput) (*StartAttemptResult, error)
 	Answer(ctx context.Context, in AnswerInput) error
 	Finish(ctx context.Context, id domain.AttemptID) (*domain.ExamAttempt, error)
 }
 
+// StartAttemptResult: el attempt + flag indicando si era pre-existente.
+// Cuando Reused=true, el caller NO debe consumir un nuevo uso de la key
+// (porque el primer Start ya lo conto).
+type StartAttemptResult struct {
+	Attempt *domain.ExamAttempt
+	Reused  bool
+}
+
 type AttemptQueries interface {
 	Get(ctx context.Context, id domain.AttemptID) (*domain.ExamAttempt, error)
+	// GetActiveByExamUser devuelve el attempt sin submit del user para
+	// ese exam, o (nil, nil) si no hay ninguno. Lo usa el handler gRPC
+	// StartAttempt para decidir si debe consumir un nuevo uso de la key
+	// (no consumir si ya habia uno activo — fix Bug #2).
+	GetActiveByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error)
 	ListByUser(ctx context.Context, userID domain.UserID) ([]domain.ExamAttempt, error)
 	ListByExam(ctx context.Context, examID domain.ExamID) ([]domain.ExamAttempt, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.ExamAttempt, error)

@@ -31,9 +31,12 @@ func NewAttemptHandler(
 }
 
 func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptRequest) (*pb.AttemptResponse, error) {
+	examID := domain.ExamID(req.GetExamId())
+	userID := domain.UserID(req.GetUserId())
+
 	var keyID domain.KeyID
 	if req.GetKeyCode() != "" {
-		validation, err := h.keys.Validate(ctx, req.GetKeyCode(), "" /* el handler no conoce el exam_type aún; keys_service lo deduce o no aplica */)
+		validation, err := h.keys.Validate(ctx, req.GetKeyCode(), "")
 		if err != nil {
 			return nil, apperr.ToGRPC(ctx, err)
 		}
@@ -43,21 +46,48 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 		keyID = validation.KeyID
 	}
 
-	att, err := h.cmds.Start(ctx, ports.StartAttemptInput{
-		ExamID: domain.ExamID(req.GetExamId()),
-		UserID: domain.UserID(req.GetUserId()),
+	// Bug #1 fix: el IncrementUsage de keys_service es la unica gate
+	// atomica contra el aforo (UPDATE con guard de current_uses<max_uses
+	// en una sola operacion SQL). Para que sea efectiva, hay que llamarla
+	// ANTES de crear el attempt y rechazar si devuelve error. El codigo
+	// anterior la llamaba despues con `_ = ...`, lo que permitia que mas
+	// alumnos de los del aforo crearan attempts validos (cada uno sin
+	// contarse en current_uses).
+	//
+	// Idempotencia: si el user ya tiene un attempt activo para este exam,
+	// el core Start devuelve Reused=true y NO consumimos un uso adicional
+	// (el primer Start ya lo conto). Esto cierra el Bug #2 (refresh).
+	if keyID != "" {
+		// Checkeo pre-emptivo: si el user ya tenia un attempt activo de
+		// este exam, no incrementar (ya contamos antes).
+		// Reusamos FindActiveByExamUser via core para evitar duplicar query.
+		// Para no hacer dos round-trips a la BD, simplemente delegamos al
+		// core y, si dice Reused=true, no incrementamos. Como
+		// IncrementUsage tiene que ser ANTES del Save, hacemos el check
+		// de reuso aqui mismo.
+		existing, err := h.qrys.GetActiveByExamUser(ctx, examID, userID)
+		if err != nil {
+			return nil, apperr.ToGRPC(ctx, err)
+		}
+		if existing == nil {
+			// Attempt nuevo → consumir uso atomico de la key.
+			if err := h.keys.IncrementUsage(ctx, keyID, "", userID); err != nil {
+				// 0 filas afectadas → aforo lleno o key invalida.
+				return nil, apperr.ToGRPC(ctx, err)
+			}
+		}
+	}
+
+	res, err := h.cmds.Start(ctx, ports.StartAttemptInput{
+		ExamID: examID,
+		UserID: userID,
 		KeyID:  keyID,
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}
 
-	if keyID != "" {
-		// best-effort: si el contador falla, el attempt sigue siendo válido.
-		_ = h.keys.IncrementUsage(ctx, keyID, att.ID, att.UserID)
-	}
-
-	return &pb.AttemptResponse{Attempt: toProtoAttempt(att)}, nil
+	return &pb.AttemptResponse{Attempt: toProtoAttempt(res.Attempt)}, nil
 }
 
 func (h *AttemptHandler) Answer(ctx context.Context, req *pb.AnswerRequest) (*pb.EmptyResponse, error) {

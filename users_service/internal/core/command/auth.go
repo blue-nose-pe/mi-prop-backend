@@ -379,9 +379,10 @@ func (h *AuthHandler) RegisterStudentWithKey(
 	if err := email.Validate(); err != nil {
 		return nil, err
 	}
-	if string(in.SchoolID) == "" {
-		return nil, fmt.Errorf("school_id is required")
-	}
+	// Bug #4 fix: school_id puede ser "" cuando la key es LAN (modo
+	// masivo sin colegio asociado). El campo users.school_id es nullable
+	// en BD desde la migracion 002, asi que dejamos que el estudiante
+	// quede sin colegio. Quien valido la key ya verifico que es usable.
 	firstName := strings.TrimSpace(in.FirstName)
 	lastName := strings.TrimSpace(in.LastName)
 	if firstName == "" || lastName == "" {

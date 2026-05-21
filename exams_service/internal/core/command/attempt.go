@@ -44,7 +44,16 @@ func NewAttemptHandler(
 	}
 }
 
-func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) (*domain.ExamAttempt, error) {
+func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) (*ports.StartAttemptResult, error) {
+	// Idempotencia: si el user ya tiene un attempt sin submit para este
+	// exam, devolverlo en lugar de crear uno nuevo. Sin esto, un refresh
+	// del front creaba un attempt extra + un uso extra de la key (Bug #2).
+	if existing, err := h.attempts.FindActiveByExamUser(ctx, in.ExamID, in.UserID); err != nil {
+		return nil, err
+	} else if existing != nil {
+		return &ports.StartAttemptResult{Attempt: existing, Reused: true}, nil
+	}
+
 	e, err := h.exams.FindByID(ctx, in.ExamID)
 	if err != nil {
 		return nil, err
@@ -56,8 +65,11 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 		return nil, domain.ErrExamClosed
 	}
 
-	// Aforo: 0 = ilimitado.
-	if e.MaxParticipants > 0 {
+	// Aforo a nivel exam (e.MaxParticipants): solo aplica cuando NO hay
+	// key. Si hay key, el aforo lo dicta la key (keys_service.IncrementUsage
+	// es atomico y se valida antes de llamar a Start desde el handler gRPC),
+	// asi evitamos doble fuente de verdad inconsistente (Bug #3).
+	if in.KeyID == "" && e.MaxParticipants > 0 {
 		count, err := h.attempts.CountActiveByExam(ctx, e.ID)
 		if err != nil {
 			return nil, err
@@ -78,7 +90,7 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 		return nil, err
 	}
 	att.ID = id
-	return att, nil
+	return &ports.StartAttemptResult{Attempt: att, Reused: false}, nil
 }
 
 func (h *AttemptHandler) Answer(ctx context.Context, in ports.AnswerInput) error {

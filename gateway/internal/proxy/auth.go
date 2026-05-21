@@ -228,18 +228,13 @@ func (p *Proxy) registerStudentWithKey(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Bug #4 fix: P1 soportaba auto-registro masivo con keys LAN (sin
+	// colegio asignado) — flujo "LAN##" del Manual del administrador. Si
+	// `key.school_id == ""`, igual permitimos el registro; el estudiante
+	// quedara con `users.school_id = NULL`. Los dashboards de colegio
+	// no lo veran (es lo esperado para flujo masivo), pero el alumno
+	// puede rendir el examen.
 	schoolID := key.GetSchoolId()
-	if schoolID == "" {
-		// Key en modo LAN (sin colegio asignado) → no podemos
-		// auto-registrar porque el estudiante necesita pertenecer a un
-		// colegio concreto para que dashboards / reportes funcionen.
-		writeJSON(w, http.StatusUnprocessableEntity, errorBody{
-			Status:  "error",
-			Code:    "KEY_HAS_NO_SCHOOL",
-			Message: "Esta llave no esta asociada a un colegio. Pedile a tu coordinador una llave de colegio.",
-		})
-		return
-	}
 
 	// 2) Delegar creacion + envio de OTP a users_service.
 	regResp, err := p.cli.Auth.RegisterStudentWithKey(r.Context(), &usersgrpcpb.RegisterStudentWithKeyRequest{
