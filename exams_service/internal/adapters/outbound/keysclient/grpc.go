@@ -60,9 +60,10 @@ func (g *Grpc) Validate(ctx context.Context, code, _ string) (*ports.KeyValidati
 		return &ports.KeyValidation{OK: false, Reason: "key not found"}, nil
 	}
 	v := &ports.KeyValidation{
-		KeyID:    domain.KeyID(k.GetId()),
-		SchoolID: domain.SchoolID(k.GetSchoolId()),
-		OK:       k.GetActive(),
+		KeyID:      domain.KeyID(k.GetId()),
+		SchoolID:   domain.SchoolID(k.GetSchoolId()),
+		ExamTypeID: k.GetExamTypeId(),
+		OK:         k.GetActive(),
 	}
 	if !k.GetActive() {
 		v.Reason = "key inactive"

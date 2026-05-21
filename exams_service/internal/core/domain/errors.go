@@ -26,6 +26,9 @@ var (
 	// Business
 	ErrExamClosed         = apperr.NewPermissionDenied("EXAM_CLOSED", "exam is not currently open for attempts")
 	ErrExamNotPublished   = apperr.NewPermissionDenied("EXAM_NOT_PUBLISHED", "exam has not been published")
+	// ErrKeyExamTypeMismatch: la key es de otro tipo de prueba que el exam.
+	// Ejemplo: key vocacional (VO-XXXX) usada para iniciar un simulacro.
+	ErrKeyExamTypeMismatch = apperr.NewValidation("KEY_EXAM_TYPE_MISMATCH", "key is for a different exam type", "key_code")
 	ErrAttemptAlreadyDone = apperr.NewConflict("ATTEMPT_ALREADY_SUBMITTED", "attempt was already submitted", "attempt_id")
 	ErrCannotEditPublished = apperr.NewPermissionDenied("EXAM_PUBLISHED_LOCKED", "published exams cannot be edited; clone for a new version instead")
 )

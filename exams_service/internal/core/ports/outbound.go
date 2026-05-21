@@ -96,11 +96,14 @@ type KeysClient interface {
 }
 
 type KeyValidation struct {
-	KeyID     domain.KeyID
-	SchoolID  domain.SchoolID
-	ExpiresAt *time.Time
-	OK        bool
-	Reason    string
+	KeyID       domain.KeyID
+	SchoolID    domain.SchoolID
+	ExamTypeID  int32 // exam_type_id de la key; el handler StartAttempt lo
+	                  // compara con e.ExamTypeID para impedir que una key
+	                  // vocacional dispare un examen de simulacro y viceversa.
+	ExpiresAt   *time.Time
+	OK          bool
+	Reason      string
 }
 
 // =============== Audit ===============

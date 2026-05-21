@@ -35,6 +35,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 	userID := domain.UserID(req.GetUserId())
 
 	var keyID domain.KeyID
+	var expectedExamTypeID int32
 	if req.GetKeyCode() != "" {
 		validation, err := h.keys.Validate(ctx, req.GetKeyCode(), "")
 		if err != nil {
@@ -44,6 +45,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 			return nil, apperr.ToGRPC(ctx, domain.ErrExamClosed)
 		}
 		keyID = validation.KeyID
+		expectedExamTypeID = validation.ExamTypeID
 	}
 
 	// Bug #1 fix: el IncrementUsage de keys_service es la unica gate
@@ -79,9 +81,10 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 	}
 
 	res, err := h.cmds.Start(ctx, ports.StartAttemptInput{
-		ExamID: examID,
-		UserID: userID,
-		KeyID:  keyID,
+		ExamID:             examID,
+		UserID:             userID,
+		KeyID:              keyID,
+		ExpectedExamTypeID: expectedExamTypeID,
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

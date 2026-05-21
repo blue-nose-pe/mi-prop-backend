@@ -64,6 +64,14 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 		}
 		return nil, domain.ErrExamClosed
 	}
+	// Fix A: cross-type guard. Si el caller paso una key (Validate seteo
+	// ExpectedExamTypeID con el exam_type_id de la key), exigir que matchee
+	// el del exam. Esto impide que una key vocacional dispare un simulacro,
+	// que en el UI quedaba como "Simulacro - Matematicas - Basico" para
+	// preguntas RIASEC (scoring nonsense).
+	if in.ExpectedExamTypeID != 0 && e.ExamTypeID != in.ExpectedExamTypeID {
+		return nil, domain.ErrKeyExamTypeMismatch
+	}
 
 	// Aforo a nivel exam (e.MaxParticipants): solo aplica cuando NO hay
 	// key. Si hay key, el aforo lo dicta la key (keys_service.IncrementUsage

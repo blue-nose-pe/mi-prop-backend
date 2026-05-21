@@ -146,6 +146,11 @@ type StartAttemptInput struct {
 	ExamID domain.ExamID
 	UserID domain.UserID
 	KeyID  domain.KeyID // "" si el caller es admin (sin requerir key)
+	// ExpectedExamTypeID: si !=0, Start exige que e.ExamTypeID == este valor.
+	// Lo setea el handler gRPC cuando hay key, con el exam_type de la key,
+	// para impedir que una key vocacional arranque un examen de simulacro
+	// y viceversa (Fix A). Cuando es 0, no se hace el chequeo (modo admin).
+	ExpectedExamTypeID int32
 }
 
 type AnswerInput struct {
