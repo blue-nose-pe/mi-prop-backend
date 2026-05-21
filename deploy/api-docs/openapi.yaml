@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: Mi Propósito 2.0 API
-  version: 0.14.1
+  version: 0.15.0
   summary: API REST pública del sistema Mi Propósito 2.0 (UCSP).
   description: |
     # Bienvenido
@@ -48,6 +48,81 @@ info:
       y forzar el cambio en el primer login (`POST /api/users/me/change-password`).
     - **Health**: el gateway expone `GET /health` (sin prefijo `/api/`) para
       readiness/liveness del Ingress y checks externos. No requiere auth.
+
+    ## Cambios — v0.15.0 (2026-05-21)
+
+    Sesión grande de bugfixes (auditoría de seguridad + comportamientos
+    legados de Mi Propósito 1). Lo más relevante:
+
+    ### Seguridad (rompe cliente si dependía de bugs)
+
+    - **IDOR cerrado**: 11 endpoints que aceptaban `{id}` del path sin validar
+      ownership ahora exigen `superadmin` o que el caller sea dueño/asesor
+      del recurso. Afecta: `GET /api/attempts/{id}`, `POST /api/attempts/{id}/answer`,
+      `POST /api/attempts/{id}/finish`, `GET /api/answers/by-attempt/{id}`,
+      `GET /api/users/{id}/attempts`, `GET /api/exams/{id}/attempts` (solo superadmin),
+      `GET /api/attempts/by-key/{id}`, `GET /api/colegios/{id}/keys`,
+      `GET /api/colegios/{id}/students`, `GET /api/colegios/{id}/dashboard|historico|export.xlsx`,
+      `GET /api/analytics/estudiante/{id}/dashboard|historico|reporte|reporte.xlsx`,
+      `GET /api/analytics/asesor/{id}/pendientes|export.xlsx`. En todos:
+      respuesta `403 FORBIDDEN` cuando el caller no califica.
+    - **Impersonación bloqueada en `POST /api/attempts`**: el `user_id` del
+      body se ignora (se usa el del JWT) salvo que el caller sea superadmin.
+      Antes un estudiante podía mandar `user_id` de otro alumno y consumir
+      su aforo a su nombre.
+    - **`GET /api/analytics/dashboard` (global)** ahora exige superadmin.
+    - **Anti-enumeración mejorada**: `POST /api/auth/student/request-otp` y
+      `POST /api/auth/student/register-with-key` devuelven `200` uniforme
+      independientemente de si el email existe o si pertenece a otro rol.
+    - **`clientIP` priorizando `X-Real-Ip`** sobre `X-Forwarded-For` para
+      rate-limit y auditoría (XFF era spoofeable trivialmente).
+
+    ### Comportamiento del flujo de prueba
+
+    - **`POST /api/attempts` cross-type guard**: si la `key_code` es de
+      `exam_type` distinto al del `exam_id`, devuelve `422 KEY_EXAM_TYPE_MISMATCH`
+      (ej: key vocacional `VO-XXXXX` usada para iniciar un Simulacro).
+    - **Idempotencia de StartAttempt**: si el caller ya tenía un attempt
+      sin submit para el mismo exam, se devuelve ese mismo (no se crea
+      uno nuevo ni se consume aforo extra).
+    - **Race-safe**: `IncrementUsage` de keys_service se llama ANTES de
+      crear el attempt; si el aforo está lleno → `422 KEY_NOT_USABLE`.
+    - **`POST /api/attempts/{id}/finish` no aplica scoring académico a
+      vocacional** (`exam_type_id=1`): devuelve `score=0, max_score=0`.
+      El reporte real con RIASEC se consulta vía
+      `GET /api/analytics/estudiante/{id}/reporte`.
+    - **`POST /api/auth/student/register-with-key` acepta keys LAN** (sin
+      colegio asignado). El estudiante queda con `users.school_id=NULL`
+      pero puede rendir el examen masivo.
+
+    ### Comportamiento de listados / datos
+
+    - **`GET /api/colegios/{id}/students` aditivo**: ahora incluye también
+      estudiantes que rindieron tests con keys de este colegio, aunque su
+      `users.school_id` apunte a otro. Estos vienen con
+      `properties.via_key_attempts = "true"` para que el front pueda
+      diferenciarlos visualmente.
+    - **`PATCH /api/keys/{id}` con `max_uses` opcional**: el campo es
+      `*int32` (nullable). Si no se envía → no se modifica. Antes, omitir
+      `max_uses` lo seteaba a `0` (ilimitado) silenciosamente y destruía
+      el aforo.
+    - **Avg score normalizado** en `GetAsesorDashboard` /
+      `GetColegioDashboard`: ahora promedia porcentajes (cada attempt
+      aporta `score/max_score * 100`) en lugar de sumar puntos absolutos
+      de exams con escalas distintas.
+
+    ### OTP / delivery
+
+    - **OTP del estudiante via Resend** (HTTP) en lugar del HubSpot
+      Workflow. El cliente UCSP no tuvo que cambiar nada en su CRM. El
+      sync del contacto a HubSpot se conserva como best-effort en
+      goroutine. Toggle por env var `OTP_SENDER=resend|hubspot`
+      (default `hubspot`, prod actual: `resend`).
+    - `POST /api/auth/student/request-otp`: regex front ahora exige 6
+      dígitos exactos (era 4-8 y dejaba al usuario adivinar).
+    - **`hubspot_service.SendOTP` propaga errores de upsert**: si la
+      operación de upsertar el contacto falla, ya no dispara el webhook
+      con OTP vacío.
 
     ## Arquitectura interna (resumen)
 
@@ -951,30 +1026,34 @@ paths:
         el coordinador y se da de alta a sí mismo con el código de la
         llave que su asesor distribuyó.
 
-        Flujo interno:
+        ### Flujo interno
 
         1. **`keys_service.ValidateKey(key_code)`** — read-only; verifica
            que la llave exista, esté `active=true`, dentro de
            `valid_from`/`valid_to` y con `current_uses < max_uses`. NO
            consume aforo.
-        2. **`users_service.AuthService.RegisterStudentWithKey`** —
-           idempotente:
-           - si el email existe como estudiante del **mismo `school_id`**
-             que la llave: reusa el user y solo dispara OTP nuevo
-             (`status: "exists"`);
-           - si el email existe como otro rol o pertenece a otro colegio:
-             responde `409 EMAIL_TAKEN` (anti-hijack);
-           - si no existe: crea user con `permission_group =
-             student_permissions`, `school_id` resuelto de la llave,
-             password random (nunca se usa — login es siempre OTP),
-             `active=true`. Responde `status: "created"`.
-        3. **OTP** se envía igual que `/api/auth/student/request-otp`
-           (mismo TTL 10 min, mismo workflow HubSpot, mismas reglas de
-           rate limit).
-
-        **Llaves LAN** (sin `school_id`) NO son aceptadas porque el
-        estudiante necesita pertenecer a un colegio concreto para que
-        dashboards y reportes funcionen. Responde `422 KEY_HAS_NO_SCHOOL`.
+        2. **Antes (v0.14)**: keys LAN (sin `school_id`) eran rechazadas
+           con `422 KEY_HAS_NO_SCHOOL`. **En v0.15**: se aceptan; el
+           estudiante queda con `users.school_id = NULL` pero puede
+           rendir el examen masivo (replica del flujo "LAN##" de P1).
+        3. **`users_service.AuthService.RegisterStudentWithKey`** —
+           idempotente y **anti-enumeración**:
+           - email no existe → crea user con `permission_group =
+             student_permissions`, `school_id` resuelto de la llave
+             (NULL si la key es LAN), password random (nunca se usa —
+             login es siempre OTP), `active=true`. Responde
+             `status: "created"`.
+           - email existe como estudiante del **mismo `school_id`**:
+             reusa el user y solo dispara OTP nuevo. Responde
+             `status: "exists"`.
+           - email pertenece a otro rol (asesor/admin/coord) o a otro
+             colegio: **se responde `status: "exists"` igualmente, sin
+             disparar OTP**, y se logea internamente. Esto evita la
+             enumeración trivial donde un atacante podía descubrir
+             qué emails son staff probando con sus propias keys.
+        4. **OTP** se envía igual que `/api/auth/student/request-otp`
+           (mismo TTL 10 min, mismo `OTP_SENDER` configurado en
+           `users_service` — actualmente Resend HTTP en prod).
       security: []  # público
       requestBody:
         required: true
@@ -3598,37 +3677,102 @@ paths:
       tags: [Attempts]
       summary: Iniciar un intento
       description: |
-        Verifica que el exam esté **abierto** (publicado, activo, ventana
-        temporal vigente, aforo no lleno) y crea el attempt. Si se provee
-        `key_code`, lo valida contra `keys-service` y registra el uso.
+        Crea (o reutiliza idempotentemente) un attempt para el exam dado.
 
-        **Reglas de aforo**: `max_participants = 0` significa ilimitado.
+        ### Reglas defensivas v0.15
+
+        - **`user_id` se ignora salvo superadmin**: el back usa el `subject`
+          del JWT del caller. Si un caller no-superadmin manda `user_id`
+          distinto al suyo → `403 FORBIDDEN`. Esto cierra la
+          impersonación del v0.14 (Bug 3).
+        - **Cross-type guard**: si la `key_code` apunta a un exam de tipo
+          distinto al del `exam_id` (ej: key vocacional + exam simulacro),
+          respuesta `422 KEY_EXAM_TYPE_MISMATCH`.
+        - **Aforo atómico**: `keys_service.IncrementUsage` se invoca ANTES
+          de crear el attempt. Si el aforo está lleno → `422 KEY_NOT_USABLE`
+          (la key se rechaza de forma atómica, sin race vs otros alumnos).
+        - **Idempotencia**: si el caller ya tenía un attempt sin submit
+          para el mismo exam, se devuelve ESE attempt en lugar de crear
+          uno nuevo. Un refresh del front no consume un uso adicional
+          de la key.
+        - **Aforo del exam (`max_participants`)**: solo se evalúa cuando
+          NO se manda `key_code` (modo admin). Si hay key, ella manda
+          el aforo (es atómica) y el del exam se ignora para evitar
+          doble fuente inconsistente. `max_participants = 0` = ilimitado.
+
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [exam_id, user_id]
+              required: [exam_id]
               properties:
                 exam_id:  { type: string, format: uuid }
-                user_id:  { type: string, format: uuid, description: "Usuario que rinde (puede ser distinto del autenticado si es admin)" }
-                key_code: { type: string, description: "Opcional. Si vacío, requiere permisos admin." }
+                user_id:
+                  type: string
+                  format: uuid
+                  description: |
+                    Ignorado para callers no-superadmin (se usa el del JWT).
+                    Para superadmin: puede arrancar attempt en nombre de un
+                    alumno (caso "admin ayuda en sesión presencial").
+                key_code:
+                  type: string
+                  description: |
+                    Opcional. Si vacío y el exam tiene aforo limitado,
+                    requiere `db_exams.attempt.write`.
             example:
-              exam_id: "0ef2..."
-              user_id: "7c11..."
-              key_code: "S2026001"
+              exam_id: "928dd23a-17ba-4232-8106-9646edf4e1c7"
+              key_code: "VO-XANDNK"
       responses:
         '200':
-          description: Attempt iniciado
+          description: Attempt creado o reutilizado
           content:
             application/json:
               schema: { type: object, properties: { attempt: { $ref: '#/components/schemas/Attempt' } } }
+              example:
+                attempt:
+                  id: "43d86828-8b1d-45f9-a8ba-d67d1660d405"
+                  exam_id: "928dd23a-17ba-4232-8106-9646edf4e1c7"
+                  user_id: "cb908c31-e3e6-492a-ace3-e3b11bd3a9a2"
+                  key_id: "6ed014bb-65a6-40dc-861a-3f3d1964486e"
+                  score: 0
+                  max_score: 0
+                  started_at: "2026-05-21T22:07:47Z"
+                  submitted_at: null
         '403':
-          description: Exam cerrado / aforo lleno / key inválida
+          description: |
+            Impersonación bloqueada (`FORBIDDEN`), exam no publicado o
+            cerrado (`EXAM_CLOSED`).
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
+              examples:
+                impersonation:
+                  summary: Caller no-superadmin manda user_id distinto al JWT
+                  value:
+                    status: error
+                    code: FORBIDDEN
+                    message: cannot start attempt on behalf of another user
+        '422':
+          description: |
+            Key inválida para este exam o aforo lleno.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              examples:
+                cross_type:
+                  summary: Key vocacional usada con exam de simulacro
+                  value:
+                    status: error
+                    code: KEY_EXAM_TYPE_MISMATCH
+                    message: key is for a different exam type
+                exhausted:
+                  summary: Aforo de la key agotado
+                  value:
+                    status: error
+                    code: KEY_NOT_USABLE
+                    message: key not usable (exhausted, expired or inactive)
 
   /api/attempts/{id}:
     parameters: [{ $ref: '#/components/parameters/AttemptID' }]
@@ -3900,7 +4044,19 @@ paths:
         (ambos patrones matcheaban `/api/attempts/by-key/answers` sin
         ser uno estrictamente más específico → panic en startup).
 
-        Permiso requerido: `db_exams.attempt.read`.
+        ### Scope (v0.15)
+
+        Solo el **dueño del attempt** (caller cuyo JWT subject matchea
+        `attempt.user_id`) o un **superadmin** pueden leer las respuestas.
+        Otro caller → `403 FORBIDDEN`. Esto cierra el IDOR del v0.14
+        donde cualquier user autenticado podía ver los detalles de
+        attempts ajenos cambiando el `{id}` del path.
+
+        El front lo usa en la vista `/test/simulacro/revision` ("Ver
+        errores") que muestra cada pregunta + respuesta del alumno +
+        si fue correcta.
+
+        Permiso requerido: ser dueño del attempt o `superadmin`.
       responses:
         '200':
           description: Lista de respuestas enriquecidas (vacío si attempt sin answers).
@@ -4095,6 +4251,17 @@ paths:
         identidad de la key — para cambiarlos, generar otra y desactivar la
         anterior).
 
+        ### Comportamiento de `max_uses` (cambio en v0.15)
+
+        El campo es **opcional** (nullable): omitirlo NO modifica el valor
+        existente. Para setear ilimitado de forma explícita, mandar
+        `max_uses: 0`.
+
+        **Antes (v0.14)**: `max_uses` era `int32` no-nullable y omitirlo
+        del body lo seteaba a `0` (ilimitado) silenciosamente. Un PATCH
+        que solo cambiaba `grade` destruía el aforo sin que nadie se
+        diera cuenta.
+
         Permiso requerido: `db_keys.key.write`.
       requestBody:
         required: true
@@ -4107,13 +4274,30 @@ paths:
                 section:    { type: string }
                 valid_from: { type: string, format: date-time }
                 valid_to:   { type: string, format: date-time }
-                max_uses:   { type: integer, format: int32 }
-            example:
-              grade: "5to"
-              section: "B"
-              valid_from: "2026-06-01T00:00:00Z"
-              valid_to: "2026-07-15T23:59:59Z"
-              max_uses: 35
+                max_uses:
+                  type: integer
+                  format: int32
+                  nullable: true
+                  description: |
+                    Opcional. Si se omite del body, el valor existente se
+                    PRESERVA. `0` = ilimitado (explícito).
+            examples:
+              full:
+                summary: Update completo
+                value:
+                  grade: "5to"
+                  section: "B"
+                  valid_from: "2026-06-01T00:00:00Z"
+                  valid_to: "2026-07-15T23:59:59Z"
+                  max_uses: 35
+              only_grade:
+                summary: Solo grade (max_uses NO se toca)
+                value:
+                  grade: "5to"
+              explicit_unlimited:
+                summary: Hacer la key ilimitada explícitamente
+                value:
+                  max_uses: 0
       responses:
         '200':
           description: Key actualizada
@@ -4275,6 +4459,81 @@ paths:
                     active: true
                     created_at: "2026-05-09T11:30:00Z"
                     updated_at: null
+
+  /api/colegios/{id}/students:
+    parameters: [{ $ref: '#/components/parameters/SchoolID' }]
+    get:
+      tags: [Schools]
+      summary: Listar estudiantes del colegio (aditivo)
+      description: |
+        Devuelve los estudiantes asociados al colegio en **dos formas**:
+
+        1. **Estudiantes "directos"** — usuarios cuyo `users.school_id`
+           apunta a este colegio. Se obtienen vía `SearchUsers` con filtro
+           `school_id=X` + `active=true`.
+        2. **Estudiantes "via keys"** (nuevo en v0.15) — usuarios cuyo
+           `school_id` apunta a OTRO colegio pero rindieron tests con keys
+           de este colegio. Se resuelven con un JOIN cross-DB
+           `db_keys.key_usage <-> db_keys.[key] WHERE k.school_id = X`,
+           y se hidratan con `users-service.GetUser`. Estos vienen con
+           `properties.via_key_attempts = "true"` para que el front los
+           pinte distinto o aplique filtros opcionales.
+
+        Razón del aditivo: en P1 las 3 herramientas vivían en BDs separadas
+        y cada subdominio sólo veía SUS estudiantes. En P2 con la tabla
+        unificada, si un alumno se registra con una key de un colegio y
+        después usa una key de otro, su `users.school_id` no migra
+        (decisión anti-hijack). El listado puro por `school_id` lo dejaba
+        fuera del segundo colegio aunque haya rendido pruebas ahí. Con
+        el aditivo, el coordinador/asesor sí lo ve.
+
+        ### Scope (v0.15)
+
+        - Superadmin: cualquier colegio.
+        - Resto: solo colegios donde el caller tiene un `assignment`
+          vigente (asesor/coordinador). Si no califica → `403 FORBIDDEN`.
+
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, default: 200, maximum: 1000 }
+        - in: query
+          name: after
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: Lista combinada de estudiantes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total:   { type: integer, description: "directos + via_key_attempts" }
+                  results: { type: array, items: { $ref: '#/components/schemas/SearchResult' } }
+                  paging:  { $ref: '#/components/schemas/Paging' }
+              example:
+                total: 6
+                results:
+                  - id: "11111111-2222-4111-9111-111111111111"
+                    properties:
+                      email: "estudiante1@colegio.edu.pe"
+                      first_name: "Juan"
+                      last_name: "Perez"
+                      school_id: "55555555-5555-4555-8555-555555555555"
+                      active: "true"
+                  - id: "cb908c31-e3e6-492a-ace3-e3b11bd3a9a2"
+                    properties:
+                      email: "angel26900701@gmail.com"
+                      first_name: "angel"
+                      last_name: ""
+                      school_id: "44444444-4444-4444-8444-444444444444"
+                      active: "true"
+                      via_key_attempts: "true"
+        '403':
+          description: Caller sin acceso a este colegio
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
 
   /api/colegios/{id}/keys:
     parameters: [{ $ref: '#/components/parameters/SchoolID' }]

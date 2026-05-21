@@ -482,6 +482,60 @@ curl -X POST https://api.miproposito.ucsp.edu.pe/api/auth/login \
   `POST /api/users/{id}/reset-password` y el response trae la password
   temporal una sola vez. El usuario es marcado con `must_change_password=1`.
 
+### Gotchas de deploy aprendidos
+
+- **Dockerfiles multi-target**: `keys_service`, `exams_service`,
+  `users_service` y `hubspot_service` tienen targets `server` + `migrate`
+  (y users además `bootstrap`, hubspot además `worker`). **Siempre pasar
+  `--target server` al `az acr build`** o el último FROM gana — y el
+  último suele ser `migrate`, lo que deja el pod arrancando, corriendo
+  migraciones y terminando como `Completed` sin servir gRPC.
+- **Verificar que el deployment NO esté pinned a SHA digest** antes de
+  hacer rollout post-build. Si está pinned, `kubectl rollout restart`
+  re-pull el MISMO digest viejo aunque el `:latest` tenga código nuevo.
+  Comando para auditar:
+  ```bash
+  for svc in keys-service exams-service users-service hubspot-service \
+             analytics-service gateway; do
+    img=$(kubectl get deployment miproposito-$svc -n miproposito \
+          -o jsonpath='{.spec.template.spec.containers[0].image}')
+    case "$img" in
+      *@sha256:*) echo "$svc: PINNED -> $img" ;;
+      *) echo "$svc: tag    -> $img" ;;
+    esac
+  done
+  ```
+  Para des-pinnear:
+  ```bash
+  kubectl set image deployment/miproposito-<svc> -n miproposito \
+    <svc>=mipropositoacr.azurecr.io/<svc>:latest
+  ```
+- **Context de build**:
+  - `gateway`, `users_service`, `exams_service`, `analytics_service` →
+    context = **raíz del repo** (importan protos hermanos vía `go.work`).
+  - `keys_service`, `satisfaction_service`, `hubspot_service` →
+    context = su propio directorio.
+- **Cache mutable tag (`:latest`, `:bulk-sync`)** con `imagePullPolicy:
+  Always`: tras `az acr build` hay que hacer `kubectl rollout restart`
+  para que K8s detecte el cambio (sino el pod sigue corriendo el
+  ImageID del último pull).
+
+### Envío del OTP del estudiante: HubSpot vs Resend
+
+El sistema soporta dos backends de delivery del OTP, intercambiables vía
+env var `OTP_SENDER` en `users_service`:
+
+| Valor | Cómo manda el correo | Cuándo usar |
+|---|---|---|
+| `hubspot` (default) | Llama `hubspot_service.SendOTP` que upsertea el contacto en HubSpot y dispara el Automation Workflow id `9013951`. Depende de que el portal tenga "auto-set new contacts as marketing" activo o tokens con scope `marketing-contacts` / `transactional-email`. | Si el cliente prefiere mantener todo el routing dentro de su CRM HubSpot. |
+| `resend` | Llama directo a `api.resend.com/emails` con la API key del secret `miproposito-resend-credentials`. Independiente de la config de HubSpot. El sync de contacto al CRM se hace best-effort en goroutine (`hubspot_service.SyncStudentContact`) sin bloquear el login. | Si el portal HubSpot no entrega correos confiablemente (caso UCSP 2026-05). |
+
+En prod actualmente `OTP_SENDER=resend`. La cuenta Resend es de **Blue Nose**
+(transición pendiente: UCSP debe crear su propia cuenta y darnos la key
+para el handover final). El From sandbox es `onboarding@resend.dev`; para
+prod requiere verificar `ucsp.edu.pe` en Resend (SPF TXT + DKIM CNAME) y
+cambiar `RESEND_FROM` en el chart.
+
 ---
 
 ## Contacto
