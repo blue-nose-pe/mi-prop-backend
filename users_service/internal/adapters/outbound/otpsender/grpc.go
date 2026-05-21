@@ -52,6 +52,16 @@ func (g *Grpc) Close() error {
 	return g.conn.Close()
 }
 
+// Client expone el cliente gRPC subyacente para reutilizar la conexion
+// desde otro adapter (ej: Resend, que dispara SyncStudentContact
+// best-effort sin crear una segunda conexion al hubspot_service).
+func (g *Grpc) Client() hubspotpb.HubspotServiceClient {
+	if g == nil {
+		return nil
+	}
+	return g.cli
+}
+
 // Send dispara el SendOTP gRPC. Reenvía x-correlation-id si está en el
 // context inbound. NO reenvía Authorization: el users_service llama al
 // hubspot_service con el bearer del propio caller (estudiante intentando

@@ -40,6 +40,15 @@ type Config struct {
 	// HubSpot service (gRPC) — para enviar OTP por email vía hubspot_service.
 	// Si está vacío, el OTP sender es NoOp (solo dev local).
 	HubspotServiceAddr string
+
+	// OTPSender: "resend" envía el correo directo via Resend HTTP API
+	// (bypass HubSpot Workflow). "hubspot" o vacio mantiene el path antiguo
+	// que dispara el Workflow del portal. Default "hubspot" para no romper
+	// nada al deployar.
+	OTPSender       string
+	ResendAPIKey    string
+	ResendFromEmail string // formato RFC: "Mi Proposito UCSP <onboarding@resend.dev>"
+	ResendReplyTo   string // opcional
 }
 
 func Load() *Config {
@@ -69,8 +78,13 @@ func Load() *Config {
 		JWTRefreshTTL: getEnvDuration("JWT_REFRESH_TTL", 7*24*time.Hour),
 
 		HubspotServiceAddr: getEnv("HUBSPOT_SERVICE_ADDR", ""),
+
+		OTPSender:       getEnv("OTP_SENDER", "hubspot"),
+		ResendAPIKey:    getEnv("RESEND_API_KEY", ""),
+		ResendFromEmail: getEnv("RESEND_FROM", "Mi Proposito UCSP <onboarding@resend.dev>"),
+		ResendReplyTo:   getEnv("RESEND_REPLY_TO", ""),
 	}
-	log.Printf("[config] grpc=%s sql=%s/%s redis=%s hubspot=%s", c.GRPCPort, c.SQLServer, c.SQLDatabase, c.RedisAddr, c.HubspotServiceAddr)
+	log.Printf("[config] grpc=%s sql=%s/%s redis=%s hubspot=%s otpsender=%s", c.GRPCPort, c.SQLServer, c.SQLDatabase, c.RedisAddr, c.HubspotServiceAddr, c.OTPSender)
 	return c
 }
 

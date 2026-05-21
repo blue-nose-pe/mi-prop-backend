@@ -33,6 +33,8 @@ import (
 	"users_service/internal/shared/permmw"
 	pb "users_service/proto/gen"
 
+	hubspotpb "hubspot_service/proto/gen"
+
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
@@ -91,20 +93,34 @@ func main() {
 	hasher := bcryptadapter.New(cfg.BcryptCost)
 	otpHasher := otphashadapter.New(cfg.JWTSecret)
 
-	// OTP sender: gRPC al hubspot_service. Si HUBSPOT_SERVICE_ADDR no está
-	// configurado, usamos un noop para que el servicio arranque (los OTPs
-	// no se enviarán pero el binario no muere). En producción siempre debe
-	// estar seteado vía env var.
+	// OTP sender + HubSpot sync.
+	//
+	// OTP_SENDER=resend  → correo directo via Resend HTTP. El sync de
+	//                      contacto a HubSpot se hace best-effort en
+	//                      goroutine usando hubspot_service.SyncStudentContact
+	//                      (no bloquea login si HubSpot esta caido).
+	// OTP_SENDER=hubspot → path antiguo: hubspot_service.SendOTP dispara
+	//                      el Workflow del portal que manda el email.
+	//
+	// Si HUBSPOT_SERVICE_ADDR esta vacio, el sender cae a NoOp salvo que
+	// OTP_SENDER=resend (en cuyo caso Resend funciona standalone).
 	var otpSender ports.OTPSender = noopOTPSender{}
 	var hubspotSync ports.HubspotSyncer
+	var hubspotGRPCCli hubspotpb.HubspotServiceClient // para inyectar al Resend adapter
 	if cfg.HubspotServiceAddr != "" {
+		// Mantenemos los dos clientes del path antiguo porque
+		// hubspotSyncadapter (UpsertContact) lo usa el flujo de admin
+		// fuera del OTP.
 		gs, err := otpsenderadapter.NewGrpc(cfg.HubspotServiceAddr)
 		if err != nil {
 			log.Fatalf("otpsender grpc dial: %v", err)
 		}
 		defer gs.Close()
-		otpSender = gs
-		log.Printf("[otpsender] gRPC client → %s", cfg.HubspotServiceAddr)
+		hubspotGRPCCli = gs.Client()
+		if strings.EqualFold(cfg.OTPSender, "hubspot") {
+			otpSender = gs
+			log.Printf("[otpsender] hubspot gRPC client → %s", cfg.HubspotServiceAddr)
+		}
 
 		hs, err := hubspotsyncadapter.NewGrpc(cfg.HubspotServiceAddr)
 		if err != nil {
@@ -114,8 +130,19 @@ func main() {
 		hubspotSync = hs
 		log.Printf("[hubspotsync] gRPC client → %s", cfg.HubspotServiceAddr)
 	} else {
-		log.Printf("[otpsender] NoOp (HUBSPOT_SERVICE_ADDR vacío)")
 		log.Printf("[hubspotsync] disabled (HUBSPOT_SERVICE_ADDR vacío)")
+	}
+
+	if strings.EqualFold(cfg.OTPSender, "resend") {
+		if cfg.ResendAPIKey == "" {
+			log.Fatalf("OTP_SENDER=resend requiere RESEND_API_KEY")
+		}
+		otpSender = otpsenderadapter.NewResend(cfg.ResendAPIKey, cfg.ResendFromEmail, cfg.ResendReplyTo, hubspotGRPCCli)
+		log.Printf("[otpsender] resend from=%s hubspotSync=%v", cfg.ResendFromEmail, hubspotGRPCCli != nil)
+	}
+
+	if _, ok := otpSender.(noopOTPSender); ok {
+		log.Printf("[otpsender] NoOp — no real provider configured")
 	}
 
 	// JWT (signer + verifier construidos sobre la lib compartida).

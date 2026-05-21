@@ -28,6 +28,15 @@ redis:
 # Bcrypt cost (10 default — incrementar en prod a 12).
 bcryptCost: 12
 
+# OTP delivery. sender=resend usa Resend HTTP (bypass HubSpot Workflow).
+# La RESEND_API_KEY se monta desde el secret <release>-users-service-kv
+# clave `resend-api-key` (poner via kubectl patch o Key Vault sync).
+otp:
+  sender: "resend"   # "hubspot" para volver al path antiguo via Workflow
+  resend:
+    from: "Mi Proposito UCSP <onboarding@resend.dev>"
+    replyTo: ""
+
 resources:
   requests:
     cpu: 100m
