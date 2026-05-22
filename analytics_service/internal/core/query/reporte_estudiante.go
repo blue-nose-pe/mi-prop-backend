@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"analytics_service/internal/core/domain"
@@ -75,43 +76,101 @@ func (h *DashboardHandler) GetReporteEstudiante(ctx context.Context, in ports.Re
 		return nil, apperr.NewValidation("MISSING_USER_ID", "user_id is required", "user_id")
 	}
 
-	user, err := h.users.GetUser(ctx, in.UserID)
-	if err != nil {
-		return nil, err
+	// FASE 1 — paralelo: GetUser y la resolucion del attempt son
+	// independientes. Antes corrian secuenciales sumando ~150-300ms
+	// extras en el modal "Resultados del estudiante" (~640ms total).
+	// Con goroutines bajamos a ~max(getUser, resolveAttempt) ≈ ~150ms.
+	type userResult struct {
+		user *ports.UpstreamUser
+		err  error
 	}
+	type attemptResult struct {
+		attempt *ports.UpstreamAttempt
+		err     error
+	}
+	userCh := make(chan userResult, 1)
+	attCh := make(chan attemptResult, 1)
 
-	// Resolver attempt: si vino attempt_id explícito lo usamos; si no,
-	// buscamos el ultimo attempt SUBMITTED del user (más reciente).
-	var attempt *ports.UpstreamAttempt
-	if in.AttemptID != "" {
-		att, err := h.exams.GetAttempt(ctx, in.AttemptID)
-		if err != nil {
-			return nil, err
+	go func() {
+		u, err := h.users.GetUser(ctx, in.UserID)
+		userCh <- userResult{u, err}
+	}()
+	go func() {
+		// Resolver attempt: si vino attempt_id explícito lo usamos; si no,
+		// buscamos el ultimo attempt SUBMITTED del user (más reciente).
+		if in.AttemptID != "" {
+			att, err := h.exams.GetAttempt(ctx, in.AttemptID)
+			if err != nil {
+				attCh <- attemptResult{nil, err}
+				return
+			}
+			if att.UserID != in.UserID {
+				attCh <- attemptResult{nil, apperr.NewPermissionDenied("ATTEMPT_NOT_OWNED", "attempt does not belong to this user")}
+				return
+			}
+			attCh <- attemptResult{att, nil}
+			return
 		}
-		if att.UserID != in.UserID {
-			return nil, apperr.NewPermissionDenied("ATTEMPT_NOT_OWNED", "attempt does not belong to this user")
-		}
-		attempt = att
-	} else {
 		atts, err := h.exams.ListAttemptsByUser(ctx, in.UserID)
 		if err != nil {
-			return nil, err
+			attCh <- attemptResult{nil, err}
+			return
 		}
-		attempt = pickLatestSubmitted(atts)
-		if attempt == nil {
-			return nil, apperr.NewNotFound("NO_SUBMITTED_ATTEMPT", "user has no submitted attempts to build a report from")
+		a := pickLatestSubmitted(atts)
+		if a == nil {
+			attCh <- attemptResult{nil, apperr.NewNotFound("NO_SUBMITTED_ATTEMPT", "user has no submitted attempts to build a report from")}
+			return
 		}
+		attCh <- attemptResult{a, nil}
+	}()
+	userRes := <-userCh
+	if userRes.err != nil {
+		return nil, userRes.err
 	}
+	attRes := <-attCh
+	if attRes.err != nil {
+		return nil, attRes.err
+	}
+	user := userRes.user
+	attempt := attRes.attempt
 
-	exam, err := h.exams.GetExam(ctx, attempt.ExamID)
-	if err != nil {
-		return nil, err
+	// FASE 2 — paralelo: GetExam y ListEnrichedAnswers solo dependen del
+	// attempt resuelto, no entre si. Otro ~150-300ms ahorrados.
+	type examResult struct {
+		exam *ports.UpstreamExam
+		err  error
 	}
-
-	answers, err := h.exams.ListEnrichedAnswers(ctx, attempt.ID)
-	if err != nil {
-		return nil, err
+	type ansResult struct {
+		answers []ports.UpstreamEnrichedAnswer
+		err     error
 	}
+	examCh := make(chan examResult, 1)
+	ansCh := make(chan ansResult, 1)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		e, err := h.exams.GetExam(ctx, attempt.ExamID)
+		examCh <- examResult{e, err}
+	}()
+	go func() {
+		defer wg.Done()
+		a, err := h.exams.ListEnrichedAnswers(ctx, attempt.ID)
+		ansCh <- ansResult{a, err}
+	}()
+	wg.Wait()
+	close(examCh)
+	close(ansCh)
+	examRes := <-examCh
+	if examRes.err != nil {
+		return nil, examRes.err
+	}
+	ansResVal := <-ansCh
+	if ansResVal.err != nil {
+		return nil, ansResVal.err
+	}
+	exam := examRes.exam
+	answers := ansResVal.answers
 
 	rep := &domain.ReporteEstudiante{
 		UserID:       in.UserID,
