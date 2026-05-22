@@ -41,6 +41,11 @@ message Key {
   bool   active          = 13;
   google.protobuf.Timestamp created_at = 14;
   google.protobuf.Timestamp updated_at = 15;
+  // exam_id: si esta seteado, la key apunta a una version puntual del
+  // exam (deterministico — el alumno siempre rinde ESA version). Si esta
+  // vacio, el front busca el primer exam publicado del exam_type_id como
+  // fallback (comportamiento legacy de keys pre-v0.16).
+  string exam_id         = 16;
 }
 
 message GenerateKeyRequest {
@@ -54,6 +59,9 @@ message GenerateKeyRequest {
   google.protobuf.Timestamp valid_from = 8;
   google.protobuf.Timestamp valid_to   = 9;
   int32  max_uses        = 10;
+  // exam_id opcional. Si vacio, la key sirve el primer exam publicado
+  // del tipo (legacy). Si seteado, atado a esa version puntual.
+  string exam_id         = 11;
 }
 
 message UpdateKeyRequest {

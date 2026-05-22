@@ -40,25 +40,27 @@ const keyCols = `CONVERT(NVARCHAR(36), id),
 		current_uses,
 		active,
 		created_at,
-		updated_at`
+		updated_at,
+		ISNULL(CONVERT(NVARCHAR(36), exam_id), '')`
 
 func (r *KeyRepo) Save(ctx context.Context, k *domain.Key) (domain.KeyID, error) {
 	const q = `
 		INSERT INTO [key] (code, exam_type_id, school_id, asesor_user_id,
 		                    mode, grade, section, valid_from, valid_to,
-		                    max_uses, current_uses, active)
+		                    max_uses, current_uses, active, exam_id)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1, @p2,
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)),
 		        CONVERT(UNIQUEIDENTIFIER, @p4),
 		        @p5, NULLIF(@p6, ''), NULLIF(@p7, ''),
-		        @p8, @p9, @p10, 0, @p11)`
+		        @p8, @p9, @p10, 0, @p11,
+		        IIF(@p12 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p12)))`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		k.Code, k.ExamTypeID, string(k.SchoolID), string(k.AsesorUserID),
 		string(k.Mode), k.Grade, k.Section,
 		nullableTime(k.ValidFrom), nullableTime(k.ValidTo),
-		k.MaxUses, k.Active,
+		k.MaxUses, k.Active, k.ExamID,
 	).Scan(&id)
 	if err != nil {
 		return "", mapDuplicate(err)
@@ -228,6 +230,7 @@ func scanKey(s rowScanner) (*domain.Key, error) {
 		validFrom sql.NullTime
 		validTo   sql.NullTime
 		updatedAt sql.NullTime
+		examID    string
 	)
 	err := s.Scan(
 		&idStr, &k.Code, &k.ExamTypeID, &schoolID, &asesorID,
@@ -235,6 +238,7 @@ func scanKey(s rowScanner) (*domain.Key, error) {
 		&validFrom, &validTo,
 		&k.MaxUses, &k.CurrentUses, &k.Active,
 		&k.CreatedAt, &updatedAt,
+		&examID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrKeyNotFound
@@ -258,5 +262,6 @@ func scanKey(s rowScanner) (*domain.Key, error) {
 		v := updatedAt.Time
 		k.UpdatedAt = &v
 	}
+	k.ExamID = examID
 	return &k, nil
 }

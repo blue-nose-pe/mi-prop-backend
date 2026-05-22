@@ -34,6 +34,7 @@ func (h *KeyHandler) GenerateKey(ctx context.Context, req *pb.GenerateKeyRequest
 		Grade:        req.GetGrade(),
 		Section:      req.GetSection(),
 		MaxUses:      req.GetMaxUses(),
+		ExamID:       req.GetExamId(),
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()
@@ -174,6 +175,7 @@ func toProto(k *domain.Key) *pb.Key {
 		CurrentUses:  k.CurrentUses,
 		Active:       k.Active,
 		CreatedAt:    timestamppb.New(k.CreatedAt),
+		ExamId:       k.ExamID,
 	}
 	if k.ValidFrom != nil {
 		out.ValidFrom = timestamppb.New(*k.ValidFrom)

@@ -59,6 +59,7 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 		ValidTo:      in.ValidTo,
 		MaxUses:      in.MaxUses,
 		Active:       true,
+		ExamID:       strings.TrimSpace(in.ExamID),
 	}
 	id, err := h.keys.Save(ctx, k)
 	if err != nil {

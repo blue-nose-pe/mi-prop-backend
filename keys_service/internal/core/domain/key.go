@@ -37,6 +37,10 @@ type Key struct {
 	Active        bool
 	CreatedAt     time.Time
 	UpdatedAt     *time.Time
+	// ExamID: si !="" la key sirve esa version puntual del exam (front
+	// hace GET /api/exams/{exam_id}/questions directo). Si "" cae al
+	// fallback legacy de buscar "primer exam publicado del exam_type_id".
+	ExamID string
 }
 
 // IsUsable retorna true si la key está activa, dentro de su ventana

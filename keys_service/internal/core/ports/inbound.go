@@ -41,6 +41,10 @@ type GenerateKeyInput struct {
 	ValidFrom    *time.Time
 	ValidTo      *time.Time
 	MaxUses      int32
+	// ExamID opcional. Si !="" la key servira esa version puntual del exam
+	// (deterministico). Si "" cae al fallback legacy (front busca "primer
+	// exam publicado del exam_type_id") — comportamiento pre-v0.16.
+	ExamID string
 }
 
 type UpdateKeyInput struct {

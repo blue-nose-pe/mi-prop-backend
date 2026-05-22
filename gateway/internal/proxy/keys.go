@@ -92,6 +92,10 @@ type generateKeyRequest struct {
 	ValidFrom    string `json:"valid_from"`
 	ValidTo      string `json:"valid_to"`
 	MaxUses      int32  `json:"max_uses"`
+	// ExamID opcional. Si !="" la key se ata a esa version puntual del
+	// exam (deterministico). Si "" cae al fallback legacy (front busca
+	// "primer exam publicado del exam_type_id"). Ver v0.16.
+	ExamID string `json:"exam_id"`
 }
 
 func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +125,7 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		ValidFrom:    from,
 		ValidTo:      to,
 		MaxUses:      in.MaxUses,
+		ExamId:       in.ExamID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -306,5 +311,6 @@ func protoKeyToJSON(k *keysgrpcpb.Key) map[string]any {
 		"active":         k.GetActive(),
 		"created_at":     optionalTimestamp(k.GetCreatedAt()),
 		"updated_at":     optionalTimestamp(k.GetUpdatedAt()),
+		"exam_id":        k.GetExamId(),
 	}
 }
