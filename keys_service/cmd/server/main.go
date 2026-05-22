@@ -73,13 +73,15 @@ func main() {
 
 	verifier := jwtmw.NewVerifier([]byte(cfg.JWTSecret), cfg.JWTIssuer)
 	jwtSkip := func(fullMethod string) bool {
-		// ValidateKey es publico porque lo invoca el flujo anonimo de
-		// auto-registro de estudiantes (POST /api/auth/student/
-		// register-with-key en gateway). Read-only; no expone informacion
-		// sensible mas alla de lo que ya revela conocer el code.
+		// ValidateKey y GetByCode son publicos: ambos los invoca el flujo
+		// anonimo del estudiante en /test/simulacro/acceso ANTES de pedir
+		// OTP (validar key → mostrar tipo de test / activa / vigente).
+		// Read-only; no exponen info mas alla de lo que ya revela conocer
+		// el secret code.
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||
-			fullMethod == "/keys.v1.KeyService/ValidateKey"
+			fullMethod == "/keys.v1.KeyService/ValidateKey" ||
+			fullMethod == "/keys.v1.KeyService/GetByCode"
 	}
 
 	s := grpc.NewServer(
