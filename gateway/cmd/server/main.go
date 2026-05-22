@@ -67,6 +67,7 @@ func main() {
 		"/api/auth/student/request-otp",
 		"/api/auth/student/verify-otp",
 		"/api/auth/student/register-with-key",
+		"/api/auth/student/lookup-by-key",
 		// El estudiante valida su key ANTES de pedir OTP (vista
 		// /test/simulacro/acceso). Sin esto, GET by-code devolvia 401
 		// MISSING_BEARER y el front mostraba "No pudimos validar tu llave"

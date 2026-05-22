@@ -100,6 +100,17 @@ func (h *AuthHandler) VerifyStudentOTP(ctx context.Context, req *pb.VerifyStuden
 	}, nil
 }
 
+func (h *AuthHandler) CheckStudentEmail(
+	ctx context.Context,
+	req *pb.CheckStudentEmailRequest,
+) (*pb.CheckStudentEmailResponse, error) {
+	exists, err := h.cmds.CheckStudentEmail(ctx, domain.Email(req.GetEmail()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.CheckStudentEmailResponse{Exists: exists}, nil
+}
+
 func (h *AuthHandler) RegisterStudentWithKey(
 	ctx context.Context,
 	req *pb.RegisterStudentWithKeyRequest,

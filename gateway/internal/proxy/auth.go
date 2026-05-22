@@ -7,6 +7,7 @@
 //   POST /api/auth/student/request-otp         → AuthService.RequestStudentOTP
 //   POST /api/auth/student/verify-otp          → AuthService.VerifyStudentOTP
 //   POST /api/auth/student/register-with-key   → keys.ValidateKey + AuthService.RegisterStudentWithKey
+//   POST /api/auth/student/lookup-by-key       → keys.ValidateKey + AuthService.CheckStudentEmail
 package proxy
 
 import (
@@ -23,6 +24,55 @@ func (p *Proxy) RegisterAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/student/request-otp", p.requestStudentOTP)
 	mux.HandleFunc("POST /api/auth/student/verify-otp", p.verifyStudentOTP)
 	mux.HandleFunc("POST /api/auth/student/register-with-key", p.registerStudentWithKey)
+	mux.HandleFunc("POST /api/auth/student/lookup-by-key", p.lookupStudentByKey)
+}
+
+// lookupStudentByKey — chequeo previo del flujo /test/simulacro/acceso.
+//
+// Body: { email, key_code }
+// 200:  { exists: bool }  — true si el email es un estudiante activo.
+// 4xx:  KEY_NOT_FOUND / KEY_NOT_USABLE si la key no es valida o esta vencida.
+//
+// Ruta publica (jwtSkip lo deja pasar sin Authorization). Anti-enumeration:
+// el caller necesita poseer un key_code valido — no se puede iterar emails
+// sin tener una key activa primero.
+//
+// Lo usa el front para decidir entre "Ingresar con OTP" (exists=true) vs
+// "Registrate con tu llave" (exists=false), sin obligar al estudiante a
+// saber cual le toca.
+type lookupStudentByKeyRequest struct {
+	Email   string `json:"email"`
+	KeyCode string `json:"key_code"`
+}
+
+func (p *Proxy) lookupStudentByKey(w http.ResponseWriter, r *http.Request) {
+	var in lookupStudentByKeyRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	if in.Email == "" || in.KeyCode == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status:  "error",
+			Code:    "VALIDATION_ERROR",
+			Message: "email y key_code son obligatorios",
+		})
+		return
+	}
+
+	// 1) Validar key — sin esto NO respondemos sobre el email (anti-enumeration).
+	if _, err := p.cli.Keys.ValidateKey(r.Context(), &keysgrpcpb.ValidateKeyRequest{Code: in.KeyCode}); err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+
+	// 2) Preguntar a users-service si el email es un estudiante activo.
+	resp, err := p.cli.Auth.CheckStudentEmail(r.Context(), &usersgrpcpb.CheckStudentEmailRequest{Email: in.Email})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"exists": resp.GetExists()})
 }
 
 type loginRequest struct {

@@ -234,6 +234,16 @@ service AuthService {
   // nada — solo reenvia OTP. Si existe pero pertenece a otro rol u otro
   // colegio, devuelve error.
   rpc RegisterStudentWithKey (RegisterStudentWithKeyRequest) returns (RegisterStudentWithKeyResponse);
+
+  // CheckStudentEmail responde si un email existe como estudiante. Lo
+  // invoca el gateway tras validar un key_code (no es expuesto crudo —
+  // el front llama a /api/auth/student/lookup-by-key que primero pasa
+  // por keys_service.ValidateKey). Permite que la pantalla de acceso
+  // decida automaticamente entre flujo "ingresar con OTP" (existe) vs
+  // "registrar con llave" (no existe), sin obligar al alumno a saber
+  // cual le toca. Anti-enumeracion: solo responde si quien pregunta ya
+  // posee un key_code valido.
+  rpc CheckStudentEmail (CheckStudentEmailRequest) returns (CheckStudentEmailResponse);
 }
 
 // --------- Messages ---------
@@ -342,6 +352,17 @@ message RegisterStudentWithKeyRequest {
 // se dispara.
 message RegisterStudentWithKeyResponse {
   string status = 1;
+}
+
+message CheckStudentEmailRequest {
+  string email = 1;
+}
+
+// exists=true si el email corresponde a un estudiante activo. Falso para
+// emails desconocidos O para usuarios que no son estudiantes (el flow
+// publico no debe revelar la existencia de cuentas de asesor/admin).
+message CheckStudentEmailResponse {
+  bool exists = 1;
 }
 
 message AssignGroupRequest { string user_id = 1; uint32 permission_group_id = 2; }

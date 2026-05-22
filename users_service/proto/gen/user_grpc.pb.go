@@ -1590,6 +1590,7 @@ const (
 	AuthService_RequestStudentOTP_FullMethodName      = "/users.v1.AuthService/RequestStudentOTP"
 	AuthService_VerifyStudentOTP_FullMethodName       = "/users.v1.AuthService/VerifyStudentOTP"
 	AuthService_RegisterStudentWithKey_FullMethodName = "/users.v1.AuthService/RegisterStudentWithKey"
+	AuthService_CheckStudentEmail_FullMethodName      = "/users.v1.AuthService/CheckStudentEmail"
 )
 
 // AuthServiceClient is the client API for AuthService service.
@@ -1627,6 +1628,15 @@ type AuthServiceClient interface {
 	// nada — solo reenvia OTP. Si existe pero pertenece a otro rol u otro
 	// colegio, devuelve error.
 	RegisterStudentWithKey(ctx context.Context, in *RegisterStudentWithKeyRequest, opts ...grpc.CallOption) (*RegisterStudentWithKeyResponse, error)
+	// CheckStudentEmail responde si un email existe como estudiante. Lo
+	// invoca el gateway tras validar un key_code (no es expuesto crudo —
+	// el front llama a /api/auth/student/lookup-by-key que primero pasa
+	// por keys_service.ValidateKey). Permite que la pantalla de acceso
+	// decida automaticamente entre flujo "ingresar con OTP" (existe) vs
+	// "registrar con llave" (no existe), sin obligar al alumno a saber
+	// cual le toca. Anti-enumeracion: solo responde si quien pregunta ya
+	// posee un key_code valido.
+	CheckStudentEmail(ctx context.Context, in *CheckStudentEmailRequest, opts ...grpc.CallOption) (*CheckStudentEmailResponse, error)
 }
 
 type authServiceClient struct {
@@ -1707,6 +1717,16 @@ func (c *authServiceClient) RegisterStudentWithKey(ctx context.Context, in *Regi
 	return out, nil
 }
 
+func (c *authServiceClient) CheckStudentEmail(ctx context.Context, in *CheckStudentEmailRequest, opts ...grpc.CallOption) (*CheckStudentEmailResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CheckStudentEmailResponse)
+	err := c.cc.Invoke(ctx, AuthService_CheckStudentEmail_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // AuthServiceServer is the server API for AuthService service.
 // All implementations must embed UnimplementedAuthServiceServer
 // for forward compatibility.
@@ -1742,6 +1762,15 @@ type AuthServiceServer interface {
 	// nada — solo reenvia OTP. Si existe pero pertenece a otro rol u otro
 	// colegio, devuelve error.
 	RegisterStudentWithKey(context.Context, *RegisterStudentWithKeyRequest) (*RegisterStudentWithKeyResponse, error)
+	// CheckStudentEmail responde si un email existe como estudiante. Lo
+	// invoca el gateway tras validar un key_code (no es expuesto crudo —
+	// el front llama a /api/auth/student/lookup-by-key que primero pasa
+	// por keys_service.ValidateKey). Permite que la pantalla de acceso
+	// decida automaticamente entre flujo "ingresar con OTP" (existe) vs
+	// "registrar con llave" (no existe), sin obligar al alumno a saber
+	// cual le toca. Anti-enumeracion: solo responde si quien pregunta ya
+	// posee un key_code valido.
+	CheckStudentEmail(context.Context, *CheckStudentEmailRequest) (*CheckStudentEmailResponse, error)
 	mustEmbedUnimplementedAuthServiceServer()
 }
 
@@ -1772,6 +1801,9 @@ func (UnimplementedAuthServiceServer) VerifyStudentOTP(context.Context, *VerifyS
 }
 func (UnimplementedAuthServiceServer) RegisterStudentWithKey(context.Context, *RegisterStudentWithKeyRequest) (*RegisterStudentWithKeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method RegisterStudentWithKey not implemented")
+}
+func (UnimplementedAuthServiceServer) CheckStudentEmail(context.Context, *CheckStudentEmailRequest) (*CheckStudentEmailResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CheckStudentEmail not implemented")
 }
 func (UnimplementedAuthServiceServer) mustEmbedUnimplementedAuthServiceServer() {}
 func (UnimplementedAuthServiceServer) testEmbeddedByValue()                     {}
@@ -1920,6 +1952,24 @@ func _AuthService_RegisterStudentWithKey_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _AuthService_CheckStudentEmail_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CheckStudentEmailRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AuthServiceServer).CheckStudentEmail(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AuthService_CheckStudentEmail_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AuthServiceServer).CheckStudentEmail(ctx, req.(*CheckStudentEmailRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // AuthService_ServiceDesc is the grpc.ServiceDesc for AuthService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1954,6 +2004,10 @@ var AuthService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "RegisterStudentWithKey",
 			Handler:    _AuthService_RegisterStudentWithKey_Handler,
+		},
+		{
+			MethodName: "CheckStudentEmail",
+			Handler:    _AuthService_CheckStudentEmail_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

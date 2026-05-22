@@ -73,6 +73,11 @@ type AuthCommands interface {
 	// al colegio resuelto por una key valida. Dispara OTP al final. El
 	// caller (gateway) ya valido la key + resolvio el school_id.
 	RegisterStudentWithKey(ctx context.Context, in RegisterStudentWithKeyInput) (*RegisterStudentWithKeyOutput, error)
+	// CheckStudentEmail responde si un email corresponde a un estudiante
+	// ACTIVO. False para emails desconocidos, inactivos, o que pertenezcan
+	// a usuarios no-estudiantes (asesor/admin) — el flow publico no debe
+	// revelar esas cuentas. Se invoca tras validar key_code en el gateway.
+	CheckStudentEmail(ctx context.Context, email domain.Email) (bool, error)
 }
 
 // =============== PERMISSION ===============
