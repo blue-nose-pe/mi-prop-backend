@@ -91,13 +91,18 @@ func main() {
 	}
 
 	verifier := jwtmw.NewVerifier([]byte(cfg.JWTSecret), cfg.JWTIssuer)
-	// SendOTP y UpsertContact son intra-cluster (users-service las invoca
-	// sin sesion del caller); no expuestas por el gateway.
+	// SendOTP, UpsertContact y SyncStudentContact son intra-cluster
+	// (users-service las invoca sin sesion del caller, p.ej. el flujo de
+	// auto-registro de estudiante anonimo); no expuestas por el gateway.
+	// Sin SyncStudentContact en este skip, el sync de contacto al
+	// registrar via OTP+Resend fallaba con Unauthenticated y el estudiante
+	// nunca aparecia en HubSpot (UCSP no lo veia).
 	jwtSkip := func(fullMethod string) bool {
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||
 			fullMethod == "/hubspot.v1.HubspotService/SendOTP" ||
-			fullMethod == "/hubspot.v1.HubspotService/UpsertContact"
+			fullMethod == "/hubspot.v1.HubspotService/UpsertContact" ||
+			fullMethod == "/hubspot.v1.HubspotService/SyncStudentContact"
 	}
 
 	gs := grpc.NewServer(
