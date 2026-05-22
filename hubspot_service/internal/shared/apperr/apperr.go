@@ -15,6 +15,7 @@ package apperr
 import (
 	"context"
 	"errors"
+	"log"
 
 	commonpb "hubspot_service/proto/gen/common"
 
@@ -34,6 +35,19 @@ func ToGRPC(ctx context.Context, err error) error {
 	var ae *Error
 	if !errors.As(err, &ae) {
 		ae = NewInternal("INTERNAL_ERROR", "an unexpected error occurred", err)
+	}
+
+	// Para errores Internal logueamos el err.Error() completo ANTES de
+	// sanitizar. Esto preserva el cuerpo upstream (status + body de HubSpot)
+	// que el client.go envuelve via fmt.Errorf("%w: ...status...body..."),
+	// pero que se perderia en la respuesta gRPC (ae.Message es generico
+	// "HubSpot upstream returned an error"). Sin este log no se podia
+	// diagnosticar fallos del API de HubSpot — solo el envelope vacio.
+	// Los otros Kind (Validation, NotFound, etc) ya tienen mensaje
+	// suficientemente especifico en ae.Message y no necesitan body extra.
+	if ae.Kind == KindInternal {
+		log.Printf("apperr.ToGRPC internal: code=%s cid=%s err=%v",
+			ae.Code, CorrelationIDFromContext(ctx), err)
 	}
 
 	code, category := transportFor(ae.Kind)
