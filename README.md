@@ -8,6 +8,16 @@ se comunican entre sí por gRPC y exponen un único punto público vía un
 gateway HTTP/REST. Toda la persistencia es **Azure SQL Database** (una base
 de datos por servicio) y **Azure Cache for Redis** para cola y caché.
 
+## 📚 Documentación
+
+| Doc | Para qué |
+|---|---|
+| [`GUIA_INSTALACION_CLIENTE.md`](GUIA_INSTALACION_CLIENTE.md) | **DevOps UCSP — cómo deployar** desde cero: Azure, Bicep, DevOps, DNS, TLS, troubleshooting. |
+| [`deploy/helm/miproposito/ARCHITECTURE.md`](deploy/helm/miproposito/ARCHITECTURE.md) | **Diseño del umbrella chart**: por qué cada decisión, gotchas, decisiones abiertas. Ideal para reuniones de revisión técnica. |
+| [`docs/SERVICES.md`](docs/SERVICES.md) | **Referencia por microservicio**: env vars, secrets, dependencias gRPC, hooks Helm. Lo que mira el operador cuando algo no levanta. |
+| [`deploy/api-docs/openapi.yaml`](deploy/api-docs/openapi.yaml) | Especificación OpenAPI 3.1 del API REST público (gateway). |
+| [`CLAUDE_CONTEXT.md`](CLAUDE_CONTEXT.md) | Contexto operativo para sesiones de desarrollo asistido. |
+
 ---
 
 ## 1. Qué hace el sistema
