@@ -82,6 +82,14 @@ type AttemptRepository interface {
 	// uso de la key, lo que permitia que un solo alumno consumiera N usos
 	// del aforo.
 	FindActiveByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error)
+	// CountSubmittedByExamUser cuenta attempts SUBMITTED (submitted_at IS
+	// NOT NULL) del user para el exam. StartAttempt lo compara contra
+	// key.MaxAttemptsPerUser antes de crear un nuevo attempt.
+	CountSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (int32, error)
+	// FindMostRecentSubmittedByExamUser devuelve el ultimo attempt
+	// finalizado del user. Lo usa StartAttempt para retornar el "ya
+	// rendiste" con su attempt previo en lugar de tirar error pelado.
+	FindMostRecentSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error)
 }
 
 // =============== Cross-service clients (gRPC) ===============
@@ -104,6 +112,11 @@ type KeyValidation struct {
 	ExpiresAt   *time.Time
 	OK          bool
 	Reason      string
+	// MaxAttemptsPerUser: cuantas veces UN MISMO alumno puede rendir la
+	// prueba ligada a esta key. Default 1. 0 = sin limite. StartAttempt
+	// cuenta los attempts submitted del (user_id, exam_id) y rechaza con
+	// MAX_ATTEMPTS_REACHED cuando llega al limite.
+	MaxAttemptsPerUser int32
 }
 
 // =============== Audit ===============

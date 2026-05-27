@@ -96,6 +96,11 @@ type generateKeyRequest struct {
 	// exam (deterministico). Si "" cae al fallback legacy (front busca
 	// "primer exam publicado del exam_type_id"). Ver v0.16.
 	ExamID string `json:"exam_id"`
+	// MaxAttemptsPerUser opcional. 0 → server normaliza a 1 (un intento
+	// por alumno). Si el asesor quiere multi-intento, lo declara explicito
+	// (ej 2, 3...). El back enforza este limite en StartAttempt antes de
+	// crear el attempt nuevo.
+	MaxAttemptsPerUser int32 `json:"max_attempts_per_user"`
 }
 
 func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
@@ -126,6 +131,7 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		ValidTo:      to,
 		MaxUses:      in.MaxUses,
 		ExamId:       in.ExamID,
+		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -156,6 +162,9 @@ type updateKeyRequest struct {
 	// MaxUses opcional: nil = no tocar; *0 = ilimitado; *N = N usos.
 	// Antes era int32 y un PATCH sin max_uses lo seteaba a 0 silenciosamente.
 	MaxUses *int32 `json:"max_uses"`
+	// MaxAttemptsPerUser opcional: nil = no tocar; *N = nuevo valor.
+	// 0 explicito = ilimitado (a diferencia de Generate que normaliza a 1).
+	MaxAttemptsPerUser *int32 `json:"max_attempts_per_user"`
 }
 
 func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +190,7 @@ func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
 		ValidFrom: from,
 		ValidTo:   to,
 		MaxUses:   in.MaxUses, // *int32 → proto optional max_uses
+		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -312,5 +322,6 @@ func protoKeyToJSON(k *keysgrpcpb.Key) map[string]any {
 		"created_at":     optionalTimestamp(k.GetCreatedAt()),
 		"updated_at":     optionalTimestamp(k.GetUpdatedAt()),
 		"exam_id":        k.GetExamId(),
+		"max_attempts_per_user": k.GetMaxAttemptsPerUser(),
 	}
 }

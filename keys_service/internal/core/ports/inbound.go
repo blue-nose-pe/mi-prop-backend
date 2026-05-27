@@ -45,6 +45,9 @@ type GenerateKeyInput struct {
 	// (deterministico). Si "" cae al fallback legacy (front busca "primer
 	// exam publicado del exam_type_id") — comportamiento pre-v0.16.
 	ExamID string
+	// MaxAttemptsPerUser: cuantas veces UN MISMO alumno puede rendir la
+	// prueba. 0 → server normaliza a 1 en Generate. Default 1.
+	MaxAttemptsPerUser int32
 }
 
 type UpdateKeyInput struct {
@@ -57,6 +60,8 @@ type UpdateKeyInput struct {
 	// ilimitado" (valor explicito). Antes era int32 zero-value y un PATCH
 	// que solo tocaba grade convertia la key en aforo infinito.
 	MaxUses *int32
+	// MaxAttemptsPerUser tambien puntero: nil = no tocar; *N = nuevo valor.
+	MaxAttemptsPerUser *int32
 }
 
 type IncrementUsageInput struct {

@@ -36,6 +36,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 
 	var keyID domain.KeyID
 	var expectedExamTypeID int32
+	var maxAttemptsPerUser int32
 	if req.GetKeyCode() != "" {
 		validation, err := h.keys.Validate(ctx, req.GetKeyCode(), "")
 		if err != nil {
@@ -46,6 +47,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 		}
 		keyID = validation.KeyID
 		expectedExamTypeID = validation.ExamTypeID
+		maxAttemptsPerUser = validation.MaxAttemptsPerUser
 	}
 
 	// Bug #1 fix: el IncrementUsage de keys_service es la unica gate
@@ -59,19 +61,25 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 	// Idempotencia: si el user ya tiene un attempt activo para este exam,
 	// el core Start devuelve Reused=true y NO consumimos un uso adicional
 	// (el primer Start ya lo conto). Esto cierra el Bug #2 (refresh).
+	//
+	// Limite por usuario (key.MaxAttemptsPerUser): si > 0, contamos
+	// attempts SUBMITTED previos del user. Si llego al maximo, rechazamos
+	// con MAX_ATTEMPTS_REACHED ANTES de IncrementUsage (no consume plaza).
 	if keyID != "" {
-		// Checkeo pre-emptivo: si el user ya tenia un attempt activo de
-		// este exam, no incrementar (ya contamos antes).
-		// Reusamos FindActiveByExamUser via core para evitar duplicar query.
-		// Para no hacer dos round-trips a la BD, simplemente delegamos al
-		// core y, si dice Reused=true, no incrementamos. Como
-		// IncrementUsage tiene que ser ANTES del Save, hacemos el check
-		// de reuso aqui mismo.
 		existing, err := h.qrys.GetActiveByExamUser(ctx, examID, userID)
 		if err != nil {
 			return nil, apperr.ToGRPC(ctx, err)
 		}
 		if existing == nil {
+			if maxAttemptsPerUser > 0 {
+				submittedCount, err := h.qrys.CountSubmittedByExamUser(ctx, examID, userID)
+				if err != nil {
+					return nil, apperr.ToGRPC(ctx, err)
+				}
+				if submittedCount >= maxAttemptsPerUser {
+					return nil, apperr.ToGRPC(ctx, domain.ErrMaxAttemptsReached)
+				}
+			}
 			// Attempt nuevo → consumir uso atomico de la key.
 			if err := h.keys.IncrementUsage(ctx, keyID, "", userID); err != nil {
 				// 0 filas afectadas → aforo lleno o key invalida.

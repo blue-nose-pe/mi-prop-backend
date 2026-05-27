@@ -35,6 +35,7 @@ func (h *KeyHandler) GenerateKey(ctx context.Context, req *pb.GenerateKeyRequest
 		Section:      req.GetSection(),
 		MaxUses:      req.GetMaxUses(),
 		ExamID:       req.GetExamId(),
+		MaxAttemptsPerUser: req.GetMaxAttemptsPerUser(),
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()
@@ -57,6 +58,7 @@ func (h *KeyHandler) UpdateKey(ctx context.Context, req *pb.UpdateKeyRequest) (*
 		Grade:   req.GetGrade(),
 		Section: req.GetSection(),
 		MaxUses: req.MaxUses, // puntero: nil=no provisto, *=actualizar
+		MaxAttemptsPerUser: req.MaxAttemptsPerUser, // idem
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()
@@ -176,6 +178,7 @@ func toProto(k *domain.Key) *pb.Key {
 		Active:       k.Active,
 		CreatedAt:    timestamppb.New(k.CreatedAt),
 		ExamId:       k.ExamID,
+		MaxAttemptsPerUser: k.MaxAttemptsPerUser,
 	}
 	if k.ValidFrom != nil {
 		out.ValidFrom = timestamppb.New(*k.ValidFrom)

@@ -60,6 +60,9 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 		MaxUses:      in.MaxUses,
 		Active:       true,
 		ExamID:       strings.TrimSpace(in.ExamID),
+		// Normalizamos 0 → 1 (default). Si el asesor quiere ilimitado debe
+		// pasar un negativo via Update — el Generate publico fuerza 1 min.
+		MaxAttemptsPerUser: maxAttemptsDefault(in.MaxAttemptsPerUser),
 	}
 	id, err := h.keys.Save(ctx, k)
 	if err != nil {
@@ -87,6 +90,12 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 	}
 	if in.MaxUses != nil {
 		k.MaxUses = *in.MaxUses
+	}
+	if in.MaxAttemptsPerUser != nil {
+		// Update si permite poner cualquier valor (incluido 0 = ilimitado)
+		// porque el asesor lo esta modificando deliberadamente. Solo
+		// Generate fuerza min=1.
+		k.MaxAttemptsPerUser = *in.MaxAttemptsPerUser
 	}
 	if k.ValidFrom != nil && k.ValidTo != nil && !k.ValidFrom.Before(*k.ValidTo) {
 		return nil, domain.ErrInvalidDateRange
@@ -142,6 +151,22 @@ func randomCode(n int) string {
 		enc = enc[:n]
 	}
 	return strings.ToUpper(enc)
+}
+
+// maxAttemptsDefault normaliza el valor recibido en Generate:
+//   - <= 0  → 1 (default razonable: un intento por alumno)
+//   - >  0  → tal cual lo paso el asesor
+//
+// El valor 0 en proto indica "no provisto" porque proto int32 zero-value es
+// ambiguo. Si UCSP quiere permitir multi-intento, lo declara explicito en
+// el form (ej 2, 3...). Permitir 0 al crear seria un footgun (un alumno
+// se come todo el aforo). Para reset a ilimitado en futuro, usar Update
+// con un valor negativo o un endpoint dedicado.
+func maxAttemptsDefault(v int32) int32 {
+	if v <= 0 {
+		return 1
+	}
+	return v
 }
 
 // autogenCode arma un código tipo `VO-XXXXXX`, `SI-XXXXXX`, `ES-XXXXXX`

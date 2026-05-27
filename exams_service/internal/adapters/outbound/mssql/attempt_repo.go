@@ -249,6 +249,42 @@ func (r *AttemptRepo) FindActiveByExamUser(ctx context.Context, examID domain.Ex
 	return att, err
 }
 
+// CountSubmittedByExamUser cuenta cuantos attempts SUBMITTED tiene el
+// user para ese exam. Lo usa StartAttempt para comparar contra
+// key.MaxAttemptsPerUser antes de crear un nuevo attempt. Solo cuenta
+// los que llegaron a Finish (submitted_at != null) — un attempt empezado
+// y nunca terminado NO debe consumir un intento (el alumno puede
+// continuarlo via idempotencia de FindActiveByExamUser).
+func (r *AttemptRepo) CountSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (int32, error) {
+	var count int32
+	err := r.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM exam_attempt
+		  WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		    AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		    AND submitted_at IS NOT NULL`,
+		string(examID), string(userID)).Scan(&count)
+	return count, err
+}
+
+// FindMostRecentSubmittedByExamUser devuelve el attempt SUBMITTED mas
+// reciente. Lo usa StartAttempt para devolver al alumno su ultimo
+// resultado cuando ya consumio sus intentos (el front lo redirige a
+// /resultados con ese attempt_id en vez de mostrarle un error pelado).
+func (r *AttemptRepo) FindMostRecentSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT TOP 1 `+attemptCols+` FROM exam_attempt
+		  WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		    AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		    AND submitted_at IS NOT NULL
+		  ORDER BY submitted_at DESC`,
+		string(examID), string(userID))
+	att, err := scanAttempt(row)
+	if errors.Is(err, domain.ErrAttemptNotFound) {
+		return nil, nil
+	}
+	return att, err
+}
+
 func scanAttempt(s rowScanner) (*domain.ExamAttempt, error) {
 	var (
 		a          domain.ExamAttempt

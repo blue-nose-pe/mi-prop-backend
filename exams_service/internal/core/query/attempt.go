@@ -25,6 +25,14 @@ func (h *AttemptHandler) GetActiveByExamUser(ctx context.Context, examID domain.
 	return h.attempts.FindActiveByExamUser(ctx, examID, userID)
 }
 
+func (h *AttemptHandler) CountSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (int32, error) {
+	return h.attempts.CountSubmittedByExamUser(ctx, examID, userID)
+}
+
+func (h *AttemptHandler) GetMostRecentSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error) {
+	return h.attempts.FindMostRecentSubmittedByExamUser(ctx, examID, userID)
+}
+
 func (h *AttemptHandler) ListByUser(ctx context.Context, userID domain.UserID) ([]domain.ExamAttempt, error) {
 	return h.attempts.ListByUser(ctx, userID)
 }

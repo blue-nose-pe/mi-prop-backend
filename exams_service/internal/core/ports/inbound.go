@@ -135,6 +135,15 @@ type AttemptQueries interface {
 	// StartAttempt para decidir si debe consumir un nuevo uso de la key
 	// (no consumir si ya habia uno activo — fix Bug #2).
 	GetActiveByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error)
+	// CountSubmittedByExamUser cuenta intentos finalizados del user para
+	// el exam. Lo usa StartAttempt para chequear contra
+	// key.MaxAttemptsPerUser antes de crear un nuevo attempt.
+	CountSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (int32, error)
+	// GetMostRecentSubmittedByExamUser devuelve el ultimo attempt
+	// finalizado del user (o nil si no hay ninguno). Sirve al front para
+	// llevar al alumno a /resultados con su ultimo intento cuando ya
+	// alcanzo el limite de intentos.
+	GetMostRecentSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error)
 	ListByUser(ctx context.Context, userID domain.UserID) ([]domain.ExamAttempt, error)
 	ListByExam(ctx context.Context, examID domain.ExamID) ([]domain.ExamAttempt, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.ExamAttempt, error)

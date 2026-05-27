@@ -41,26 +41,29 @@ const keyCols = `CONVERT(NVARCHAR(36), id),
 		active,
 		created_at,
 		updated_at,
-		ISNULL(CONVERT(NVARCHAR(36), exam_id), '')`
+		ISNULL(CONVERT(NVARCHAR(36), exam_id), ''),
+		max_attempts_per_user`
 
 func (r *KeyRepo) Save(ctx context.Context, k *domain.Key) (domain.KeyID, error) {
 	const q = `
 		INSERT INTO [key] (code, exam_type_id, school_id, asesor_user_id,
 		                    mode, grade, section, valid_from, valid_to,
-		                    max_uses, current_uses, active, exam_id)
+		                    max_uses, current_uses, active, exam_id,
+		                    max_attempts_per_user)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1, @p2,
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)),
 		        CONVERT(UNIQUEIDENTIFIER, @p4),
 		        @p5, NULLIF(@p6, ''), NULLIF(@p7, ''),
 		        @p8, @p9, @p10, 0, @p11,
-		        IIF(@p12 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p12)))`
+		        IIF(@p12 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p12)),
+		        @p13)`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		k.Code, k.ExamTypeID, string(k.SchoolID), string(k.AsesorUserID),
 		string(k.Mode), k.Grade, k.Section,
 		nullableTime(k.ValidFrom), nullableTime(k.ValidTo),
-		k.MaxUses, k.Active, k.ExamID,
+		k.MaxUses, k.Active, k.ExamID, k.MaxAttemptsPerUser,
 	).Scan(&id)
 	if err != nil {
 		return "", mapDuplicate(err)
@@ -71,16 +74,17 @@ func (r *KeyRepo) Save(ctx context.Context, k *domain.Key) (domain.KeyID, error)
 func (r *KeyRepo) Update(ctx context.Context, k *domain.Key) error {
 	const q = `
 		UPDATE [key]
-		   SET grade      = NULLIF(@p1, ''),
-		       section    = NULLIF(@p2, ''),
-		       valid_from = @p3,
-		       valid_to   = @p4,
-		       max_uses   = @p5
-		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p6)`
+		   SET grade                 = NULLIF(@p1, ''),
+		       section               = NULLIF(@p2, ''),
+		       valid_from            = @p3,
+		       valid_to              = @p4,
+		       max_uses              = @p5,
+		       max_attempts_per_user = @p6
+		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p7)`
 	res, err := r.db.ExecContext(ctx, q,
 		k.Grade, k.Section,
 		nullableTime(k.ValidFrom), nullableTime(k.ValidTo),
-		k.MaxUses, string(k.ID))
+		k.MaxUses, k.MaxAttemptsPerUser, string(k.ID))
 	if err != nil {
 		return err
 	}
@@ -238,7 +242,7 @@ func scanKey(s rowScanner) (*domain.Key, error) {
 		&validFrom, &validTo,
 		&k.MaxUses, &k.CurrentUses, &k.Active,
 		&k.CreatedAt, &updatedAt,
-		&examID,
+		&examID, &k.MaxAttemptsPerUser,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrKeyNotFound

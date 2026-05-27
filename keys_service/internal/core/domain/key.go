@@ -34,6 +34,11 @@ type Key struct {
 	ValidTo       *time.Time
 	MaxUses       int32 // 0 = ilimitado
 	CurrentUses   int32
+	// MaxAttemptsPerUser: cuantas veces UN MISMO estudiante puede rendir
+	// la prueba ligada a esta key. Default 1 (un intento por alumno). 0 =
+	// sin limite (no recomendado). Enforcement vive en exams_service en
+	// StartAttempt contando attempts submitted del (user_id, exam_id).
+	MaxAttemptsPerUser int32
 	Active        bool
 	CreatedAt     time.Time
 	UpdatedAt     *time.Time

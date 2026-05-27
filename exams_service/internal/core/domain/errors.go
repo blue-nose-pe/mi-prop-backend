@@ -30,5 +30,10 @@ var (
 	// Ejemplo: key vocacional (VO-XXXX) usada para iniciar un simulacro.
 	ErrKeyExamTypeMismatch = apperr.NewValidation("KEY_EXAM_TYPE_MISMATCH", "key is for a different exam type", "key_code")
 	ErrAttemptAlreadyDone = apperr.NewConflict("ATTEMPT_ALREADY_SUBMITTED", "attempt was already submitted", "attempt_id")
+	// ErrMaxAttemptsReached: el alumno ya rindio key.MaxAttemptsPerUser
+	// veces este exam. El handler StartAttempt devuelve esto y el front
+	// redirige al alumno a /resultados con su attempt previo en lugar de
+	// dejarlo entrar a la pantalla del examen otra vez.
+	ErrMaxAttemptsReached = apperr.NewPermissionDenied("MAX_ATTEMPTS_REACHED", "student has already reached the maximum number of attempts allowed by this key")
 	ErrCannotEditPublished = apperr.NewPermissionDenied("EXAM_PUBLISHED_LOCKED", "published exams cannot be edited; clone for a new version instead")
 )

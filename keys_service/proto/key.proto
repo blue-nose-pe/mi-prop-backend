@@ -46,6 +46,10 @@ message Key {
   // vacio, el front busca el primer exam publicado del exam_type_id como
   // fallback (comportamiento legacy de keys pre-v0.16).
   string exam_id         = 16;
+  // max_attempts_per_user: cuantas veces UN MISMO alumno puede rendir.
+  // Default 1. 0 = sin limite. exams_service.StartAttempt cuenta
+  // attempts submitted del user y rechaza con MAX_ATTEMPTS_REACHED.
+  int32  max_attempts_per_user = 17;
 }
 
 message GenerateKeyRequest {
@@ -62,6 +66,9 @@ message GenerateKeyRequest {
   // exam_id opcional. Si vacio, la key sirve el primer exam publicado
   // del tipo (legacy). Si seteado, atado a esa version puntual.
   string exam_id         = 11;
+  // max_attempts_per_user opcional. Si no se provee o = 0 en el create,
+  // el server usa default 1 (un intento por alumno).
+  int32 max_attempts_per_user = 12;
 }
 
 message UpdateKeyRequest {
@@ -74,6 +81,8 @@ message UpdateKeyRequest {
   // explicito). Antes era int32 zero-value y un PATCH que solo tocaba grade
   // dejaba max_uses=0 silenciosamente, destruyendo el aforo.
   optional int32 max_uses = 6;
+  // max_attempts_per_user opcional: nil = no tocar; *N = nuevo valor.
+  optional int32 max_attempts_per_user = 7;
 }
 
 message DeactivateKeyRequest { string id = 1; }
