@@ -15,6 +15,7 @@ package apperr
 import (
 	"context"
 	"errors"
+	"log"
 
 	commonpb "exams_service/proto/gen/common"
 
@@ -34,6 +35,14 @@ func ToGRPC(ctx context.Context, err error) error {
 	var ae *Error
 	if !errors.As(err, &ae) {
 		ae = NewInternal("INTERNAL_ERROR", "an unexpected error occurred", err)
+	}
+
+	// Para errores Internal logueamos el err.Error() completo ANTES de
+	// sanitizar al envelope gRPC. Sin esto el operador solo ve
+	// "an unexpected error occurred" en logs y no puede diagnosticar.
+	if ae.Kind == KindInternal {
+		log.Printf("apperr.ToGRPC internal: code=%s cid=%s err=%v",
+			ae.Code, CorrelationIDFromContext(ctx), err)
 	}
 
 	code, category := transportFor(ae.Kind)

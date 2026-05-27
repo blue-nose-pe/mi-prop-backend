@@ -35,5 +35,12 @@ var (
 	// redirige al alumno a /resultados con su attempt previo en lugar de
 	// dejarlo entrar a la pantalla del examen otra vez.
 	ErrMaxAttemptsReached = apperr.NewPermissionDenied("MAX_ATTEMPTS_REACHED", "student has already reached the maximum number of attempts allowed by this key")
+	// ErrKeyNotUsable: keys_service devolvio que la key no es usable
+	// (exhausta, vencida, inactiva, max_uses lleno). Mapeo del status gRPC
+	// PermissionDenied cuando exams_service llama keys.ValidateKey, para
+	// que el front reciba un codigo claro en vez de INTERNAL_ERROR.
+	ErrKeyNotUsable = apperr.NewPermissionDenied("KEY_NOT_USABLE", "key is not usable (exhausted, expired or inactive)")
+	// ErrKeyNotFound: keys_service devolvio NotFound. Mismo motivo.
+	ErrKeyLookupNotFound = apperr.NewNotFound("KEY_NOT_FOUND", "key code does not exist")
 	ErrCannotEditPublished = apperr.NewPermissionDenied("EXAM_PUBLISHED_LOCKED", "published exams cannot be edited; clone for a new version instead")
 )

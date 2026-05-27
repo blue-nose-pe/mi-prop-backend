@@ -22,14 +22,20 @@ type KeyRepository interface {
 	// apunte a otro lado.
 	ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
-	// IncrementUses atómico — UPDATE ... SET current_uses = current_uses + 1
-	// con WHERE que valida el límite. Devuelve filas afectadas.
-	// 0 filas → la key no es usable (carrera concurrente o aforo lleno).
-	IncrementUses(ctx context.Context, id domain.KeyID) (int64, error)
+	// IncrementUses atomico — UPDATE ... SET current_uses = current_uses + 1
+	// con WHERE que valida limite + NOT EXISTS de key_usage(key,user). Esto
+	// hace que max_uses cuente USUARIOS DISTINTOS, no attempts totales.
+	// 0 filas → o el user ya tenia key_usage (retry, permitido sin contar),
+	// o la key no es usable. Disambiguar con KeyUsageRepository.ExistsByKeyUser.
+	IncrementUses(ctx context.Context, id domain.KeyID, userID domain.UserID) (int64, error)
 }
 
 type KeyUsageRepository interface {
 	Save(ctx context.Context, u *domain.KeyUsage) error
+	// ExistsByKeyUser indica si el (key, user) ya tiene al menos un row de
+	// key_usage. Usado por IncrementUsage para distinguir "retry permitido"
+	// de "key no usable" cuando IncrementUses devuelve 0 filas.
+	ExistsByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (bool, error)
 }
 
 // Audit ----

@@ -249,20 +249,20 @@ func (r *AttemptRepo) FindActiveByExamUser(ctx context.Context, examID domain.Ex
 	return att, err
 }
 
-// CountSubmittedByExamUser cuenta cuantos attempts SUBMITTED tiene el
-// user para ese exam. Lo usa StartAttempt para comparar contra
-// key.MaxAttemptsPerUser antes de crear un nuevo attempt. Solo cuenta
-// los que llegaron a Finish (submitted_at != null) — un attempt empezado
-// y nunca terminado NO debe consumir un intento (el alumno puede
-// continuarlo via idempotencia de FindActiveByExamUser).
-func (r *AttemptRepo) CountSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (int32, error) {
+// CountSubmittedByKeyUser cuenta attempts SUBMITTED del user PARA ESA
+// KEY especifica. Lo usa StartAttempt para comparar contra
+// key.MaxAttemptsPerUser. El limite es POR (key, user) — no global del
+// exam — para que un alumno que ya rindio con una key vieja no quede
+// bloqueado al recibir una key nueva del asesor para el mismo exam.
+// Solo cuenta los que llegaron a Finish (submitted_at != null).
+func (r *AttemptRepo) CountSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (int32, error) {
 	var count int32
 	err := r.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM exam_attempt
-		  WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		  WHERE key_id  = CONVERT(UNIQUEIDENTIFIER, @p1)
 		    AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
 		    AND submitted_at IS NOT NULL`,
-		string(examID), string(userID)).Scan(&count)
+		string(keyID), string(userID)).Scan(&count)
 	return count, err
 }
 

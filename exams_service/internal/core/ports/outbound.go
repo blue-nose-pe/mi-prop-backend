@@ -82,10 +82,12 @@ type AttemptRepository interface {
 	// uso de la key, lo que permitia que un solo alumno consumiera N usos
 	// del aforo.
 	FindActiveByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error)
-	// CountSubmittedByExamUser cuenta attempts SUBMITTED (submitted_at IS
-	// NOT NULL) del user para el exam. StartAttempt lo compara contra
-	// key.MaxAttemptsPerUser antes de crear un nuevo attempt.
-	CountSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (int32, error)
+	// CountSubmittedByKeyUser cuenta attempts SUBMITTED del user PARA ESA
+	// KEY especifica. StartAttempt lo compara contra key.MaxAttemptsPerUser
+	// antes de crear un nuevo attempt. El conteo es POR KEY — no global del
+	// exam — para que un alumno que ya rindio con una key previa no quede
+	// bloqueado al recibir una key nueva.
+	CountSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (int32, error)
 	// FindMostRecentSubmittedByExamUser devuelve el ultimo attempt
 	// finalizado del user. Lo usa StartAttempt para retornar el "ya
 	// rendiste" con su attempt previo en lugar de tirar error pelado.

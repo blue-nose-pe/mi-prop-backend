@@ -9,8 +9,30 @@ import (
 
 	pb "exams_service/proto/gen"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// mapKeysClientError traduce errores gRPC que vienen de keys_service a
+// errores de dominio de exams_service. Sin esto, un PermissionDenied de
+// keys.ValidateKey (key exhausta/expirada) se propaga como INTERNAL_ERROR
+// porque exams_service no lo reconoce como *apperr.Error y cae al
+// fallback de ToGRPC.
+func mapKeysClientError(err error) error {
+	st, ok := status.FromError(err)
+	if !ok {
+		return err
+	}
+	switch st.Code() {
+	case codes.PermissionDenied:
+		return domain.ErrKeyNotUsable
+	case codes.NotFound:
+		return domain.ErrKeyLookupNotFound
+	default:
+		return err
+	}
+}
 
 // AttemptHandler también orquesta la validación de keys: si el request
 // trae key_code, se delega a keys_service vía KeysClient antes de Start.
@@ -40,7 +62,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 	if req.GetKeyCode() != "" {
 		validation, err := h.keys.Validate(ctx, req.GetKeyCode(), "")
 		if err != nil {
-			return nil, apperr.ToGRPC(ctx, err)
+			return nil, apperr.ToGRPC(ctx, mapKeysClientError(err))
 		}
 		if !validation.OK {
 			return nil, apperr.ToGRPC(ctx, domain.ErrExamClosed)
@@ -72,7 +94,9 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 		}
 		if existing == nil {
 			if maxAttemptsPerUser > 0 {
-				submittedCount, err := h.qrys.CountSubmittedByExamUser(ctx, examID, userID)
+				// Conteo POR KEY — no global del exam. Una key vieja del mismo
+				// alumno no debe bloquear keys nuevas que el asesor le entregue.
+				submittedCount, err := h.qrys.CountSubmittedByKeyUser(ctx, keyID, userID)
 				if err != nil {
 					return nil, apperr.ToGRPC(ctx, err)
 				}
@@ -83,7 +107,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 			// Attempt nuevo → consumir uso atomico de la key.
 			if err := h.keys.IncrementUsage(ctx, keyID, "", userID); err != nil {
 				// 0 filas afectadas → aforo lleno o key invalida.
-				return nil, apperr.ToGRPC(ctx, err)
+				return nil, apperr.ToGRPC(ctx, mapKeysClientError(err))
 			}
 		}
 	}

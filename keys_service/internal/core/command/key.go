@@ -123,12 +123,24 @@ func (h *KeyHandler) Validate(ctx context.Context, code string) (*domain.Key, er
 }
 
 func (h *KeyHandler) IncrementUsage(ctx context.Context, in ports.IncrementUsageInput) error {
-	rows, err := h.keys.IncrementUses(ctx, in.KeyID)
+	// IncrementUses incrementa solo si (key, user) NO tiene key_usage previo
+	// (semantica: max_uses cuenta usuarios distintos). 0 filas significa o
+	// "es un retry del mismo user" o "key no usable" — desambiguamos.
+	rows, err := h.keys.IncrementUses(ctx, in.KeyID, in.UserID)
 	if err != nil {
 		return err
 	}
 	if rows == 0 {
-		return domain.ErrKeyNotUsable
+		existed, err := h.keyUsages.ExistsByKeyUser(ctx, in.KeyID, in.UserID)
+		if err != nil {
+			return err
+		}
+		if !existed {
+			// User nuevo y la UPDATE no afecto filas → aforo lleno, ventana
+			// fuera de rango o key inactiva.
+			return domain.ErrKeyNotUsable
+		}
+		// Retry permitido: cae al Save de key_usage para auditar el attempt.
 	}
 	return h.keyUsages.Save(ctx, &domain.KeyUsage{
 		KeyID:     in.KeyID,

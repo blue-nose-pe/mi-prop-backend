@@ -178,12 +178,26 @@ func (r *KeyRepo) list(ctx context.Context, query, arg string) ([]domain.Key, er
 	return out, rows.Err()
 }
 
-// IncrementUses: UPDATE atómico con guard de aforo.
+// IncrementUses: UPDATE atomico con guard de aforo.
+//
+// Semantica: max_uses cuenta USUARIOS DISTINTOS (no attempts totales). Un
+// estudiante que usa la key por primera vez ocupa una plaza; sus retries
+// (gobernados por max_attempts_per_user a nivel exams_service) NO consumen
+// plaza adicional.
+//
+// Implementacion:
 //   * SET current_uses = current_uses + 1
-//   * WHERE active = 1 AND (max_uses = 0 OR current_uses < max_uses)
-//     AND ventana temporal vigente.
-// Si afecta 0 filas, la key no era usable (carrera o inválida).
-func (r *KeyRepo) IncrementUses(ctx context.Context, id domain.KeyID) (int64, error) {
+//   * WHERE active=1, ventana vigente, aforo disponible,
+//     y NOT EXISTS de key_usage previo (key_id, user_id).
+// El NOT EXISTS dentro del UPDATE evita race condition entre dos requests
+// concurrentes del mismo usuario.
+//
+// Devuelve filas afectadas:
+//   - 1: primer uso del usuario, plaza consumida.
+//   - 0: o el usuario YA tenia key_usage (retry permitido, no consume plaza),
+//        o la key no es usable. El caller debe distinguir consultando
+//        KeyUsageRepository.ExistsByKeyUser.
+func (r *KeyRepo) IncrementUses(ctx context.Context, id domain.KeyID, userID domain.UserID) (int64, error) {
 	const q = `
 		UPDATE [key]
 		   SET current_uses = current_uses + 1
@@ -191,8 +205,13 @@ func (r *KeyRepo) IncrementUses(ctx context.Context, id domain.KeyID) (int64, er
 		   AND active = 1
 		   AND (max_uses = 0 OR current_uses < max_uses)
 		   AND (valid_from IS NULL OR valid_from <= SYSUTCDATETIME())
-		   AND (valid_to   IS NULL OR valid_to   >= SYSUTCDATETIME())`
-	res, err := r.db.ExecContext(ctx, q, string(id))
+		   AND (valid_to   IS NULL OR valid_to   >= SYSUTCDATETIME())
+		   AND NOT EXISTS (
+		         SELECT 1 FROM key_usage
+		          WHERE key_id  = CONVERT(UNIQUEIDENTIFIER, @p1)
+		            AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		       )`
+	res, err := r.db.ExecContext(ctx, q, string(id), string(userID))
 	if err != nil {
 		return 0, err
 	}

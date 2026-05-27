@@ -48,8 +48,12 @@ type Key struct {
 	ExamID string
 }
 
-// IsUsable retorna true si la key está activa, dentro de su ventana
-// temporal, y le quedan usos disponibles.
+// IsUsable retorna true si la key esta activa y dentro de su ventana
+// temporal. NO chequea aforo (max_uses) porque ese limite es por
+// usuarios distintos — un usuario que ya tiene plaza (existe en
+// key_usage) puede seguir reintentando aunque current_uses=max_uses.
+// El gate atomico de aforo vive en KeyRepository.IncrementUses, que
+// conoce el userID y aplica NOT EXISTS sobre key_usage.
 func (k Key) IsUsable(now time.Time) (bool, string) {
 	if !k.Active {
 		return false, "key is inactive"
@@ -59,9 +63,6 @@ func (k Key) IsUsable(now time.Time) (bool, string) {
 	}
 	if k.ValidTo != nil && now.After(*k.ValidTo) {
 		return false, "key expired"
-	}
-	if k.MaxUses > 0 && k.CurrentUses >= k.MaxUses {
-		return false, "key reached max uses"
 	}
 	return true, ""
 }
