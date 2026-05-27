@@ -266,6 +266,26 @@ func (r *AttemptRepo) CountSubmittedByKeyUser(ctx context.Context, keyID domain.
 	return count, err
 }
 
+// FindMostRecentSubmittedByKeyUser devuelve el attempt SUBMITTED mas
+// reciente de un (key, user). Lo usa el RPC publico
+// AttemptService.CountSubmittedByKeyUser para que el gateway pueda
+// redirigir al alumno a /resultados con el attempt previo cuando ya
+// consumio sus intentos contra esa key.
+func (r *AttemptRepo) FindMostRecentSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (*domain.ExamAttempt, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT TOP 1 `+attemptCols+` FROM exam_attempt
+		  WHERE key_id  = CONVERT(UNIQUEIDENTIFIER, @p1)
+		    AND user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		    AND submitted_at IS NOT NULL
+		  ORDER BY submitted_at DESC`,
+		string(keyID), string(userID))
+	att, err := scanAttempt(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return att, err
+}
+
 // FindMostRecentSubmittedByExamUser devuelve el attempt SUBMITTED mas
 // reciente. Lo usa StartAttempt para devolver al alumno su ultimo
 // resultado cuando ya consumio sus intentos (el front lo redirige a

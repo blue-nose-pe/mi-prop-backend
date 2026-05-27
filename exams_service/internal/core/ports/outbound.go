@@ -88,6 +88,12 @@ type AttemptRepository interface {
 	// exam — para que un alumno que ya rindio con una key previa no quede
 	// bloqueado al recibir una key nueva.
 	CountSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (int32, error)
+	// FindMostRecentSubmittedByKeyUser devuelve el ultimo attempt SUBMITTED
+	// del (key, user), o nil si no hay. Lo usa el RPC publico
+	// AttemptService.CountSubmittedByKeyUser para que el gateway pueda
+	// redirigir al alumno a sus resultados previos cuando ya consumio
+	// sus intentos contra esa key.
+	FindMostRecentSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (*domain.ExamAttempt, error)
 	// FindMostRecentSubmittedByExamUser devuelve el ultimo attempt
 	// finalizado del user. Lo usa StartAttempt para retornar el "ya
 	// rendiste" con su attempt previo en lugar de tirar error pelado.

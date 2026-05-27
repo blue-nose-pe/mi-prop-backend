@@ -13,6 +13,7 @@ package proxy
 import (
 	"net/http"
 
+	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 )
@@ -27,19 +28,27 @@ func (p *Proxy) RegisterAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/student/lookup-by-key", p.lookupStudentByKey)
 }
 
-// lookupStudentByKey — chequeo previo del flujo /test/simulacro/acceso.
+// lookupStudentByKey — chequeo previo del flujo /test/{simulacro|vocacional|eda}/acceso.
 //
 // Body: { email, key_code }
-// 200:  { exists: bool }  — true si el email es un estudiante activo.
+// 200:  {
+//         exists: bool,                  // email registrado como estudiante activo
+//         can_attempt: bool,             // false si ya consumio key.max_attempts_per_user
+//         max_attempts_per_user: int32,  // cuota de la key (0 = sin limite)
+//         submitted_count: int32,        // cuantos attempts SUBMITTED tiene con esta key
+//         last_attempt_id: string        // ultimo attempt previo (si lo hay) para redirigir a /resultados
+//       }
 // 4xx:  KEY_NOT_FOUND / KEY_NOT_USABLE si la key no es valida o esta vencida.
 //
 // Ruta publica (jwtSkip lo deja pasar sin Authorization). Anti-enumeration:
 // el caller necesita poseer un key_code valido — no se puede iterar emails
 // sin tener una key activa primero.
 //
-// Lo usa el front para decidir entre "Ingresar con OTP" (exists=true) vs
-// "Registrate con tu llave" (exists=false), sin obligar al estudiante a
-// saber cual le toca.
+// Lo usa el front para tres decisiones:
+//   - exists=false           → mostrar "Registrate con tu llave".
+//   - exists=true, can_attempt=true  → mandar OTP normal.
+//   - exists=true, can_attempt=false → BLOQUEAR sin mandar OTP, mostrar
+//     mensaje "Ya rendiste el simulacro" en la pantalla de acceso.
 type lookupStudentByKeyRequest struct {
 	Email   string `json:"email"`
 	KeyCode string `json:"key_code"`
@@ -61,10 +70,12 @@ func (p *Proxy) lookupStudentByKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1) Validar key — sin esto NO respondemos sobre el email (anti-enumeration).
-	if _, err := p.cli.Keys.ValidateKey(r.Context(), &keysgrpcpb.ValidateKeyRequest{Code: in.KeyCode}); err != nil {
+	keyResp, err := p.cli.Keys.ValidateKey(r.Context(), &keysgrpcpb.ValidateKeyRequest{Code: in.KeyCode})
+	if err != nil {
 		writeGRPCError(w, err)
 		return
 	}
+	key := keyResp.GetKey()
 
 	// 2) Preguntar a users-service si el email es un estudiante activo.
 	resp, err := p.cli.Auth.CheckStudentEmail(r.Context(), &usersgrpcpb.CheckStudentEmailRequest{Email: in.Email})
@@ -72,7 +83,39 @@ func (p *Proxy) lookupStudentByKey(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"exists": resp.GetExists()})
+
+	out := map[string]any{
+		"exists":                resp.GetExists(),
+		"can_attempt":           true,
+		"max_attempts_per_user": int32(0),
+		"submitted_count":       int32(0),
+		"last_attempt_id":       "",
+	}
+
+	// 3) Quota check: solo si el alumno existe + la key tiene limite por usuario.
+	// Si no hay limite (max_attempts_per_user=0) o el alumno no existe (ira a
+	// registro), no consultamos exams_service.
+	if resp.GetExists() && key != nil && key.GetMaxAttemptsPerUser() > 0 {
+		out["max_attempts_per_user"] = key.GetMaxAttemptsPerUser()
+		countResp, err := p.cli.Attempts.CountSubmittedByKeyUser(r.Context(), &examsgrpcpb.CountSubmittedByKeyUserRequest{
+			KeyId:  key.GetId(),
+			UserId: resp.GetUserId(),
+		})
+		if err != nil {
+			// Si exams falla, NO bloqueamos el flow — caemos al chequeo del
+			// back en StartAttempt. Mejor que mostrar OTP que pre-bloquear
+			// erroneamente.
+			writeJSON(w, http.StatusOK, out)
+			return
+		}
+		out["submitted_count"] = countResp.GetCount()
+		if countResp.GetCount() >= key.GetMaxAttemptsPerUser() {
+			out["can_attempt"] = false
+			out["last_attempt_id"] = countResp.GetLastAttemptId()
+		}
+	}
+
+	writeJSON(w, http.StatusOK, out)
 }
 
 type loginRequest struct {

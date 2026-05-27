@@ -361,8 +361,11 @@ message CheckStudentEmailRequest {
 // exists=true si el email corresponde a un estudiante activo. Falso para
 // emails desconocidos O para usuarios que no son estudiantes (el flow
 // publico no debe revelar la existencia de cuentas de asesor/admin).
+// user_id se devuelve SOLO si exists=true — lo usa el gateway para
+// chequear cuota de attempts contra una key sin exponer ListByUser.
 message CheckStudentEmailResponse {
-  bool exists = 1;
+  bool   exists  = 1;
+  string user_id = 2;
 }
 
 message AssignGroupRequest { string user_id = 1; uint32 permission_group_id = 2; }

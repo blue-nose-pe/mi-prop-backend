@@ -145,6 +145,31 @@ func (h *AttemptHandler) FinishAttempt(ctx context.Context, req *pb.FinishAttemp
 	return &pb.AttemptResponse{Attempt: toProtoAttempt(att)}, nil
 }
 
+// CountSubmittedByKeyUser es RPC PUBLICO (jwtSkip en cmd/server/main.go).
+// Lo invoca el gateway en /api/auth/student/lookup-by-key para chequear
+// si el alumno ya consumio sus intentos contra esa key — antes de mandarle
+// el OTP. No es info-leak grande: el caller necesita key_id (resuelto solo
+// con un key_code valido previamente verificado por el gateway).
+func (h *AttemptHandler) CountSubmittedByKeyUser(ctx context.Context, req *pb.CountSubmittedByKeyUserRequest) (*pb.CountSubmittedByKeyUserResponse, error) {
+	keyID := domain.KeyID(req.GetKeyId())
+	userID := domain.UserID(req.GetUserId())
+	count, err := h.qrys.CountSubmittedByKeyUser(ctx, keyID, userID)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	lastID := ""
+	if count > 0 {
+		last, err := h.qrys.GetMostRecentSubmittedByKeyUser(ctx, keyID, userID)
+		if err != nil {
+			return nil, apperr.ToGRPC(ctx, err)
+		}
+		if last != nil {
+			lastID = string(last.ID)
+		}
+	}
+	return &pb.CountSubmittedByKeyUserResponse{Count: count, LastAttemptId: lastID}, nil
+}
+
 func (h *AttemptHandler) GetAttempt(ctx context.Context, req *pb.GetAttemptRequest) (*pb.AttemptResponse, error) {
 	att, err := h.qrys.Get(ctx, domain.AttemptID(req.GetAttemptId()))
 	if err != nil {

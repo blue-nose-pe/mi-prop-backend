@@ -44,6 +44,12 @@ service AttemptService {
   rpc Answer              (AnswerRequest)               returns (EmptyResponse);
   rpc FinishAttempt       (FinishAttemptRequest)        returns (AttemptResponse);
   rpc GetAttempt          (GetAttemptRequest)           returns (AttemptResponse);
+  // CountSubmittedByKeyUser: cuenta attempts SUBMITTED del user para una key
+  // especifica + retorna el last_attempt_id. Lo usa el gateway en
+  // /api/auth/student/lookup-by-key (publico, antes del OTP) para bloquear
+  // estudiantes que ya consumieron sus intentos sin ni siquiera mostrarles
+  // la pantalla de verificacion por correo.
+  rpc CountSubmittedByKeyUser (CountSubmittedByKeyUserRequest) returns (CountSubmittedByKeyUserResponse);
   rpc ListByUser          (ListAttemptsByUserRequest)   returns (ListAttemptsResponse);
   rpc ListByExam          (ListAttemptsByExamRequest)   returns (ListAttemptsResponse);
   // ListByColegio: attempts cuyos users pertenecen al colegio. Cross-DB
@@ -190,6 +196,14 @@ message AnswerRequest {
 }
 message FinishAttemptRequest      { string attempt_id = 1; }
 message GetAttemptRequest         { string attempt_id = 1; }
+message CountSubmittedByKeyUserRequest {
+  string key_id  = 1;
+  string user_id = 2;
+}
+message CountSubmittedByKeyUserResponse {
+  int32  count            = 1;
+  string last_attempt_id  = 2; // "" si count==0
+}
 message ListAttemptsByUserRequest    { string user_id = 1; }
 message ListAttemptsByExamRequest    { string exam_id = 1; }
 message ListAttemptsByColegioRequest { string school_id = 1; }

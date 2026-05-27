@@ -106,6 +106,12 @@ func main() {
 
 	verifier := jwtmw.NewVerifier([]byte(cfg.JWTSecret), cfg.JWTIssuer)
 	jwtSkip := func(fullMethod string) bool {
+		// /exams.v1.AttemptService/CountSubmittedByKeyUser es publico para
+		// que el gateway lo invoque en /api/auth/student/lookup-by-key
+		// (preflight ANTES del OTP, sin alumno autenticado todavia).
+		if fullMethod == "/exams.v1.AttemptService/CountSubmittedByKeyUser" {
+			return true
+		}
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.")
 	}

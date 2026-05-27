@@ -593,22 +593,29 @@ func generateOTPCode() (string, error) {
 }
 
 // CheckStudentEmail responde si el email corresponde a un estudiante
-// activo. Devuelve (false, nil) — NO error — para emails desconocidos,
-// inactivos, o que pertenezcan a usuarios no-estudiantes. El gateway
-// solo invoca este metodo despues de validar un key_code, asi que la
-// superficie anti-enumeration sigue cerrada: para preguntar necesitas el
-// secret de la key.
-func (h *AuthHandler) CheckStudentEmail(ctx context.Context, email domain.Email) (bool, error) {
+// activo. Devuelve (false, "", nil) para emails desconocidos, inactivos,
+// o que pertenezcan a usuarios no-estudiantes. El gateway solo invoca
+// este metodo despues de validar un key_code, asi que la superficie
+// anti-enumeration sigue cerrada: para preguntar necesitas el secret de
+// la key.
+//
+// Cuando existe=true, retorna tambien el user_id — el gateway lo necesita
+// para chequear cuota de attempts contra una key sin exponer ListByUser
+// publicamente.
+func (h *AuthHandler) CheckStudentEmail(ctx context.Context, email domain.Email) (bool, domain.UserID, error) {
 	u, err := h.users.FindByEmail(ctx, email.Normalize())
 	if err != nil {
-		return false, nil
+		return false, "", nil
 	}
 	if !u.Active {
-		return false, nil
+		return false, "", nil
 	}
 	isStudent, err := h.classifier.IsStudent(ctx, u.ID)
 	if err != nil {
-		return false, err
+		return false, "", err
 	}
-	return isStudent, nil
+	if !isStudent {
+		return false, "", nil
+	}
+	return true, u.ID, nil
 }

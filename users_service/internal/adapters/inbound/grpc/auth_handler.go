@@ -104,11 +104,11 @@ func (h *AuthHandler) CheckStudentEmail(
 	ctx context.Context,
 	req *pb.CheckStudentEmailRequest,
 ) (*pb.CheckStudentEmailResponse, error) {
-	exists, err := h.cmds.CheckStudentEmail(ctx, domain.Email(req.GetEmail()))
+	exists, userID, err := h.cmds.CheckStudentEmail(ctx, domain.Email(req.GetEmail()))
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}
-	return &pb.CheckStudentEmailResponse{Exists: exists}, nil
+	return &pb.CheckStudentEmailResponse{Exists: exists, UserId: string(userID)}, nil
 }
 
 func (h *AuthHandler) RegisterStudentWithKey(

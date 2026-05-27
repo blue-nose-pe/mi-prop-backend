@@ -29,6 +29,10 @@ func (h *AttemptHandler) CountSubmittedByKeyUser(ctx context.Context, keyID doma
 	return h.attempts.CountSubmittedByKeyUser(ctx, keyID, userID)
 }
 
+func (h *AttemptHandler) GetMostRecentSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (*domain.ExamAttempt, error) {
+	return h.attempts.FindMostRecentSubmittedByKeyUser(ctx, keyID, userID)
+}
+
 func (h *AttemptHandler) GetMostRecentSubmittedByExamUser(ctx context.Context, examID domain.ExamID, userID domain.UserID) (*domain.ExamAttempt, error) {
 	return h.attempts.FindMostRecentSubmittedByExamUser(ctx, examID, userID)
 }

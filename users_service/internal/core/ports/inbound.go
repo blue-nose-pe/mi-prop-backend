@@ -77,7 +77,9 @@ type AuthCommands interface {
 	// ACTIVO. False para emails desconocidos, inactivos, o que pertenezcan
 	// a usuarios no-estudiantes (asesor/admin) — el flow publico no debe
 	// revelar esas cuentas. Se invoca tras validar key_code en el gateway.
-	CheckStudentEmail(ctx context.Context, email domain.Email) (bool, error)
+	// Cuando exists=true devuelve tambien el user_id para que el gateway
+	// chequee cuota de attempts sin exponer ListByUser publicamente.
+	CheckStudentEmail(ctx context.Context, email domain.Email) (bool, domain.UserID, error)
 }
 
 // =============== PERMISSION ===============

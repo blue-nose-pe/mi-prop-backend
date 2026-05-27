@@ -140,6 +140,9 @@ type AttemptQueries interface {
 	// key.MaxAttemptsPerUser antes de crear un nuevo attempt. Por (key,user)
 	// — no global del exam.
 	CountSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (int32, error)
+	// GetMostRecentSubmittedByKeyUser devuelve el ultimo attempt SUBMITTED
+	// del (key, user). Lo usa el RPC publico CountSubmittedByKeyUser.
+	GetMostRecentSubmittedByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (*domain.ExamAttempt, error)
 	// GetMostRecentSubmittedByExamUser devuelve el ultimo attempt
 	// finalizado del user (o nil si no hay ninguno). Sirve al front para
 	// llevar al alumno a /resultados con su ultimo intento cuando ya

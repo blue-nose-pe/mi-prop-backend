@@ -1010,15 +1010,16 @@ var ExamQuestionService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	AttemptService_StartAttempt_FullMethodName        = "/exams.v1.AttemptService/StartAttempt"
-	AttemptService_Answer_FullMethodName              = "/exams.v1.AttemptService/Answer"
-	AttemptService_FinishAttempt_FullMethodName       = "/exams.v1.AttemptService/FinishAttempt"
-	AttemptService_GetAttempt_FullMethodName          = "/exams.v1.AttemptService/GetAttempt"
-	AttemptService_ListByUser_FullMethodName          = "/exams.v1.AttemptService/ListByUser"
-	AttemptService_ListByExam_FullMethodName          = "/exams.v1.AttemptService/ListByExam"
-	AttemptService_ListByColegio_FullMethodName       = "/exams.v1.AttemptService/ListByColegio"
-	AttemptService_ListByKey_FullMethodName           = "/exams.v1.AttemptService/ListByKey"
-	AttemptService_ListEnrichedAnswers_FullMethodName = "/exams.v1.AttemptService/ListEnrichedAnswers"
+	AttemptService_StartAttempt_FullMethodName            = "/exams.v1.AttemptService/StartAttempt"
+	AttemptService_Answer_FullMethodName                  = "/exams.v1.AttemptService/Answer"
+	AttemptService_FinishAttempt_FullMethodName           = "/exams.v1.AttemptService/FinishAttempt"
+	AttemptService_GetAttempt_FullMethodName              = "/exams.v1.AttemptService/GetAttempt"
+	AttemptService_CountSubmittedByKeyUser_FullMethodName = "/exams.v1.AttemptService/CountSubmittedByKeyUser"
+	AttemptService_ListByUser_FullMethodName              = "/exams.v1.AttemptService/ListByUser"
+	AttemptService_ListByExam_FullMethodName              = "/exams.v1.AttemptService/ListByExam"
+	AttemptService_ListByColegio_FullMethodName           = "/exams.v1.AttemptService/ListByColegio"
+	AttemptService_ListByKey_FullMethodName               = "/exams.v1.AttemptService/ListByKey"
+	AttemptService_ListEnrichedAnswers_FullMethodName     = "/exams.v1.AttemptService/ListEnrichedAnswers"
 )
 
 // AttemptServiceClient is the client API for AttemptService service.
@@ -1029,6 +1030,12 @@ type AttemptServiceClient interface {
 	Answer(ctx context.Context, in *AnswerRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	FinishAttempt(ctx context.Context, in *FinishAttemptRequest, opts ...grpc.CallOption) (*AttemptResponse, error)
 	GetAttempt(ctx context.Context, in *GetAttemptRequest, opts ...grpc.CallOption) (*AttemptResponse, error)
+	// CountSubmittedByKeyUser: cuenta attempts SUBMITTED del user para una key
+	// especifica + retorna el last_attempt_id. Lo usa el gateway en
+	// /api/auth/student/lookup-by-key (publico, antes del OTP) para bloquear
+	// estudiantes que ya consumieron sus intentos sin ni siquiera mostrarles
+	// la pantalla de verificacion por correo.
+	CountSubmittedByKeyUser(ctx context.Context, in *CountSubmittedByKeyUserRequest, opts ...grpc.CallOption) (*CountSubmittedByKeyUserResponse, error)
 	ListByUser(ctx context.Context, in *ListAttemptsByUserRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error)
 	ListByExam(ctx context.Context, in *ListAttemptsByExamRequest, opts ...grpc.CallOption) (*ListAttemptsResponse, error)
 	// ListByColegio: attempts cuyos users pertenecen al colegio. Cross-DB
@@ -1085,6 +1092,16 @@ func (c *attemptServiceClient) GetAttempt(ctx context.Context, in *GetAttemptReq
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AttemptResponse)
 	err := c.cc.Invoke(ctx, AttemptService_GetAttempt_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *attemptServiceClient) CountSubmittedByKeyUser(ctx context.Context, in *CountSubmittedByKeyUserRequest, opts ...grpc.CallOption) (*CountSubmittedByKeyUserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CountSubmittedByKeyUserResponse)
+	err := c.cc.Invoke(ctx, AttemptService_CountSubmittedByKeyUser_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -1149,6 +1166,12 @@ type AttemptServiceServer interface {
 	Answer(context.Context, *AnswerRequest) (*EmptyResponse, error)
 	FinishAttempt(context.Context, *FinishAttemptRequest) (*AttemptResponse, error)
 	GetAttempt(context.Context, *GetAttemptRequest) (*AttemptResponse, error)
+	// CountSubmittedByKeyUser: cuenta attempts SUBMITTED del user para una key
+	// especifica + retorna el last_attempt_id. Lo usa el gateway en
+	// /api/auth/student/lookup-by-key (publico, antes del OTP) para bloquear
+	// estudiantes que ya consumieron sus intentos sin ni siquiera mostrarles
+	// la pantalla de verificacion por correo.
+	CountSubmittedByKeyUser(context.Context, *CountSubmittedByKeyUserRequest) (*CountSubmittedByKeyUserResponse, error)
 	ListByUser(context.Context, *ListAttemptsByUserRequest) (*ListAttemptsResponse, error)
 	ListByExam(context.Context, *ListAttemptsByExamRequest) (*ListAttemptsResponse, error)
 	// ListByColegio: attempts cuyos users pertenecen al colegio. Cross-DB
@@ -1182,6 +1205,9 @@ func (UnimplementedAttemptServiceServer) FinishAttempt(context.Context, *FinishA
 }
 func (UnimplementedAttemptServiceServer) GetAttempt(context.Context, *GetAttemptRequest) (*AttemptResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetAttempt not implemented")
+}
+func (UnimplementedAttemptServiceServer) CountSubmittedByKeyUser(context.Context, *CountSubmittedByKeyUserRequest) (*CountSubmittedByKeyUserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CountSubmittedByKeyUser not implemented")
 }
 func (UnimplementedAttemptServiceServer) ListByUser(context.Context, *ListAttemptsByUserRequest) (*ListAttemptsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListByUser not implemented")
@@ -1287,6 +1313,24 @@ func _AttemptService_GetAttempt_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(AttemptServiceServer).GetAttempt(ctx, req.(*GetAttemptRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _AttemptService_CountSubmittedByKeyUser_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CountSubmittedByKeyUserRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AttemptServiceServer).CountSubmittedByKeyUser(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AttemptService_CountSubmittedByKeyUser_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AttemptServiceServer).CountSubmittedByKeyUser(ctx, req.(*CountSubmittedByKeyUserRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -1403,6 +1447,10 @@ var AttemptService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetAttempt",
 			Handler:    _AttemptService_GetAttempt_Handler,
+		},
+		{
+			MethodName: "CountSubmittedByKeyUser",
+			Handler:    _AttemptService_CountSubmittedByKeyUser_Handler,
 		},
 		{
 			MethodName: "ListByUser",
