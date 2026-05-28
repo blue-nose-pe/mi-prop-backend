@@ -30,6 +30,18 @@ type HubspotClient interface {
 	FindContactByEmail(ctx context.Context, email string) (domain.RecordID, error)
 
 	UpsertCustomObjectByProp(ctx context.Context, typeID, keyProp, keyValue string, props map[string]string) (domain.RecordID, error)
+
+	// FindObjectByProp busca un object del typeID dado por (prop=value)
+	// usando la search API. Devuelve "" si no existe. La usa SyncKey para
+	// resolver record_ids de Asesor y Company cuando el caller no los
+	// provee (lookup por mi_proposito_asesor_id / mi_proposito___id_colegio).
+	FindObjectByProp(ctx context.Context, typeID, keyProp, keyValue string) (domain.RecordID, error)
+
+	// AssociateObjects crea asociacion default entre dos objects de
+	// cualquier typeID. Generaliza AssociateContactToCompany para soportar
+	// Key->Asesor, Key->Company, etc. Idempotente: PUT en HubSpot ya
+	// devuelve OK si la asociacion existia.
+	AssociateObjects(ctx context.Context, fromTypeID string, fromID domain.RecordID, toTypeID string, toID domain.RecordID) error
 }
 
 // =============== OTP webhook trigger ===============

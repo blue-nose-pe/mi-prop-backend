@@ -54,6 +54,12 @@ spec:
                 secretKeyRef:
                   name: {{ include "keysService.fullname" . }}-kv
                   key: jwt-secret
+            # HUBSPOT_SERVICE_ADDR: si esta seteado, keys-service replica
+            # cada key creada/editada al CRM (custom object 2-32450705)
+            # via SyncKey en goroutine separada (best-effort, no bloquea
+            # respuesta al asesor). Vacio = NoopSyncer (dev local).
+            - name: HUBSPOT_SERVICE_ADDR
+              value: "{{ .Release.Name }}-hubspot-service:50054"
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:

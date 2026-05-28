@@ -5,7 +5,10 @@
 // "trabajos" que el servicio acepta (sync result, OTP, upserts).
 package domain
 
-import "time"
+import (
+	"fmt"
+	"time"
+)
 
 // Identificadores tipados.
 type (
@@ -115,6 +118,91 @@ type ColegioPayload struct {
 	Nombre         string
 	PersonalACargo string
 	SchoolID       SchoolID
+}
+
+// KeyPayload — propiedades del custom object Key (2-32450705) que P1 ya
+// sincronizaba en createKey.js / createVisita.js. v2 replica el mismo
+// shape para mantener compatibilidad con los Workflows del portal UCSP
+// que filtran keys por la prop `herramienta`.
+type KeyPayload struct {
+	Code           string       // key.code (unique para upsert por prop "codigo")
+	ExamTypeCode   ExamTypeCode // vocacional | simulacro | habitos
+	AsesorUserID   UserID
+	SchoolID       SchoolID
+	SchoolName     string // denormalizado
+	Grade          string
+	Section        string
+	ValidFrom      time.Time
+	ValidTo        time.Time
+	MaxUses        int32
+	// record_ids opcionales: si vienen seteados se asocia directo,
+	// sino el adapter HubSpot busca por mi_proposito_asesor_id /
+	// mi_proposito___id_colegio.
+	AsesorRecordID RecordID
+	SchoolRecordID RecordID
+}
+
+// herramientaLabel mapea exam_type_code al string que P1 grababa en la
+// prop `herramienta`. Cambiar estos labels rompe los Workflows del
+// portal UCSP que filtran keys por herramienta.
+func (k KeyPayload) HerramientaLabel() string {
+	switch k.ExamTypeCode {
+	case ExamVocacional:
+		return "Test Vocacional"
+	case ExamSimulacro:
+		return "Test Examen Simulacro"
+	case ExamHabitos:
+		return "Test Estilos de Aprendizaje"
+	}
+	return ""
+}
+
+// ToProperties — bag de properties para el custom object Key.
+//
+// IMPORTANTE — props que P1 seteaba pero v2 NO setea por incompatibilidad
+// de tipos en el portal UCSP (definidos cuando v1 usaba IDs MySQL int):
+//   - colegio_id (INTEGER en HubSpot) — v2 SchoolID es UUID, no parseable
+//   - asesor_id  (INTEGER en HubSpot) — v2 AsesorUserID es UUID, idem
+//   - grado      (enum INTEGER [1,2,4]) — v2 Grade es string ("5to")
+//   - seccion    (enum INTEGER [1-12])  — v2 Section es letra ("A")
+// Mapear estos requiere lookup adicional / tabla de equivalencias. Por
+// ahora se omiten silenciosamente: el record queda con codigo +
+// herramienta + nombre_colegio + aforo + fechas, suficiente para que el
+// CRM identifique la key. Las asociaciones a Asesor/Company (object
+// links) se hacen aparte por record_id, no por estas props.
+//
+// Fechas: HubSpot espera DATE en milisegundos UTC fijados a medianoche
+// (00:00:00). Truncamos cualquier hora del ValidFrom/ValidTo a date-only
+// antes de serializar.
+func (k KeyPayload) ToProperties() map[string]string {
+	props := map[string]string{
+		"codigo":      k.Code,
+		"herramienta": k.HerramientaLabel(),
+	}
+	if k.SchoolName != "" {
+		// P1 usaba nombre_colegio en simulacro/habitos y colegio_nombre en
+		// vocacional; v2 normaliza a nombre_colegio.
+		props["nombre_colegio"] = k.SchoolName
+	}
+	if !k.ValidFrom.IsZero() {
+		props["desde"] = midnightUTCMillis(k.ValidFrom)
+	}
+	if !k.ValidTo.IsZero() {
+		props["hasta"] = midnightUTCMillis(k.ValidTo)
+	}
+	if k.MaxUses > 0 {
+		props["aforo"] = intStr(k.MaxUses)
+	}
+	return props
+}
+
+// midnightUTCMillis — HubSpot DATE props requieren milisegundos UTC al
+// inicio del dia (00:00:00). Truncamos la hora antes de devolver el
+// timestamp como string.
+func midnightUTCMillis(t time.Time) string {
+	utc := t.UTC()
+	midnight := time.Date(utc.Year(), utc.Month(), utc.Day(), 0, 0, 0, 0, time.UTC)
+	return fmt.Sprintf("%d", midnight.UnixMilli())
 }
 
 // FailedSync — vista de un job que terminó en DLQ (admin lo consulta).

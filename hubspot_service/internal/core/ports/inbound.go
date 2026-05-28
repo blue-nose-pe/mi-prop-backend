@@ -16,6 +16,10 @@ type SyncCommands interface {
 	UpsertContact(ctx context.Context, c domain.Contact) (domain.RecordID, error)
 	SendOTP(ctx context.Context, in SendOTPInput) error
 	SyncStudentContact(ctx context.Context, in SyncStudentContactInput) error
+	// SyncKey upsertea el custom object Key (2-32450705) + asociaciones a
+	// Asesor (2-32448565) y Company (0-2). Best-effort: errores de
+	// asociacion no fallan el upsert. Paridad con v1.
+	SyncKey(ctx context.Context, k domain.KeyPayload) error
 	EnqueueExamResult(ctx context.Context, r domain.ExamResult) error
 	EnqueueAsesor(ctx context.Context, a domain.AsesorPayload) error
 	EnqueueColegio(ctx context.Context, c domain.ColegioPayload) error

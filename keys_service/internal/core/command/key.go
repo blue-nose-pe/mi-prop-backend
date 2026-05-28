@@ -5,11 +5,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base32"
+	"log"
 	"strings"
 	"time"
 
 	"keys_service/internal/core/domain"
 	"keys_service/internal/core/ports"
+
+	"google.golang.org/grpc/metadata"
 )
 
 // KeyHandler implementa ports.KeyCommands.
@@ -20,15 +23,95 @@ import (
 //   - Validate solo lee + chequea ventana/aforo, NO muta.
 //   - IncrementUsage es atómico (repo.IncrementUses) y agrega un row
 //     en key_usage para auditar.
+//   - Generate/Update disparan SyncKey al CRM (HubSpot) en goroutine
+//     separada best-effort para no bloquear la respuesta del front.
 type KeyHandler struct {
 	keys      ports.KeyRepository
 	keyUsages ports.KeyUsageRepository
+	hubspot   ports.HubspotSyncer
 }
 
 var _ ports.KeyCommands = (*KeyHandler)(nil)
 
-func NewKeyHandler(keys ports.KeyRepository, usages ports.KeyUsageRepository) *KeyHandler {
-	return &KeyHandler{keys: keys, keyUsages: usages}
+func NewKeyHandler(keys ports.KeyRepository, usages ports.KeyUsageRepository, hubspot ports.HubspotSyncer) *KeyHandler {
+	return &KeyHandler{keys: keys, keyUsages: usages, hubspot: hubspot}
+}
+
+// syncToHubspot — fire-and-forget en goroutine separada. El context del
+// caller puede haberse cancelado al devolver la respuesta del front; usamos
+// uno fresco con timeout independiente. Propagamos el authorization header
+// del incoming ctx (gRPC metadata) para que hubspot_service pueda autenticar
+// la llamada — sin esto, el RPC se rechaza con Unauthenticated.
+func (h *KeyHandler) syncToHubspot(parent context.Context, k *domain.Key) {
+	if h.hubspot == nil || k == nil {
+		return
+	}
+	in := ports.HubspotSyncKeyInput{
+		Code:         k.Code,
+		ExamTypeCode: examTypeCodeForHubspot(k.ExamTypeID),
+		AsesorUserID: k.AsesorUserID,
+		SchoolID:     k.SchoolID,
+		Grade:        k.Grade,
+		Section:      k.Section,
+		MaxUses:      k.MaxUses,
+	}
+	if k.ValidFrom != nil {
+		in.ValidFrom = k.ValidFrom.UTC().Format(time.RFC3339)
+	}
+	if k.ValidTo != nil {
+		in.ValidTo = k.ValidTo.UTC().Format(time.RFC3339)
+	}
+	// Capturamos los headers gRPC del incoming ctx (authorization +
+	// x-correlation-id) ANTES de lanzar la goroutine, porque el caller
+	// puede haber devuelto y dropeado el ctx para cuando la goroutine corra.
+	auth, cid := extractAuthAndCID(parent)
+	go func(in ports.HubspotSyncKeyInput, auth, cid string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if auth != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "authorization", auth)
+		}
+		if cid != "" {
+			ctx = metadata.AppendToOutgoingContext(ctx, "x-correlation-id", cid)
+		}
+		if err := h.hubspot.SyncKey(ctx, in); err != nil {
+			log.Printf("[hubspot] SyncKey FAIL code=%s err=%v", in.Code, err)
+		}
+	}(in, auth, cid)
+}
+
+// extractAuthAndCID lee los headers que necesita propagar al goroutine
+// que llama hubspot_service. authorization es requerido (sino el RPC se
+// rechaza); x-correlation-id es para trazabilidad.
+func extractAuthAndCID(ctx context.Context) (string, string) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", ""
+	}
+	auth := ""
+	cid := ""
+	if v := md.Get("authorization"); len(v) > 0 {
+		auth = v[0]
+	}
+	if v := md.Get("x-correlation-id"); len(v) > 0 {
+		cid = v[0]
+	}
+	return auth, cid
+}
+
+// examTypeCodeForHubspot mapea el INT IDENTITY de exam_type al code
+// string que hubspot_service espera. Mismo orden que el seed 008 del
+// exams_service y mismo que examTypeCodeFromID del analytics_service.
+func examTypeCodeForHubspot(id int32) string {
+	switch id {
+	case 1:
+		return "vocacional"
+	case 2:
+		return "simulacro"
+	case 3:
+		return "habitos"
+	}
+	return ""
 }
 
 func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*domain.Key, error) {
@@ -68,7 +151,12 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 	if err != nil {
 		return nil, err
 	}
-	return h.keys.FindByID(ctx, id)
+	saved, err := h.keys.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	h.syncToHubspot(ctx, saved)
+	return saved, nil
 }
 
 func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*domain.Key, error) {
@@ -106,11 +194,21 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 	if err := h.keys.Update(ctx, k); err != nil {
 		return nil, err
 	}
+	h.syncToHubspot(ctx, k)
 	return k, nil
 }
 
 func (h *KeyHandler) Deactivate(ctx context.Context, id domain.KeyID) error {
-	return h.keys.SetActive(ctx, id, false)
+	if err := h.keys.SetActive(ctx, id, false); err != nil {
+		return err
+	}
+	// Sync el active=false a HubSpot via UpsertCustomObjectByProp (mismo
+	// upsert que SyncKey hace). Si HubSpot decide reflejar el active en
+	// alguna prop custom, lo veria; por defecto el upsert solo refresca
+	// las props que mandamos en ToProperties — Active no esta entre ellas
+	// porque el portal UCSP no tiene esa prop. Por ahora, el deactivate
+	// local NO necesita propagar al CRM.
+	return nil
 }
 
 func (h *KeyHandler) Validate(ctx context.Context, code string) (*domain.Key, error) {

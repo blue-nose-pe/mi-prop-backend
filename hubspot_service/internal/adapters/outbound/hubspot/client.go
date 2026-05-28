@@ -184,6 +184,27 @@ func (c *Client) AssociateContactToCompany(ctx context.Context, contactID, compa
 	return c.do(ctx, http.MethodPut, path, nil, nil)
 }
 
+// AssociateObjects: version generica de AssociateContactToCompany para
+// cualquier par de objects. P1 lo usaba en createKey.js para asociar
+// Key (2-32450705) <-> Asesor (2-32448565) y Key <-> Colegio (0-2).
+func (c *Client) AssociateObjects(ctx context.Context, fromTypeID string, fromID domain.RecordID, toTypeID string, toID domain.RecordID) error {
+	if fromID == "" || toID == "" {
+		return nil
+	}
+	path := fmt.Sprintf("/crm/v4/objects/%s/%s/associations/default/%s/%s",
+		fromTypeID, string(fromID), toTypeID, string(toID))
+	return c.do(ctx, http.MethodPut, path, nil, nil)
+}
+
+// FindObjectByProp busca un object del custom type por una propiedad EQ.
+// Reusa el helper searchByProperty (defensive matching). "" si no existe.
+func (c *Client) FindObjectByProp(ctx context.Context, typeID, keyProp, keyValue string) (domain.RecordID, error) {
+	if keyValue == "" {
+		return "", nil
+	}
+	return c.searchByProperty(ctx, "/crm/v3/objects/"+typeID+"/search", keyProp, keyValue)
+}
+
 func (c *Client) FindContactByDNI(ctx context.Context, dni string) (domain.RecordID, error) {
 	return c.searchByProperty(ctx, "/crm/v3/objects/contacts/search", "dni", dni)
 }

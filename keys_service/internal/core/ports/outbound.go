@@ -38,6 +38,34 @@ type KeyUsageRepository interface {
 	ExistsByKeyUser(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (bool, error)
 }
 
+// HubspotSyncer — port para sincronizar el custom object Key al CRM.
+// Paridad con v1: cada key generada/editada se replica como custom
+// object en HubSpot con asociaciones a Asesor + Colegio. Best-effort:
+// los handlers Generate/Update lo invocan en goroutine separada para
+// no bloquear la respuesta del front si HubSpot esta lento o caido.
+type HubspotSyncer interface {
+	SyncKey(ctx context.Context, in HubspotSyncKeyInput) error
+}
+
+// HubspotSyncKeyInput — campos que hubspot_service necesita para
+// upsertear el custom object Key. asesor_record_id y school_record_id
+// son opcionales: si vienen, hubspot_service los usa directo; sino
+// hace search por mi_proposito_asesor_id / mi_proposito___id_colegio.
+type HubspotSyncKeyInput struct {
+	Code           string
+	ExamTypeCode   string // "vocacional" | "simulacro" | "habitos"
+	AsesorUserID   domain.UserID
+	SchoolID       domain.SchoolID
+	SchoolName     string
+	Grade          string
+	Section        string
+	ValidFrom      string // RFC 3339
+	ValidTo        string // RFC 3339
+	MaxUses        int32
+	AsesorRecordID string
+	SchoolRecordID string
+}
+
 // Audit ----
 
 type AuditEvent struct {

@@ -23,6 +23,13 @@ service HubspotService {
   // UCSP lo vea en el CRM. Mismo set de props que SendOTP minus el OTP.
   rpc SyncStudentContact (SyncStudentContactRequest) returns (EmptyResponse);
 
+  // SyncKey: upsert del custom object Key (2-32450705) + asociaciones a
+  // Asesor (2-32448565) y Company del colegio (0-2). Paridad con v1:
+  // createKey/createVisita sincronizaban automaticamente cada key creada.
+  // Sincrono porque el caller (keys_service.Generate) lo dispara en
+  // goroutine separada — si quisieramos no bloquear el grpc, encolar.
+  rpc SyncKey (SyncKeyRequest) returns (EmptyResponse);
+
   // Asíncrono (encola para retry con backoff exponencial).
   rpc SyncExamResult (SyncExamResultRequest) returns (EmptyResponse);
   rpc UpsertSchool   (UpsertSchoolRequest)   returns (EmptyResponse);
@@ -90,6 +97,27 @@ message SyncStudentContactRequest {
   string phone           = 5;
   int32  school_int_id   = 6;
   string school_record_id = 7;
+}
+
+// SyncKeyRequest — payload para upsert del custom object Key (2-32450705)
+// en HubSpot + asociaciones a Asesor y Company. Mismos campos que P1
+// guardaba en createKey.js / createVisita.js. herramienta lo deriva el
+// servicio segun exam_type_code (vocacional -> "Test Vocacional", etc).
+message SyncKeyRequest {
+  string code              = 1; // codigo (key.code), unique key para upsert
+  string exam_type_code    = 2; // "vocacional" | "simulacro" | "habitos"
+  string asesor_user_id    = 3; // UUID del asesor en v2 (lookup en HubSpot Asesor por mi_proposito_asesor_id)
+  string school_id         = 4; // UUID o int_id del colegio en v2
+  string school_name       = 5; // denormalizado para mostrar en la prop nombre_colegio
+  string grade             = 6;
+  string section           = 7;
+  string valid_from        = 8; // RFC 3339
+  string valid_to          = 9; // RFC 3339
+  int32  max_uses          = 10;
+  // record_ids opcionales: si el caller los conoce, se asocian directo
+  // sin tener que hacer search por mi_proposito_* (mas rapido + mas robusto).
+  string asesor_record_id  = 11;
+  string school_record_id  = 12;
 }
 
 message SyncExamResultRequest {

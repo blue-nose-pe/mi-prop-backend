@@ -21,6 +21,11 @@ type Config struct {
 	JWTSecret string
 	JWTIssuer string
 
+	// HubspotServiceAddr: gRPC address de hubspot_service (ej
+	// "miproposito-hubspot-service:50054"). Si vacio, el SyncKey
+	// post-creacion/edicion cae a NoopSyncer (no replica al CRM).
+	HubspotServiceAddr string
+
 	ShutdownWait time.Duration
 }
 
@@ -39,9 +44,11 @@ func Load() *Config {
 		JWTSecret: getEnv("JWT_SECRET", ""),
 		JWTIssuer: getEnv("JWT_ISSUER", "miproposito.users"),
 
+		HubspotServiceAddr: getEnv("HUBSPOT_SERVICE_ADDR", ""),
+
 		ShutdownWait: getEnvDuration("SHUTDOWN_WAIT", 10*time.Second),
 	}
-	log.Printf("[config] grpc=%s sql=%s/%s", c.GRPCPort, c.SQLServer, c.SQLDatabase)
+	log.Printf("[config] grpc=%s sql=%s/%s hubspot=%s", c.GRPCPort, c.SQLServer, c.SQLDatabase, c.HubspotServiceAddr)
 	return c
 }
 

@@ -164,6 +164,63 @@ func (h *SyncHandler) SyncStudentContact(ctx context.Context, in ports.SyncStude
 	return nil
 }
 
+// Object type IDs en HubSpot UCSP (produccion). Cambiar aca si UCSP
+// migra a otro portal o redefine los custom objects.
+const (
+	HubspotTypeKey     = "2-32450705" // custom object Key
+	HubspotTypeAsesor  = "2-32448565" // custom object Asesor
+	HubspotTypeCompany = "0-2"        // Company estandar (colegios)
+)
+
+// SyncKey: upsert del custom object Key + asociacion best-effort a
+// Asesor y Company. Paridad con P1 (createKey.js / createVisita.js).
+func (h *SyncHandler) SyncKey(ctx context.Context, k domain.KeyPayload) error {
+	if k.Code == "" {
+		return domain.ErrInvalidPayload
+	}
+	// Upsert por la prop "codigo" (unique en el portal UCSP).
+	keyID, err := h.hs.UpsertCustomObjectByProp(ctx, HubspotTypeKey, "codigo", k.Code, k.ToProperties())
+	if err != nil {
+		log.Printf("[SyncKey] UpsertCustomObjectByProp FAIL code=%s err=%v", k.Code, err)
+		return err
+	}
+
+	// Asociacion Key <-> Asesor. Si el caller paso asesor_record_id, lo
+	// usamos directo; sino buscamos por mi_proposito_asesor_id (UUID en v2).
+	asesorID := k.AsesorRecordID
+	if asesorID == "" && k.AsesorUserID != "" {
+		found, err := h.hs.FindObjectByProp(ctx, HubspotTypeAsesor, "mi_proposito_asesor_id", string(k.AsesorUserID))
+		if err != nil {
+			log.Printf("[SyncKey] FindAsesor FAIL asesor=%s err=%v", k.AsesorUserID, err)
+		} else {
+			asesorID = found
+		}
+	}
+	if asesorID != "" {
+		if err := h.hs.AssociateObjects(ctx, HubspotTypeKey, keyID, HubspotTypeAsesor, asesorID); err != nil {
+			log.Printf("[SyncKey] Associate Key->Asesor FAIL key=%s asesor=%s err=%v", keyID, asesorID, err)
+		}
+	}
+
+	// Asociacion Key <-> Company. Mismo patron.
+	companyID := k.SchoolRecordID
+	if companyID == "" && k.SchoolID != "" {
+		found, err := h.hs.FindObjectByProp(ctx, HubspotTypeCompany, "mi_proposito___id_colegio", string(k.SchoolID))
+		if err != nil {
+			log.Printf("[SyncKey] FindCompany FAIL school=%s err=%v", k.SchoolID, err)
+		} else {
+			companyID = found
+		}
+	}
+	if companyID != "" {
+		if err := h.hs.AssociateObjects(ctx, HubspotTypeKey, keyID, HubspotTypeCompany, companyID); err != nil {
+			log.Printf("[SyncKey] Associate Key->Company FAIL key=%s company=%s err=%v", keyID, companyID, err)
+		}
+	}
+	log.Printf("[SyncKey] OK code=%s record_id=%s asesor=%s company=%s", k.Code, keyID, asesorID, companyID)
+	return nil
+}
+
 func (h *SyncHandler) EnqueueExamResult(ctx context.Context, r domain.ExamResult) error {
 	if !r.ExamTypeCode.Valid() {
 		return domain.ErrInvalidExamType

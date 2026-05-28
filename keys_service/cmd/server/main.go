@@ -14,8 +14,10 @@ import (
 	"keys_service/config"
 	grpchandler "keys_service/internal/adapters/inbound/grpc"
 	auditadapter "keys_service/internal/adapters/outbound/audit"
+	hubspotclient "keys_service/internal/adapters/outbound/hubspotclient"
 	mssqladapter "keys_service/internal/adapters/outbound/mssql"
 	"keys_service/internal/core/command"
+	"keys_service/internal/core/ports"
 	"keys_service/internal/core/query"
 	"keys_service/internal/shared/auditmw"
 	"keys_service/internal/shared/jwtmw"
@@ -58,8 +60,24 @@ func main() {
 	usages := mssqladapter.NewKeyUsageRepo(db)
 	auditSink := mssqladapter.NewAuditSink(db)
 
+	// Hubspot syncer — best-effort goroutine desde Generate/Update para
+	// replicar el custom object Key al CRM (paridad con P1). Si
+	// HUBSPOT_SERVICE_ADDR esta vacio cae a NoopSyncer (dev local).
+	var hubspotSyncer ports.HubspotSyncer = hubspotclient.NoopSyncer{}
+	if cfg.HubspotServiceAddr != "" {
+		hs, err := hubspotclient.NewGrpc(cfg.HubspotServiceAddr)
+		if err != nil {
+			log.Fatalf("hubspot client dial: %v", err)
+		}
+		defer hs.Close()
+		hubspotSyncer = hs
+		log.Printf("[hubspot] gRPC client → %s", cfg.HubspotServiceAddr)
+	} else {
+		log.Printf("[hubspot] NoopSyncer (HUBSPOT_SERVICE_ADDR vacio)")
+	}
+
 	// Core (CQRS)
-	keyCmds := command.NewKeyHandler(keys, usages)
+	keyCmds := command.NewKeyHandler(keys, usages, hubspotSyncer)
 	keyQrys := query.NewKeyHandler(keys, usages)
 
 	// Inbound (gRPC)

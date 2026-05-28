@@ -81,6 +81,28 @@ func (h *HubspotHandler) SyncStudentContact(ctx context.Context, req *pb.SyncStu
 	return &pb.EmptyResponse{}, nil
 }
 
+func (h *HubspotHandler) SyncKey(ctx context.Context, req *pb.SyncKeyRequest) (*pb.EmptyResponse, error) {
+	validFrom, _ := time.Parse(time.RFC3339, req.GetValidFrom())
+	validTo, _ := time.Parse(time.RFC3339, req.GetValidTo())
+	if err := h.cmds.SyncKey(ctx, domain.KeyPayload{
+		Code:           req.GetCode(),
+		ExamTypeCode:   domain.ExamTypeCode(req.GetExamTypeCode()),
+		AsesorUserID:   domain.UserID(req.GetAsesorUserId()),
+		SchoolID:       domain.SchoolID(req.GetSchoolId()),
+		SchoolName:     req.GetSchoolName(),
+		Grade:          req.GetGrade(),
+		Section:        req.GetSection(),
+		ValidFrom:      validFrom,
+		ValidTo:        validTo,
+		MaxUses:        req.GetMaxUses(),
+		AsesorRecordID: domain.RecordID(req.GetAsesorRecordId()),
+		SchoolRecordID: domain.RecordID(req.GetSchoolRecordId()),
+	}); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
 func (h *HubspotHandler) SyncExamResult(ctx context.Context, req *pb.SyncExamResultRequest) (*pb.EmptyResponse, error) {
 	t, _ := time.Parse(time.RFC3339, req.GetSubmittedAt())
 	r := domain.ExamResult{
