@@ -15,6 +15,7 @@ package clients
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"analytics_service/internal/core/domain"
@@ -32,6 +33,15 @@ type GrpcExams struct {
 	conn     *grpc.ClientConn
 	exams    examspb.ExamServiceClient
 	attempts examspb.AttemptServiceClient
+
+	// examCache: cache in-process de exams ya resueltos. Exams son
+	// inmutables despues de publish, asi que cachear es seguro y elimina
+	// el N+1 visible en logs (dashboards iteraban GetExam una vez por
+	// cada attempt: con 12 attempts del mismo exam se hacian 12 round-
+	// trips al exams_service). El cache vive durante la vida del pod;
+	// invalidar = restart. Si en el futuro los exams se vuelven mutables,
+	// reemplazar por TTL o publicar event de invalidacion.
+	examCache sync.Map // domain.ExamID -> *ports.UpstreamExam
 }
 
 var _ ports.ExamsClient = (*GrpcExams)(nil)
@@ -132,6 +142,13 @@ func (g *GrpcExams) ListEnrichedAnswers(ctx context.Context, attemptID domain.At
 }
 
 func (g *GrpcExams) GetExam(ctx context.Context, id domain.ExamID) (*ports.UpstreamExam, error) {
+	if cached, ok := g.examCache.Load(id); ok {
+		// Devolvemos COPIA para que el caller no mute el objeto cacheado
+		// (los UpstreamExam son value types pero el caller podria asumir
+		// ownership y modificar campos como Name si normaliza).
+		ex := *(cached.(*ports.UpstreamExam))
+		return &ex, nil
+	}
 	resp, err := g.exams.GetExam(forwardAuth(ctx), &examspb.GetExamRequest{Id: string(id)})
 	if err != nil {
 		return nil, err
@@ -143,18 +160,17 @@ func (g *GrpcExams) GetExam(ctx context.Context, id domain.ExamID) (*ports.Upstr
 	// El proto de exams expone exam_type_id (int IDENTITY), no el code.
 	// Los IDs no son estables across deploys (los seeds usan IDENTITY,
 	// no INT explícito), así que no podemos hardcodear 1->vocacional.
-	// Para resolverlo correctamente habría que:
-	//   - exponer un nuevo RPC ListExamTypes en exams_service, o
-	//   - incluir exam_type_code en el message Exam.
-	// Por ahora dejamos el code vacío; el core debe tolerarlo.
-	return &ports.UpstreamExam{
+	ex := &ports.UpstreamExam{
 		ID:           domain.ExamID(e.GetId()),
 		ExamTypeCode: examTypeCodeFromID(e.GetExamTypeId()),
 		Code:         e.GetCode(),
 		Name:         e.GetName(),
 		SchoolID:     domain.SchoolID(e.GetSchoolId()),
 		Version:      e.GetVersion(),
-	}, nil
+	}
+	g.examCache.Store(id, ex)
+	out := *ex
+	return &out, nil
 }
 
 // examTypeCodeFromID mapea el exam_type_id que devuelve exams_service a un
