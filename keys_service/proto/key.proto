@@ -89,6 +89,9 @@ message UpdateKeyRequest {
   optional int32 max_uses = 6;
   // max_attempts_per_user opcional: nil = no tocar; *N = nuevo valor.
   optional int32 max_attempts_per_user = 7;
+  // active opcional: nil = no tocar; true = reactivar; false = desactivar.
+  // Es el camino para REACTIVAR una key apagada — DeactivateKey solo apaga.
+  optional bool active = 8;
 }
 
 message DeactivateKeyRequest { string id = 1; }

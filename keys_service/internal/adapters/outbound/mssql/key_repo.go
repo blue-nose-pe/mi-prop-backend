@@ -79,12 +79,13 @@ func (r *KeyRepo) Update(ctx context.Context, k *domain.Key) error {
 		       valid_from            = @p3,
 		       valid_to              = @p4,
 		       max_uses              = @p5,
-		       max_attempts_per_user = @p6
-		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p7)`
+		       max_attempts_per_user = @p6,
+		       active                = @p7
+		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p8)`
 	res, err := r.db.ExecContext(ctx, q,
 		k.Grade, k.Section,
 		nullableTime(k.ValidFrom), nullableTime(k.ValidTo),
-		k.MaxUses, k.MaxAttemptsPerUser, string(k.ID))
+		k.MaxUses, k.MaxAttemptsPerUser, k.Active, string(k.ID))
 	if err != nil {
 		return err
 	}

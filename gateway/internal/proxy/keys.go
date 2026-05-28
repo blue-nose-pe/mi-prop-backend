@@ -165,6 +165,9 @@ type updateKeyRequest struct {
 	// MaxAttemptsPerUser opcional: nil = no tocar; *N = nuevo valor.
 	// 0 explicito = ilimitado (a diferencia de Generate que normaliza a 1).
 	MaxAttemptsPerUser *int32 `json:"max_attempts_per_user"`
+	// Active opcional: nil = no tocar; true = reactivar; false = desactivar.
+	// El front lo usa para reactivar keys apagadas (DeactivateKey solo apaga).
+	Active *bool `json:"active"`
 }
 
 func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
@@ -191,6 +194,7 @@ func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
 		ValidTo:   to,
 		MaxUses:   in.MaxUses, // *int32 → proto optional max_uses
 		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
+		Active:    in.Active, // *bool → proto optional active
 	})
 	if err != nil {
 		writeGRPCError(w, err)

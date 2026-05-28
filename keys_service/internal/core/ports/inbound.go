@@ -67,6 +67,8 @@ type UpdateKeyInput struct {
 	MaxUses *int32
 	// MaxAttemptsPerUser tambien puntero: nil = no tocar; *N = nuevo valor.
 	MaxAttemptsPerUser *int32
+	// Active opcional: nil = no tocar; true = reactivar; false = desactivar.
+	Active *bool
 }
 
 type IncrementUsageInput struct {

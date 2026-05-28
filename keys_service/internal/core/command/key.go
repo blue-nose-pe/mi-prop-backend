@@ -97,6 +97,9 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 		// Generate fuerza min=1.
 		k.MaxAttemptsPerUser = *in.MaxAttemptsPerUser
 	}
+	if in.Active != nil {
+		k.Active = *in.Active
+	}
 	if k.ValidFrom != nil && k.ValidTo != nil && !k.ValidFrom.Before(*k.ValidTo) {
 		return nil, domain.ErrInvalidDateRange
 	}

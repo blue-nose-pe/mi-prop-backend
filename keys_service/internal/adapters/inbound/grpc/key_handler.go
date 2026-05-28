@@ -59,6 +59,7 @@ func (h *KeyHandler) UpdateKey(ctx context.Context, req *pb.UpdateKeyRequest) (*
 		Section: req.GetSection(),
 		MaxUses: req.MaxUses, // puntero: nil=no provisto, *=actualizar
 		MaxAttemptsPerUser: req.MaxAttemptsPerUser, // idem
+		Active: req.Active, // idem; permite reactivar una key desactivada
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()
