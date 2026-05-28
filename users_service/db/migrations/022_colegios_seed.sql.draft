@@ -1,0 +1,88 @@
+-- ===================================================================
+-- DRAFT — Catalogo masivo de colegios (paridad V1)
+-- NO APLICAR todavia. Requiere input de UCSP para:
+--   1. Lista oficial de colegios activos (V1 tenia ~50+ pero mezclados
+--      con "Colegio de prueba", "Test 05 06 2025", "colegio prueba 1111",
+--      "BN RUC", etc. — basura legacy).
+--   2. Coordinador (user_id) por cada colegio. La tabla school tiene
+--      `user_id UNIQUEIDENTIFIER NOT NULL` con FK a users(id) ON DELETE
+--      CASCADE. Sin coord, no se puede INSERT.
+--   3. Categoria UCSP (A+/A/B/C/D) y ciudad por colegio.
+-- ===================================================================
+
+-- Colegios identificados en el video V1 (Simulacro-colegios.mp4):
+--   Lista limpia (sin "test", "prueba", "BN RUC" etc.):
+--
+--   I.E. DE LA SALLE
+--   NIÑO MAGISTRAL
+--   DE LOS SAGRADOS CORAZONES
+--   INNOVA SCHOOLS CERRO COLORADO
+--   FUTURA SCHOOLS TIABAYA
+--   ALEXANDER FLEMING
+--   NUESTRA SEÑORA DE FATIMA
+--   SAN JOSE DE AREQUIPA
+--   COLEGIO ANGLO AMERICANO PRESCOTT
+--   SAN JERONIMO
+--   NUESTRA SEÑORA DEL PILAR
+--   BRITANICO EUROPEO DUNALASTAIR
+--   BRYCE S.A.C.
+--   SANTA CLARA
+--   PERUANO ALEMAN MAX UHLE
+--   JUAN DE LA CRUZ CALIENES
+--   SAGRADO CORAZON
+--   SANTA ROSA DE VITERBO
+--   I.E. 40159 EJERCITO AREQUIPA
+--   I.E. ENRIQUE MEIGGS - Ilo
+--   I.E. Standford
+--   I.E. FUTURA SCHOOLS TACNA
+--   SCHOOL INTERNACIONAL BLUMER
+--   I.E. SAGRADO CORAZÓN DE JESÚS
+--   I.E. JOSE CARUANA
+--   I.E. 40043 NUESTRA SEÑORA DE LA MEDALLA MILAGROSA
+--   I.E. INNOVA SCHOOLS - AREQUIPA MIRAFLORES
+--   I.E. TAHUAPALCCA ESPINAR
+--   I.E. VIRGEN DE FATIMA CUSCO
+--   FRANCISCO GARCIA CALDERON
+--   I.E. NUESTRA SEÑORA DE LA CANDELARIA - Camaná
+--   NUESTRA SEÑORA DE ALTA GRACIA
+--   I.E. LA SALLE - JULIACA
+--   GRAN UNIDAD ESCOLAR SAN CARLOS
+--   I.E. SEBASTIAN BARRANCA - Camaná
+--   TUPAC AMARU
+--   I.E. CRAMER - Puno
+--   MARISCAL ORBEGOSO
+--   I.E. SAN FRANCISCO DE ASIS (AYAVIRI)
+--   ADVENTISTA DEL TITICACA
+--   I.E. GRUPO MEGA - Camaná
+--   I.E. AMERICANA - Juliaca
+--   I.E. DIVINO MAESTRO PUNO
+--   BUEN PASTOR
+--   Evento Vocacional Descubre
+--
+-- (la lista podria estar incompleta — el video tiene scroll y solo se
+--  vieron ~45 nombres en los frames extraidos)
+
+-- Antes de aplicar:
+--   1. Pedirle a UCSP el listado oficial (excluyendo entradas test).
+--   2. Decidir si cada colegio tendra un coord placeholder (creado en
+--      esta misma migration) o esperar a que UCSP asigne reales.
+--   3. Definir el patron de placeholder coord:
+--        email = `coord-placeholder-<slug-colegio>@ucsp.invalid`
+--        password = aleatoria, must_change_password=1
+--      Para que UCSP pueda promover/reasignar despues sin colision.
+--   4. Confirmar categoria y ciudad por colegio.
+
+-- Skeleton de INSERT (a llenar):
+--
+-- DECLARE @coord_id UNIQUEIDENTIFIER;
+-- INSERT INTO users (email, password_hash, first_name, last_name, must_change_password, active)
+-- OUTPUT INSERTED.id INTO @coord_id
+-- VALUES ('coord-placeholder-de-la-salle@ucsp.invalid', '<bcrypt-hash>', 'Coord', 'Placeholder', 1, 1);
+--
+-- INSERT INTO school (user_id, name, city, category, active)
+-- VALUES (@coord_id, 'I.E. DE LA SALLE', 'Arequipa', 'A', 1);
+--
+-- (repetir por cada colegio)
+
+-- TODO: cuando UCSP confirme, renombrar este archivo a 022_colegios_seed.sql
+-- y completar los INSERTS.
