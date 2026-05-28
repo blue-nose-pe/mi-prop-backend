@@ -15,6 +15,11 @@ type KeyRepository interface {
 	SetActive(ctx context.Context, id domain.KeyID, active bool) error
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
+	// ListAll — dump completo de la tabla key. Solo lo usa el endpoint
+	// admin /api/admin/keys/resync-all del gateway para backfillear el
+	// sync a HubSpot de keys creadas antes de paridad v1<->v2. No usar
+	// para flujos productivos (escala mal si la tabla crece).
+	ListAll(ctx context.Context) ([]domain.Key, error)
 	// ListUserIDsByColegio: distinct user_ids que usaron keys del colegio.
 	// JOIN key_usage <-> [key] filtrando key.school_id = X. Lo usa el
 	// gateway para hacer "Estudiantes de Colegio X" aditivo: incluir

@@ -19,6 +19,10 @@ type KeyCommands interface {
 	// IncrementUsage atómico + log key_usage. Llamado por exams_service
 	// después de crear un attempt válido.
 	IncrementUsage(ctx context.Context, in IncrementUsageInput) error
+	// Resync re-dispara el sync a HubSpot para una key ya existente
+	// (synchronous, no goroutine). Lo invoca el gateway admin endpoint
+	// resync-all para backfillear keys creadas antes de paridad v1<->v2.
+	Resync(ctx context.Context, in ResyncKeyInput) error
 }
 
 type KeyQueries interface {
@@ -26,6 +30,8 @@ type KeyQueries interface {
 	GetByCode(ctx context.Context, code string) (*domain.Key, error)
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
+	// ListAll — dump completo, solo para el flujo admin resync-all.
+	ListAll(ctx context.Context) ([]domain.Key, error)
 	ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
 	// UserHasKeyUsage: true si (key, user) ya tiene fila en key_usage.
@@ -84,4 +90,18 @@ type IncrementUsageInput struct {
 	KeyID     domain.KeyID
 	UserID    domain.UserID
 	AttemptID string
+}
+
+// ResyncKeyInput — pass-through al hubspot SyncKey para una key ya
+// existente. El gateway resuelve los record_ids/int_ids via users-service
+// antes de invocar Resync (mismo shape que GenerateKeyInput, sin los
+// campos de creacion).
+type ResyncKeyInput struct {
+	ID             domain.KeyID
+	AsesorRecordID string
+	SchoolRecordID string
+	SchoolName     string
+	AsesorEmail    string
+	SchoolIntID    int32
+	AsesorIntID    int32
 }

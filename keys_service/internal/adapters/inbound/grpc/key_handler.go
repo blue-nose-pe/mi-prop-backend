@@ -165,6 +165,30 @@ func (h *KeyHandler) ListUserIDsByColegio(ctx context.Context, req *pb.ListByCol
 	return &pb.ListUserIDsResponse{UserIds: out}, nil
 }
 
+func (h *KeyHandler) ResyncKey(ctx context.Context, req *pb.ResyncKeyRequest) (*pb.EmptyResponse, error) {
+	err := h.cmds.Resync(ctx, ports.ResyncKeyInput{
+		ID:             domain.KeyID(req.GetId()),
+		AsesorRecordID: req.GetAsesorRecordId(),
+		SchoolRecordID: req.GetSchoolRecordId(),
+		SchoolName:     req.GetSchoolName(),
+		AsesorEmail:    req.GetAsesorEmail(),
+		SchoolIntID:    req.GetSchoolIntId(),
+		AsesorIntID:    req.GetAsesorIntId(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
+func (h *KeyHandler) ListAllKeys(ctx context.Context, _ *pb.ListAllKeysRequest) (*pb.ListKeysResponse, error) {
+	items, err := h.qrys.ListAll(ctx)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return toListResponse(items), nil
+}
+
 func (h *KeyHandler) SearchKeys(ctx context.Context, req *commonpb.SearchRequest) (*commonpb.SearchResponse, error) {
 	resp, err := h.qrys.Search(ctx, search.RequestFromProto(req))
 	if err != nil {

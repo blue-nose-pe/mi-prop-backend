@@ -229,6 +229,53 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 	return k, nil
 }
 
+// Resync — re-dispara el sync a HubSpot para una key existente.
+// Synchronous: el caller (gateway admin endpoint) espera el resultado
+// para reportar succeeded/failed por key. NO usa la goroutine fire-
+// and-forget de syncToHubspot — pero arma el mismo HubspotSyncKeyInput
+// para mantener paridad con Generate/Update.
+func (h *KeyHandler) Resync(ctx context.Context, in ports.ResyncKeyInput) error {
+	k, err := h.keys.FindByID(ctx, in.ID)
+	if err != nil {
+		return err
+	}
+	if h.hubspot == nil {
+		return nil
+	}
+	payload := ports.HubspotSyncKeyInput{
+		Code:           k.Code,
+		ExamTypeCode:   examTypeCodeForHubspot(k.ExamTypeID),
+		AsesorUserID:   k.AsesorUserID,
+		SchoolID:       k.SchoolID,
+		SchoolName:     in.SchoolName,
+		AsesorRecordID: in.AsesorRecordID,
+		SchoolRecordID: in.SchoolRecordID,
+		AsesorEmail:    in.AsesorEmail,
+		SchoolIntID:    in.SchoolIntID,
+		AsesorIntID:    in.AsesorIntID,
+		Grade:          k.Grade,
+		Section:        k.Section,
+		MaxUses:        k.MaxUses,
+	}
+	if k.ValidFrom != nil {
+		payload.ValidFrom = k.ValidFrom.UTC().Format(time.RFC3339)
+	}
+	if k.ValidTo != nil {
+		payload.ValidTo = k.ValidTo.UTC().Format(time.RFC3339)
+	}
+	// Propagamos los headers gRPC (authorization para JWT, x-correlation-id
+	// para trazabilidad). Mismo patron que syncToHubspot pero sync.
+	auth, cid := extractAuthAndCID(ctx)
+	outCtx := ctx
+	if auth != "" {
+		outCtx = metadata.AppendToOutgoingContext(outCtx, "authorization", auth)
+	}
+	if cid != "" {
+		outCtx = metadata.AppendToOutgoingContext(outCtx, "x-correlation-id", cid)
+	}
+	return h.hubspot.SyncKey(outCtx, payload)
+}
+
 func (h *KeyHandler) Deactivate(ctx context.Context, id domain.KeyID) error {
 	if err := h.keys.SetActive(ctx, id, false); err != nil {
 		return err

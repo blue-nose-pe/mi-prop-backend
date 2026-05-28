@@ -32,6 +32,8 @@ const (
 	KeyService_ListByColegio_FullMethodName        = "/keys.v1.KeyService/ListByColegio"
 	KeyService_ListUserIDsByColegio_FullMethodName = "/keys.v1.KeyService/ListUserIDsByColegio"
 	KeyService_SearchKeys_FullMethodName           = "/keys.v1.KeyService/SearchKeys"
+	KeyService_ResyncKey_FullMethodName            = "/keys.v1.KeyService/ResyncKey"
+	KeyService_ListAllKeys_FullMethodName          = "/keys.v1.KeyService/ListAllKeys"
 )
 
 // KeyServiceClient is the client API for KeyService service.
@@ -59,6 +61,15 @@ type KeyServiceClient interface {
 	// keys del colegio, aunque su users.school_id apunte a otro.
 	ListUserIDsByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListUserIDsResponse, error)
 	SearchKeys(ctx context.Context, in *common.SearchRequest, opts ...grpc.CallOption) (*common.SearchResponse, error)
+	// ResyncKey re-dispara el sync a HubSpot para una key ya creada. Lo
+	// invoca el endpoint admin /api/admin/keys/resync-all del gateway para
+	// backfillear keys generadas antes de los cambios de paridad v1<->v2
+	// (seccion / colegio_id / asesor_id / grado). Synchronous para que el
+	// caller distinga succeeded vs failed.
+	ResyncKey(ctx context.Context, in *ResyncKeyRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// ListAllKeys devuelve todas las keys (sin filtro) para el flujo
+	// resync-all. Admin-only en el gateway.
+	ListAllKeys(ctx context.Context, in *ListAllKeysRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
 }
 
 type keyServiceClient struct {
@@ -189,6 +200,26 @@ func (c *keyServiceClient) SearchKeys(ctx context.Context, in *common.SearchRequ
 	return out, nil
 }
 
+func (c *keyServiceClient) ResyncKey(ctx context.Context, in *ResyncKeyRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, KeyService_ResyncKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *keyServiceClient) ListAllKeys(ctx context.Context, in *ListAllKeysRequest, opts ...grpc.CallOption) (*ListKeysResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListKeysResponse)
+	err := c.cc.Invoke(ctx, KeyService_ListAllKeys_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // KeyServiceServer is the server API for KeyService service.
 // All implementations must embed UnimplementedKeyServiceServer
 // for forward compatibility.
@@ -214,6 +245,15 @@ type KeyServiceServer interface {
 	// keys del colegio, aunque su users.school_id apunte a otro.
 	ListUserIDsByColegio(context.Context, *ListByColegioRequest) (*ListUserIDsResponse, error)
 	SearchKeys(context.Context, *common.SearchRequest) (*common.SearchResponse, error)
+	// ResyncKey re-dispara el sync a HubSpot para una key ya creada. Lo
+	// invoca el endpoint admin /api/admin/keys/resync-all del gateway para
+	// backfillear keys generadas antes de los cambios de paridad v1<->v2
+	// (seccion / colegio_id / asesor_id / grado). Synchronous para que el
+	// caller distinga succeeded vs failed.
+	ResyncKey(context.Context, *ResyncKeyRequest) (*EmptyResponse, error)
+	// ListAllKeys devuelve todas las keys (sin filtro) para el flujo
+	// resync-all. Admin-only en el gateway.
+	ListAllKeys(context.Context, *ListAllKeysRequest) (*ListKeysResponse, error)
 	mustEmbedUnimplementedKeyServiceServer()
 }
 
@@ -259,6 +299,12 @@ func (UnimplementedKeyServiceServer) ListUserIDsByColegio(context.Context, *List
 }
 func (UnimplementedKeyServiceServer) SearchKeys(context.Context, *common.SearchRequest) (*common.SearchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchKeys not implemented")
+}
+func (UnimplementedKeyServiceServer) ResyncKey(context.Context, *ResyncKeyRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ResyncKey not implemented")
+}
+func (UnimplementedKeyServiceServer) ListAllKeys(context.Context, *ListAllKeysRequest) (*ListKeysResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListAllKeys not implemented")
 }
 func (UnimplementedKeyServiceServer) mustEmbedUnimplementedKeyServiceServer() {}
 func (UnimplementedKeyServiceServer) testEmbeddedByValue()                    {}
@@ -497,6 +543,42 @@ func _KeyService_SearchKeys_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KeyService_ResyncKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ResyncKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KeyServiceServer).ResyncKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KeyService_ResyncKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KeyServiceServer).ResyncKey(ctx, req.(*ResyncKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KeyService_ListAllKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListAllKeysRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KeyServiceServer).ListAllKeys(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KeyService_ListAllKeys_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KeyServiceServer).ListAllKeys(ctx, req.(*ListAllKeysRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // KeyService_ServiceDesc is the grpc.ServiceDesc for KeyService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -551,6 +633,14 @@ var KeyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SearchKeys",
 			Handler:    _KeyService_SearchKeys_Handler,
+		},
+		{
+			MethodName: "ResyncKey",
+			Handler:    _KeyService_ResyncKey_Handler,
+		},
+		{
+			MethodName: "ListAllKeys",
+			Handler:    _KeyService_ListAllKeys_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -20,7 +20,9 @@ package proxy
 
 import (
 	"context"
+	"log"
 	"net/http"
+	"time"
 
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
@@ -39,6 +41,7 @@ func (p *Proxy) RegisterKeys(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/attempts/by-key/{id}", p.listAttemptsByKey)
 	mux.HandleFunc("GET /api/asesores/{id}/keys", p.listKeysByAsesor)
 	mux.HandleFunc("GET /api/colegios/{id}/keys", p.listKeysByColegio)
+	mux.HandleFunc("POST /api/admin/keys/resync-all", p.resyncAllKeys)
 }
 
 // listAttemptsByKey — GET /api/attempts/by-key/{id}
@@ -160,6 +163,72 @@ type hubspotKeyIDs struct {
 	SchoolIntID    int32
 	AsesorEmail    string
 	AsesorIntID    int32
+}
+
+// resyncAllKeys — POST /api/admin/keys/resync-all (superadmin-only).
+// Itera TODAS las keys de db_keys.key, resuelve los IDs HubSpot para
+// cada una (school + asesor via users-service) y llama Keys.ResyncKey
+// para que keys-service replay el hubspot.SyncKey sincrono. Pensado
+// para backfillear keys creadas antes de paridad v1<->v2 (seccion /
+// colegio_id / asesor_id / grado en HubSpot quedan vacios para keys
+// viejas porque el upsert original no los seteo).
+//
+// Throttle de 200ms entre llamadas para no saturar el rate limit de
+// HubSpot (100 req/10s = 10/s; nosotros vamos a ~5/s).
+//
+// Idempotente: hubspot.SyncKey hace UpsertCustomObjectByProp por
+// codigo — re-correrlo en una key ya sincronizada solo refresca props,
+// no crea duplicados.
+func (p *Proxy) resyncAllKeys(w http.ResponseWriter, r *http.Request) {
+	if !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "only superadmin can resync all keys",
+		})
+		return
+	}
+	listResp, err := p.cli.Keys.ListAllKeys(r.Context(), &keysgrpcpb.ListAllKeysRequest{})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	keys := listResp.GetItems()
+	total := len(keys)
+	succeeded := 0
+	failed := 0
+	failures := make([]map[string]string, 0)
+	for i, k := range keys {
+		hids := p.resolveHubspotIDsForKey(r.Context(), k.GetSchoolId(), k.GetAsesorUserId())
+		_, err := p.cli.Keys.ResyncKey(r.Context(), &keysgrpcpb.ResyncKeyRequest{
+			Id:             k.GetId(),
+			SchoolRecordId: hids.SchoolRecordID,
+			SchoolName:     hids.SchoolName,
+			SchoolIntId:    hids.SchoolIntID,
+			AsesorEmail:    hids.AsesorEmail,
+			AsesorIntId:    hids.AsesorIntID,
+		})
+		if err != nil {
+			failed++
+			failures = append(failures, map[string]string{
+				"id":    k.GetId(),
+				"code":  k.GetCode(),
+				"error": err.Error(),
+			})
+			log.Printf("[resyncAllKeys] FAIL id=%s code=%s err=%v", k.GetId(), k.GetCode(), err)
+		} else {
+			succeeded++
+		}
+		// Throttle salvo la ultima iteracion.
+		if i < total-1 {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+	log.Printf("[resyncAllKeys] DONE total=%d ok=%d fail=%d", total, succeeded, failed)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"total":     total,
+		"succeeded": succeeded,
+		"failed":    failed,
+		"failures":  failures,
+	})
 }
 
 // resolveHubspotIDsForKey hace 2 lookups a users-service:

@@ -36,6 +36,10 @@ func (h *KeyHandler) ListByColegio(ctx context.Context, schoolID domain.SchoolID
 	return h.keys.ListByColegio(ctx, schoolID)
 }
 
+func (h *KeyHandler) ListAll(ctx context.Context) ([]domain.Key, error) {
+	return h.keys.ListAll(ctx)
+}
+
 func (h *KeyHandler) ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error) {
 	return h.keys.ListUserIDsByColegio(ctx, schoolID)
 }

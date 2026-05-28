@@ -29,6 +29,15 @@ service KeyService {
   // keys del colegio, aunque su users.school_id apunte a otro.
   rpc ListUserIDsByColegio (ListByColegioRequest) returns (ListUserIDsResponse);
   rpc SearchKeys    (common.v1.SearchRequest) returns (common.v1.SearchResponse);
+  // ResyncKey re-dispara el sync a HubSpot para una key ya creada. Lo
+  // invoca el endpoint admin /api/admin/keys/resync-all del gateway para
+  // backfillear keys generadas antes de los cambios de paridad v1<->v2
+  // (seccion / colegio_id / asesor_id / grado). Synchronous para que el
+  // caller distinga succeeded vs failed.
+  rpc ResyncKey     (ResyncKeyRequest)    returns (EmptyResponse);
+  // ListAllKeys devuelve todas las keys (sin filtro) para el flujo
+  // resync-all. Admin-only en el gateway.
+  rpc ListAllKeys   (ListAllKeysRequest)  returns (ListKeysResponse);
 }
 
 message Key {
@@ -121,6 +130,21 @@ message ListKeysResponse     { repeated Key items = 1; }
 message ListUserIDsResponse  { repeated string user_ids = 1; }
 message KeyResponse          { Key key = 1; }
 message EmptyResponse        {}
+
+message ResyncKeyRequest {
+  string id              = 1; // key id en db_keys.key
+  // Pass-through resuelto por el gateway antes del resync — mismo shape
+  // que GenerateKey usa para asociar Key -> Asesor/Company sin que
+  // keys-service tenga que hablar con users-service.
+  string asesor_record_id = 2;
+  string school_record_id = 3;
+  string school_name      = 4;
+  string asesor_email     = 5;
+  int32  school_int_id    = 6;
+  int32  asesor_int_id    = 7;
+}
+
+message ListAllKeysRequest {}
 
 message IncrementUsageRequest {
   string key_id     = 1;

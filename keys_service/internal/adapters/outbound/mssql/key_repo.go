@@ -136,6 +136,27 @@ func (r *KeyRepo) ListByColegio(ctx context.Context, schoolID domain.SchoolID) (
 		string(schoolID))
 }
 
+// ListAll — dump completo de la tabla. Solo lo invoca el flujo admin
+// /api/admin/keys/resync-all del gateway para backfillear el sync a
+// HubSpot. No usar para flujos de UI (escala mal).
+func (r *KeyRepo) ListAll(ctx context.Context) ([]domain.Key, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT `+keyCols+` FROM [key] ORDER BY created_at ASC`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.Key
+	for rows.Next() {
+		k, err := scanKey(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *k)
+	}
+	return out, rows.Err()
+}
+
 // ListUserIDsByColegio devuelve los user_ids distintos que usaron keys
 // de este colegio (cualquier herramienta). JOIN key_usage <-> [key]
 // con filtro key.school_id. Excluye key_usage huerfanos sin user_id.
