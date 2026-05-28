@@ -53,6 +53,12 @@ type GenerateKeyInput struct {
 	// MaxAttemptsPerUser: cuantas veces UN MISMO alumno puede rendir la
 	// prueba. 0 → server normaliza a 1 en Generate. Default 1.
 	MaxAttemptsPerUser int32
+	// Pass-through al hubspot SyncKey. El gateway los resuelve antes de
+	// llamar a Generate; keys-service no los persiste en la DB local
+	// (solo los reenvia al syncer best-effort).
+	AsesorRecordID string
+	SchoolRecordID string
+	SchoolName     string
 }
 
 type UpdateKeyInput struct {

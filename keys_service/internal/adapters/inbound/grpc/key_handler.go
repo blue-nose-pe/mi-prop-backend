@@ -36,6 +36,9 @@ func (h *KeyHandler) GenerateKey(ctx context.Context, req *pb.GenerateKeyRequest
 		MaxUses:      req.GetMaxUses(),
 		ExamID:       req.GetExamId(),
 		MaxAttemptsPerUser: req.GetMaxAttemptsPerUser(),
+		AsesorRecordID:     req.GetAsesorRecordId(),
+		SchoolRecordID:     req.GetSchoolRecordId(),
+		SchoolName:         req.GetSchoolName(),
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()

@@ -75,6 +75,15 @@ message GenerateKeyRequest {
   // max_attempts_per_user opcional. Si no se provee o = 0 en el create,
   // el server usa default 1 (un intento por alumno).
   int32 max_attempts_per_user = 12;
+  // Pass-through al SyncKey de hubspot_service. El gateway los resuelve
+  // (Users.GetUser, Schools.GetSchool) antes de llamar al keys-service y
+  // los pasa para que hubspot-service asocie directo el custom object
+  // Key a Asesor + Company sin tener que hacer search por mi_proposito_*.
+  // Si vienen vacios, hubspot-service intenta lookup por prop (puede fallar
+  // si los IDs UUID de v2 no matchean los INT de v1).
+  string asesor_record_id = 13;
+  string school_record_id = 14;
+  string school_name      = 15;
 }
 
 message UpdateKeyRequest {

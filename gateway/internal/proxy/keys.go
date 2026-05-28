@@ -19,11 +19,13 @@
 package proxy
 
 import (
+	"context"
 	"net/http"
 
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	keyscommonpb "keys_service/proto/gen/common"
+	usersgrpcpb "users_service/proto/gen"
 )
 
 func (p *Proxy) RegisterKeys(mux *http.ServeMux) {
@@ -119,6 +121,12 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "valid_to: " + err.Error()})
 		return
 	}
+	// Lookup pre-Generate para resolver school.hubspot_record_id + name.
+	// keys-service los reenvia a hubspot.SyncKey para que asocie Key
+	// directo a la Company. Asesor record_id NO se resuelve aca (proto
+	// User no lo expone); hubspot-service hara fallback a search.
+	schoolRecordID, schoolName := p.resolveHubspotIDsForKey(r.Context(), in.SchoolID)
+
 	resp, err := p.cli.Keys.GenerateKey(r.Context(), &keysgrpcpb.GenerateKeyRequest{
 		Code:         in.Code,
 		ExamTypeId:   in.ExamTypeID,
@@ -132,12 +140,34 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		MaxUses:      in.MaxUses,
 		ExamId:       in.ExamID,
 		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
+		SchoolRecordId:     schoolRecordID,
+		SchoolName:         schoolName,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(resp.GetKey())})
+}
+
+// resolveHubspotIDsForKey hace lookup a users-service para obtener
+// school.hubspot_record_id + school.name. School siempre tiene record_id
+// en v2 (poblado al crear/sync el colegio). El asesor record_id NO se
+// resuelve aca porque el proto User no expone hubspot_record_id; queda
+// "" y hubspot-service hara fallback a search por mi_proposito_asesor_id
+// (que tambien va a fallar si v2 nunca sincronizo asesores). La
+// asociacion Key->Asesor se llenara cuando se agregue el flow de sync
+// asesores end-to-end (proximo bug). Errores se loguean, no propagan.
+func (p *Proxy) resolveHubspotIDsForKey(ctx context.Context, schoolID string) (string, string) {
+	schoolRID := ""
+	schoolName := ""
+	if schoolID != "" {
+		if sResp, err := p.cli.Schools.GetSchool(ctx, &usersgrpcpb.GetSchoolRequest{Id: schoolID}); err == nil && sResp.GetSchool() != nil {
+			schoolRID = sResp.GetSchool().GetHubspotRecordId()
+			schoolName = sResp.GetSchool().GetName()
+		}
+	}
+	return schoolRID, schoolName
 }
 
 func (p *Proxy) getKey(w http.ResponseWriter, r *http.Request) {

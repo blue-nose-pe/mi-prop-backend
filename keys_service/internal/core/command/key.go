@@ -42,18 +42,31 @@ func NewKeyHandler(keys ports.KeyRepository, usages ports.KeyUsageRepository, hu
 // uno fresco con timeout independiente. Propagamos el authorization header
 // del incoming ctx (gRPC metadata) para que hubspot_service pueda autenticar
 // la llamada — sin esto, el RPC se rechaza con Unauthenticated.
-func (h *KeyHandler) syncToHubspot(parent context.Context, k *domain.Key) {
+//
+// recordIDs es opcional — si el gateway resolvio asesor.hubspot_record_id
+// y school.hubspot_record_id antes de llamar Generate/Update, los pasa
+// aca para que hubspot-service haga la asociacion directo sin search.
+type recordIDs struct {
+	AsesorRecordID string
+	SchoolRecordID string
+	SchoolName     string
+}
+
+func (h *KeyHandler) syncToHubspot(parent context.Context, k *domain.Key, rids recordIDs) {
 	if h.hubspot == nil || k == nil {
 		return
 	}
 	in := ports.HubspotSyncKeyInput{
-		Code:         k.Code,
-		ExamTypeCode: examTypeCodeForHubspot(k.ExamTypeID),
-		AsesorUserID: k.AsesorUserID,
-		SchoolID:     k.SchoolID,
-		Grade:        k.Grade,
-		Section:      k.Section,
-		MaxUses:      k.MaxUses,
+		Code:           k.Code,
+		ExamTypeCode:   examTypeCodeForHubspot(k.ExamTypeID),
+		AsesorUserID:   k.AsesorUserID,
+		SchoolID:       k.SchoolID,
+		SchoolName:     rids.SchoolName,
+		AsesorRecordID: rids.AsesorRecordID,
+		SchoolRecordID: rids.SchoolRecordID,
+		Grade:          k.Grade,
+		Section:        k.Section,
+		MaxUses:        k.MaxUses,
 	}
 	if k.ValidFrom != nil {
 		in.ValidFrom = k.ValidFrom.UTC().Format(time.RFC3339)
@@ -155,7 +168,11 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 	if err != nil {
 		return nil, err
 	}
-	h.syncToHubspot(ctx, saved)
+	h.syncToHubspot(ctx, saved, recordIDs{
+		AsesorRecordID: in.AsesorRecordID,
+		SchoolRecordID: in.SchoolRecordID,
+		SchoolName:     in.SchoolName,
+	})
 	return saved, nil
 }
 
@@ -194,7 +211,12 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 	if err := h.keys.Update(ctx, k); err != nil {
 		return nil, err
 	}
-	h.syncToHubspot(ctx, k)
+	// Update no recibe record_ids hoy (UpdateKeyInput no los expone). El
+	// hubspot-service hara intento de lookup via mi_proposito_* — si falla,
+	// el record principal se upsertea igual y las asociaciones existentes
+	// se preservan (PUT es idempotente). Si en el futuro el front quiere
+	// re-asociar, agregar campos al UpdateKeyInput similar a Generate.
+	h.syncToHubspot(ctx, k, recordIDs{})
 	return k, nil
 }
 
