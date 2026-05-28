@@ -141,6 +141,14 @@ func main() {
 		log.Printf("[otpsender] resend from=%s hubspotSync=%v", cfg.ResendFromEmail, hubspotGRPCCli != nil)
 	}
 
+	if strings.EqualFold(cfg.OTPSender, "smtp") {
+		if cfg.SMTPHost == "" || cfg.SMTPUsername == "" || cfg.SMTPPassword == "" || cfg.SMTPFrom == "" {
+			log.Fatalf("OTP_SENDER=smtp requiere SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM")
+		}
+		otpSender = otpsenderadapter.NewSMTP(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUsername, cfg.SMTPPassword, cfg.SMTPFrom, hubspotGRPCCli)
+		log.Printf("[otpsender] smtp host=%s:%d from=%s hubspotSync=%v", cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom, hubspotGRPCCli != nil)
+	}
+
 	if _, ok := otpSender.(noopOTPSender); ok {
 		log.Printf("[otpsender] NoOp — no real provider configured")
 	}

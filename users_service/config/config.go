@@ -41,14 +41,25 @@ type Config struct {
 	// Si está vacío, el OTP sender es NoOp (solo dev local).
 	HubspotServiceAddr string
 
-	// OTPSender: "resend" envía el correo directo via Resend HTTP API
-	// (bypass HubSpot Workflow). "hubspot" o vacio mantiene el path antiguo
-	// que dispara el Workflow del portal. Default "hubspot" para no romper
-	// nada al deployar.
+	// OTPSender:
+	//   "resend"  → Resend HTTP API (requiere dominio verificado para
+	//               mandar a cualquier email; sino solo al owner).
+	//   "smtp"    → SMTP AUTH PLAIN sobre STARTTLS (Gmail/Outlook/etc).
+	//               Path rapido sin verificar dominio.
+	//   "hubspot" → path antiguo: hubspot_service.SendOTP dispara Workflow.
+	//   vacio     → default "hubspot".
 	OTPSender       string
 	ResendAPIKey    string
-	ResendFromEmail string // formato RFC: "Mi Proposito UCSP <onboarding@resend.dev>"
+	ResendFromEmail string // "Mi Proposito UCSP <onboarding@resend.dev>"
 	ResendReplyTo   string // opcional
+
+	// SMTP (solo cuando OTP_SENDER=smtp). Gmail: smtp.gmail.com:587 +
+	// App Password de https://myaccount.google.com/apppasswords.
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
+	SMTPFrom     string // "Mi Proposito UCSP <tu-email@gmail.com>"
 }
 
 func Load() *Config {
@@ -83,6 +94,12 @@ func Load() *Config {
 		ResendAPIKey:    getEnv("RESEND_API_KEY", ""),
 		ResendFromEmail: getEnv("RESEND_FROM", "Mi Proposito UCSP <onboarding@resend.dev>"),
 		ResendReplyTo:   getEnv("RESEND_REPLY_TO", ""),
+
+		SMTPHost:     getEnv("SMTP_HOST", ""),
+		SMTPPort:     getEnvInt("SMTP_PORT", 587),
+		SMTPUsername: getEnv("SMTP_USERNAME", ""),
+		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
+		SMTPFrom:     getEnv("SMTP_FROM", ""),
 	}
 	log.Printf("[config] grpc=%s sql=%s/%s redis=%s hubspot=%s otpsender=%s", c.GRPCPort, c.SQLServer, c.SQLDatabase, c.RedisAddr, c.HubspotServiceAddr, c.OTPSender)
 	return c

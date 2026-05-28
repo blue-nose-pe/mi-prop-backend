@@ -99,6 +99,27 @@ spec:
                   name: {{ include "usersService.fullname" . }}-kv
                   key: resend-api-key
                   optional: true
+            # SMTP (OTP_SENDER=smtp). Credenciales en secret manual
+            # miproposito-smtp-credentials para no tener que verificar
+            # dominio en Resend mientras estamos en demo. Gmail App Password.
+            - name: SMTP_HOST
+              value: "{{ .Values.otp.smtp.host | default "" }}"
+            - name: SMTP_PORT
+              value: "{{ .Values.otp.smtp.port | default 587 }}"
+            - name: SMTP_FROM
+              value: "{{ .Values.otp.smtp.from | default "" }}"
+            - name: SMTP_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.otp.smtp.secretName | default "miproposito-smtp-credentials" }}
+                  key: smtp-username
+                  optional: true
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.otp.smtp.secretName | default "miproposito-smtp-credentials" }}
+                  key: smtp-password
+                  optional: true
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
           readinessProbe:

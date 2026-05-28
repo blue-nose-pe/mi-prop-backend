@@ -32,10 +32,19 @@ bcryptCost: 12
 # La RESEND_API_KEY se monta desde el secret <release>-users-service-kv
 # clave `resend-api-key` (poner via kubectl patch o Key Vault sync).
 otp:
-  sender: "resend"   # "hubspot" para volver al path antiguo via Workflow
+  # Provider: "smtp" (Gmail/Outlook SMTP), "resend" (Resend HTTP API),
+  # "hubspot" (path legacy via Workflow). smtp permite mandar a cualquier
+  # email sin verificar dominio (App Password de Gmail).
+  sender: "smtp"
   resend:
     from: "Mi Proposito UCSP <onboarding@resend.dev>"
     replyTo: ""
+  smtp:
+    host: "smtp.gmail.com"
+    port: 587
+    from: "Mi Proposito UCSP <angel26900701@gmail.com>"
+    # smtp-username + smtp-password viven en este secret (manual, no Helm).
+    secretName: "miproposito-smtp-credentials"
 
 resources:
   requests:
