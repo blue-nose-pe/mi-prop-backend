@@ -121,11 +121,12 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "valid_to: " + err.Error()})
 		return
 	}
-	// Lookup pre-Generate para resolver school.hubspot_record_id + name.
-	// keys-service los reenvia a hubspot.SyncKey para que asocie Key
-	// directo a la Company. Asesor record_id NO se resuelve aca (proto
-	// User no lo expone); hubspot-service hara fallback a search.
-	schoolRecordID, schoolName := p.resolveHubspotIDsForKey(r.Context(), in.SchoolID)
+	// Lookups pre-Generate: school.hubspot_record_id + name (para asociar
+	// Key->Company directo) + asesor.email (para que hubspot-service busque
+	// el Asesor record por email — User proto no expone hubspot_record_id
+	// pero email matchea entre v1 y v2). keys-service hace pass-through al
+	// hubspot.SyncKey en goroutine separada.
+	schoolRecordID, schoolName, asesorEmail := p.resolveHubspotIDsForKey(r.Context(), in.SchoolID, in.AsesorUserID)
 
 	resp, err := p.cli.Keys.GenerateKey(r.Context(), &keysgrpcpb.GenerateKeyRequest{
 		Code:         in.Code,
@@ -142,6 +143,7 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
 		SchoolRecordId:     schoolRecordID,
 		SchoolName:         schoolName,
+		AsesorEmail:        asesorEmail,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -150,24 +152,29 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(resp.GetKey())})
 }
 
-// resolveHubspotIDsForKey hace lookup a users-service para obtener
-// school.hubspot_record_id + school.name. School siempre tiene record_id
-// en v2 (poblado al crear/sync el colegio). El asesor record_id NO se
-// resuelve aca porque el proto User no expone hubspot_record_id; queda
-// "" y hubspot-service hara fallback a search por mi_proposito_asesor_id
-// (que tambien va a fallar si v2 nunca sincronizo asesores). La
-// asociacion Key->Asesor se llenara cuando se agregue el flow de sync
-// asesores end-to-end (proximo bug). Errores se loguean, no propagan.
-func (p *Proxy) resolveHubspotIDsForKey(ctx context.Context, schoolID string) (string, string) {
+// resolveHubspotIDsForKey hace 2 lookups a users-service para obtener:
+//   - school.hubspot_record_id + school.name (para asociar Key->Company)
+//   - user.email del asesor (para que hubspot-service busque el Asesor
+//     record por email — User proto no expone hubspot_record_id, pero
+//     el email es unique y matchea entre v1 y v2).
+// Best-effort: si los lookups fallan o devuelven vacio, hubspot-service
+// upserteara el Key igual y simplemente saltara las asociaciones.
+func (p *Proxy) resolveHubspotIDsForKey(ctx context.Context, schoolID, asesorUserID string) (string, string, string) {
 	schoolRID := ""
 	schoolName := ""
+	asesorEmail := ""
 	if schoolID != "" {
 		if sResp, err := p.cli.Schools.GetSchool(ctx, &usersgrpcpb.GetSchoolRequest{Id: schoolID}); err == nil && sResp.GetSchool() != nil {
 			schoolRID = sResp.GetSchool().GetHubspotRecordId()
 			schoolName = sResp.GetSchool().GetName()
 		}
 	}
-	return schoolRID, schoolName
+	if asesorUserID != "" {
+		if uResp, err := p.cli.Users.GetUser(ctx, &usersgrpcpb.GetUserRequest{Id: asesorUserID}); err == nil && uResp.GetUser() != nil {
+			asesorEmail = uResp.GetUser().GetEmail()
+		}
+	}
+	return schoolRID, schoolName, asesorEmail
 }
 
 func (p *Proxy) getKey(w http.ResponseWriter, r *http.Request) {

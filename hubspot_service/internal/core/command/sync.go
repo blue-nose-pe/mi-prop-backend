@@ -185,13 +185,18 @@ func (h *SyncHandler) SyncKey(ctx context.Context, k domain.KeyPayload) error {
 		return err
 	}
 
-	// Asociacion Key <-> Asesor. Si el caller paso asesor_record_id, lo
-	// usamos directo; sino buscamos por mi_proposito_asesor_id (UUID en v2).
+	// Asociacion Key <-> Asesor. Orden de resolucion:
+	//   1) asesor_record_id explicito del caller (mejor caso).
+	//   2) asesor_email (search por prop "email" — unique en el portal).
+	//   3) skip (asociacion no se crea — record principal queda igual).
+	// El intento de buscar por mi_proposito_asesor_id era v1 legacy
+	// (INT en HubSpot) — v2 usa UUID, no matcheaba. Email es estable
+	// entre v1 y v2.
 	asesorID := k.AsesorRecordID
-	if asesorID == "" && k.AsesorUserID != "" {
-		found, err := h.hs.FindObjectByProp(ctx, HubspotTypeAsesor, "mi_proposito_asesor_id", string(k.AsesorUserID))
+	if asesorID == "" && k.AsesorEmail != "" {
+		found, err := h.hs.FindObjectByProp(ctx, HubspotTypeAsesor, "email", k.AsesorEmail)
 		if err != nil {
-			log.Printf("[SyncKey] FindAsesor FAIL asesor=%s err=%v", k.AsesorUserID, err)
+			log.Printf("[SyncKey] FindAsesorByEmail FAIL email=%s err=%v", k.AsesorEmail, err)
 		} else {
 			asesorID = found
 		}

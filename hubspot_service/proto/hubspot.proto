@@ -106,7 +106,7 @@ message SyncStudentContactRequest {
 message SyncKeyRequest {
   string code              = 1; // codigo (key.code), unique key para upsert
   string exam_type_code    = 2; // "vocacional" | "simulacro" | "habitos"
-  string asesor_user_id    = 3; // UUID del asesor en v2 (lookup en HubSpot Asesor por mi_proposito_asesor_id)
+  string asesor_user_id    = 3; // UUID del asesor en v2
   string school_id         = 4; // UUID o int_id del colegio en v2
   string school_name       = 5; // denormalizado para mostrar en la prop nombre_colegio
   string grade             = 6;
@@ -115,9 +115,15 @@ message SyncKeyRequest {
   string valid_to          = 9; // RFC 3339
   int32  max_uses          = 10;
   // record_ids opcionales: si el caller los conoce, se asocian directo
-  // sin tener que hacer search por mi_proposito_* (mas rapido + mas robusto).
+  // sin tener que hacer search (mas rapido + mas robusto).
   string asesor_record_id  = 11;
   string school_record_id  = 12;
+  // asesor_email opcional: fallback para resolver el Asesor record cuando
+  // asesor_record_id viene vacio. hubspot-service busca el Asesor por
+  // email (prop unique en el portal) y crea la asociacion. Util en v2
+  // donde users.hubspot_record_id aun no esta poblado para asesores
+  // legacy de v1 — el email matchea entre v1 y v2 por ser unique global.
+  string asesor_email      = 13;
 }
 
 message SyncExamResultRequest {

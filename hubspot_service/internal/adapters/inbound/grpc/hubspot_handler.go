@@ -97,6 +97,7 @@ func (h *HubspotHandler) SyncKey(ctx context.Context, req *pb.SyncKeyRequest) (*
 		MaxUses:        req.GetMaxUses(),
 		AsesorRecordID: domain.RecordID(req.GetAsesorRecordId()),
 		SchoolRecordID: domain.RecordID(req.GetSchoolRecordId()),
+		AsesorEmail:    req.GetAsesorEmail(),
 	}); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}

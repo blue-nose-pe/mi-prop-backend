@@ -135,11 +135,13 @@ type KeyPayload struct {
 	ValidFrom      time.Time
 	ValidTo        time.Time
 	MaxUses        int32
-	// record_ids opcionales: si vienen seteados se asocia directo,
-	// sino el adapter HubSpot busca por mi_proposito_asesor_id /
-	// mi_proposito___id_colegio.
+	// record_ids opcionales: si vienen seteados se asocia directo.
 	AsesorRecordID RecordID
 	SchoolRecordID RecordID
+	// AsesorEmail opcional: si AsesorRecordID viene vacio + AsesorEmail
+	// presente, hubspot-service busca el Asesor por email (prop unique).
+	// Email matchea entre v1 y v2 (los asesores migrados conservan email).
+	AsesorEmail string
 }
 
 // herramientaLabel mapea exam_type_code al string que P1 grababa en la

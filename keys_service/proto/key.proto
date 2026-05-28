@@ -84,6 +84,10 @@ message GenerateKeyRequest {
   string asesor_record_id = 13;
   string school_record_id = 14;
   string school_name      = 15;
+  // asesor_email opcional: el gateway lo resuelve via Users.GetUser
+  // antes de Generate y se reenvia a hubspot.SyncKey, que busca el
+  // Asesor en HubSpot por email cuando record_id no esta disponible.
+  string asesor_email     = 16;
 }
 
 message UpdateKeyRequest {

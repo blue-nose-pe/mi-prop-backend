@@ -64,6 +64,7 @@ type HubspotSyncKeyInput struct {
 	MaxUses        int32
 	AsesorRecordID string
 	SchoolRecordID string
+	AsesorEmail    string // fallback para resolver Asesor cuando no hay record_id
 }
 
 // Audit ----
