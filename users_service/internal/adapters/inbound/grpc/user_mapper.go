@@ -31,6 +31,7 @@ func toProtoUser(u *domain.User) *pb.User {
 		IsSuperadmin:       u.IsSuperadmin,
 		MustChangePassword: u.MustChangePassword,
 		IntId:              u.IntID,
+		UserType:           u.UserType,
 	}
 }
 

@@ -269,6 +269,17 @@ message User {
   // del custom object Asesor (2-32448565) esta tipada como INTEGER y el
   // UUID de v2 no es parseable.
   int32  int_id               = 14;
+  // user_type — derivado del permission_group del user. Lo necesita el
+  // front v1 (ucsp-front) para rutear post-login al dashboard correcto:
+  //   1 = admin (admin_permissions)
+  //   2 = asesor (asesor_permissions)
+  //   3 = coordinador (coordinador_permissions)
+  //   4 = student (student_permissions)
+  //   0 = sin grupo (fallback — el front lo trata como student)
+  // El backend lo computa via lookup user_permission_group + permission_group.
+  // Si el user pertenece a varios grupos, gana el de menor valor (admin > asesor
+  // > coordinador > student) — patron del front v1.
+  int32  user_type            = 15;
 }
 
 message CreateUserRequest {

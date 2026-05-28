@@ -41,6 +41,12 @@ func NewUserRepo(db *sql.DB) *UserRepo {
 
 // userCols selecciona todas las columnas en el orden que scanUser espera.
 // CONVERT(...) NVARCHAR(36) para que UNIQUEIDENTIFIER llegue como string.
+//
+// user_type — subquery derivada del menor permission_group del user:
+// admin_permissions (=1) gana sobre asesor (=2) > coordinador (=3) > student (=4).
+// Si el user no tiene grupo asignado devuelve 0. Esto evita un JOIN N+1 en cada
+// scanUser y elimina el bug pre-existente donde el front no podia rutear al
+// dashboard correcto (front esperaba user.user_type.value, back no lo enviaba).
 const userCols = `CONVERT(NVARCHAR(36), id),
 		email,
 		password_hash,
@@ -56,7 +62,26 @@ const userCols = `CONVERT(NVARCHAR(36), id),
 		is_superadmin,
 		must_change_password,
 		ISNULL(phone, ''),
-		int_id`
+		int_id,
+		ISNULL((
+			SELECT TOP 1 CASE pg.code
+				WHEN 'admin_permissions' THEN 1
+				WHEN 'asesor_permissions' THEN 2
+				WHEN 'coordinador_permissions' THEN 3
+				WHEN 'student_permissions' THEN 4
+				ELSE 0 END
+			  FROM user_permission_group upg
+			  JOIN permission_group pg ON pg.id = upg.permission_group_id
+			 WHERE upg.user_id = users.id
+			   AND pg.active = 1
+			   AND pg.code IN ('admin_permissions','asesor_permissions','coordinador_permissions','student_permissions')
+			 ORDER BY CASE pg.code
+				WHEN 'admin_permissions' THEN 1
+				WHEN 'asesor_permissions' THEN 2
+				WHEN 'coordinador_permissions' THEN 3
+				WHEN 'student_permissions' THEN 4
+				ELSE 99 END ASC
+		), 0) AS user_type`
 
 func (r *UserRepo) Save(ctx context.Context, u *domain.User) (domain.UserID, error) {
 	// La BD genera el UNIQUEIDENTIFIER vía DEFAULT NEWID(); lo recuperamos
@@ -185,11 +210,12 @@ func scanUser(row rowScanner) (*domain.User, error) {
 		mustChangePassword bool
 		phone              string
 		intID              int32
+		userType           int32
 	)
 
 	err := row.Scan(&idStr, &emailStr, &u.PasswordHash, &firstName, &lastName,
 		&doc, &schoolID, &active, &lastAccess, &u.CreatedAt, &updatedAt, &hubspotID,
-		&isSuperadmin, &mustChangePassword, &phone, &intID)
+		&isSuperadmin, &mustChangePassword, &phone, &intID, &userType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrUserNotFound
 	}
@@ -209,6 +235,7 @@ func scanUser(row rowScanner) (*domain.User, error) {
 	u.IsSuperadmin = isSuperadmin
 	u.MustChangePassword = mustChangePassword
 	u.IntID = intID
+	u.UserType = userType
 	if lastAccess.Valid {
 		t := lastAccess.Time
 		u.LastAccessAt = &t

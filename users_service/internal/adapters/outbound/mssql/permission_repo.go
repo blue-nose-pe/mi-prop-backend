@@ -610,7 +610,27 @@ func (r *PermissionRepo) ListUsersInGroup(ctx context.Context, in ports.ListUser
 		ISNULL(u.hubspot_record_id, ''),
 		u.is_superadmin,
 		u.must_change_password,
-		ISNULL(u.phone, '')
+		ISNULL(u.phone, ''),
+		u.int_id,
+		ISNULL((
+			SELECT TOP 1 CASE pg2.code
+				WHEN 'admin_permissions' THEN 1
+				WHEN 'asesor_permissions' THEN 2
+				WHEN 'coordinador_permissions' THEN 3
+				WHEN 'student_permissions' THEN 4
+				ELSE 0 END
+			  FROM user_permission_group upg2
+			  JOIN permission_group pg2 ON pg2.id = upg2.permission_group_id
+			 WHERE upg2.user_id = u.id
+			   AND pg2.active = 1
+			   AND pg2.code IN ('admin_permissions','asesor_permissions','coordinador_permissions','student_permissions')
+			 ORDER BY CASE pg2.code
+				WHEN 'admin_permissions' THEN 1
+				WHEN 'asesor_permissions' THEN 2
+				WHEN 'coordinador_permissions' THEN 3
+				WHEN 'student_permissions' THEN 4
+				ELSE 99 END ASC
+		), 0) AS user_type
 	        FROM user_permission_group upg
 	        JOIN users u ON u.id = upg.user_id
 	        ` + where + `

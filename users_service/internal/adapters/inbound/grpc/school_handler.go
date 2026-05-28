@@ -7,6 +7,7 @@ import (
 	"users_service/internal/core/domain"
 	"users_service/internal/core/ports"
 	"users_service/internal/shared/apperr"
+	"users_service/internal/shared/jwtmw"
 	pb "users_service/proto/gen"
 
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -106,6 +107,23 @@ func (h *SchoolHandler) ListSchoolsByAsesor(ctx context.Context, req *pb.ListSch
 // source=asesor (user a asignar) y target=coordinador del colegio
 // (school.user_id). Cierra la vigente previa si existe.
 func (h *SchoolHandler) AssignAsesor(ctx context.Context, req *pb.AssignAsesorRequest) (*pb.EmptyResponse, error) {
+	// Defense-in-depth: SOLO superadmin puede reasignar asesores. Patron
+	// identico a ResetPassword. Sin esto, el grupo asesor_permissions
+	// incluye db_users.school.write — entonces un asesor podia "robarse"
+	// colegios de otros asesores. Bug encontrado en auditoria 2026-05-28.
+	c := jwtmw.FromContext(ctx)
+	isSuper := false
+	if c != nil {
+		for _, r := range c.Roles {
+			if r == "superadmin" {
+				isSuper = true
+				break
+			}
+		}
+	}
+	if !isSuper {
+		return nil, apperr.ToGRPC(ctx, apperr.NewPermissionDenied("ONLY_SUPERADMIN", "only superadmin can reassign asesores"))
+	}
 	if req.GetSchoolId() == "" {
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_SCHOOL_ID", "school_id is required", "school_id"))
 	}

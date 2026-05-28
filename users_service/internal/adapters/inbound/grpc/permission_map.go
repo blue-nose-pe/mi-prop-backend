@@ -42,6 +42,12 @@ var PermissionMap = map[string]string{
 	"/users.v1.SchoolService/ListSchoolsByAsesor":   "db_users.school.read",
 	"/users.v1.SchoolService/CreateSchool":          "db_users.school.write",
 	"/users.v1.SchoolService/UpdateSchool":          "db_users.school.write",
+	// AssignAsesor: re-asigna el asesor responsable de un colegio (SCD-2).
+	// SIN este map era publica a cualquier authenticated user (permmw es
+	// whitelist-by-default): un student podia robar colegios a otros
+	// asesores. Bug encontrado en auditoria 2026-05-28. La misma permission
+	// que CreateSchool/UpdateSchool — la mutacion es del mismo nivel.
+	"/users.v1.SchoolService/AssignAsesor":          "db_users.school.write",
 
 	// visitas (operacional, asesor)
 	"/users.v1.VisitaService/CreateVisita": "db_users.school.write",

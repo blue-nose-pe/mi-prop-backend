@@ -12,6 +12,7 @@ package proxy
 
 import (
 	"net/http"
+	"strings"
 
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
@@ -424,5 +425,16 @@ func protoUserToJSON(u *usersgrpcpb.User) map[string]any {
 		"updated_at":           optionalTimestamp(u.GetUpdatedAt()),
 		"is_superadmin":        u.GetIsSuperadmin(),
 		"must_change_password": u.GetMustChangePassword(),
+		// user_type — shape anidado {value: N} que el front v1 espera
+		// (auth.service.isAsesor() lee user.user_type.value). Sin esto, el
+		// front no distingue asesor/coordinador/student y rutea todos al
+		// fallback /student/dashboard. Valores derivados del permission_group:
+		// 1 admin | 2 asesor | 3 coordinador | 4 student | 0 sin grupo.
+		"user_type": map[string]any{"value": u.GetUserType()},
+		// nombre — concatenacion first_name + last_name que el front v1 lee
+		// como profile.user.nombre (nav.component, instrucciones, view-*).
+		// Sin esto, "Hola, " sale vacio en la nav y los emails/vistas que
+		// muestran nombre del asesor quedan en blanco.
+		"nombre": strings.TrimSpace(u.GetFirstName() + " " + u.GetLastName()),
 	}
 }

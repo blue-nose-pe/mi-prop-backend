@@ -45,6 +45,31 @@ type User struct {
 	// mi_proposito_asesor_id del custom object Asesor esta tipada como
 	// INTEGER y el UUID de v2 no es parseable.
 	IntID int32
+
+	// UserType — derivado del permission_group del user (no se persiste
+	// como columna, se computa al leer). Valores:
+	//   1 admin | 2 asesor | 3 coordinador | 4 student | 0 sin grupo
+	// El front v1 lo usa para rutear al dashboard correcto post-login;
+	// sin esto, todos los users no-superadmin caen al fallback /student/dashboard.
+	UserType int32
+}
+
+// UserTypeFromGroupCode mapea el code estable del permission_group al
+// numero que espera el front v1 (ucsp-front routing post-login). Si el
+// user pertenece a varios grupos, el caller debe elegir el de menor
+// valor (admin > asesor > coordinador > student).
+func UserTypeFromGroupCode(code string) int32 {
+	switch code {
+	case "admin_permissions":
+		return 1
+	case "asesor_permissions":
+		return 2
+	case "coordinador_permissions":
+		return 3
+	case "student_permissions":
+		return 4
+	}
+	return 0
 }
 
 var emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
