@@ -25,6 +25,7 @@ const (
 	KeyService_DeactivateKey_FullMethodName        = "/keys.v1.KeyService/DeactivateKey"
 	KeyService_ValidateKey_FullMethodName          = "/keys.v1.KeyService/ValidateKey"
 	KeyService_IncrementUsage_FullMethodName       = "/keys.v1.KeyService/IncrementUsage"
+	KeyService_UserHasKeyUsage_FullMethodName      = "/keys.v1.KeyService/UserHasKeyUsage"
 	KeyService_GetKey_FullMethodName               = "/keys.v1.KeyService/GetKey"
 	KeyService_GetByCode_FullMethodName            = "/keys.v1.KeyService/GetByCode"
 	KeyService_ListByAsesor_FullMethodName         = "/keys.v1.KeyService/ListByAsesor"
@@ -42,6 +43,12 @@ type KeyServiceClient interface {
 	DeactivateKey(ctx context.Context, in *DeactivateKeyRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	ValidateKey(ctx context.Context, in *ValidateKeyRequest, opts ...grpc.CallOption) (*KeyResponse, error)
 	IncrementUsage(ctx context.Context, in *IncrementUsageRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// UserHasKeyUsage: chequea si (key, user) ya tiene fila en key_usage —
+	// i.e. si ese alumno ya ocupa una plaza del aforo. Lo usa el gateway en
+	// /api/auth/student/lookup-by-key para distinguir "aforo lleno y user
+	// sin plaza" (bloquear pre-OTP) de "aforo lleno pero user con plaza"
+	// (dejar entrar como retry). Publico via jwtSkip.
+	UserHasKeyUsage(ctx context.Context, in *UserHasKeyUsageRequest, opts ...grpc.CallOption) (*UserHasKeyUsageResponse, error)
 	GetKey(ctx context.Context, in *GetKeyRequest, opts ...grpc.CallOption) (*KeyResponse, error)
 	GetByCode(ctx context.Context, in *GetByCodeRequest, opts ...grpc.CallOption) (*KeyResponse, error)
 	ListByAsesor(ctx context.Context, in *ListByAsesorRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
@@ -106,6 +113,16 @@ func (c *keyServiceClient) IncrementUsage(ctx context.Context, in *IncrementUsag
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EmptyResponse)
 	err := c.cc.Invoke(ctx, KeyService_IncrementUsage_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *keyServiceClient) UserHasKeyUsage(ctx context.Context, in *UserHasKeyUsageRequest, opts ...grpc.CallOption) (*UserHasKeyUsageResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserHasKeyUsageResponse)
+	err := c.cc.Invoke(ctx, KeyService_UserHasKeyUsage_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -181,6 +198,12 @@ type KeyServiceServer interface {
 	DeactivateKey(context.Context, *DeactivateKeyRequest) (*EmptyResponse, error)
 	ValidateKey(context.Context, *ValidateKeyRequest) (*KeyResponse, error)
 	IncrementUsage(context.Context, *IncrementUsageRequest) (*EmptyResponse, error)
+	// UserHasKeyUsage: chequea si (key, user) ya tiene fila en key_usage —
+	// i.e. si ese alumno ya ocupa una plaza del aforo. Lo usa el gateway en
+	// /api/auth/student/lookup-by-key para distinguir "aforo lleno y user
+	// sin plaza" (bloquear pre-OTP) de "aforo lleno pero user con plaza"
+	// (dejar entrar como retry). Publico via jwtSkip.
+	UserHasKeyUsage(context.Context, *UserHasKeyUsageRequest) (*UserHasKeyUsageResponse, error)
 	GetKey(context.Context, *GetKeyRequest) (*KeyResponse, error)
 	GetByCode(context.Context, *GetByCodeRequest) (*KeyResponse, error)
 	ListByAsesor(context.Context, *ListByAsesorRequest) (*ListKeysResponse, error)
@@ -215,6 +238,9 @@ func (UnimplementedKeyServiceServer) ValidateKey(context.Context, *ValidateKeyRe
 }
 func (UnimplementedKeyServiceServer) IncrementUsage(context.Context, *IncrementUsageRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method IncrementUsage not implemented")
+}
+func (UnimplementedKeyServiceServer) UserHasKeyUsage(context.Context, *UserHasKeyUsageRequest) (*UserHasKeyUsageResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UserHasKeyUsage not implemented")
 }
 func (UnimplementedKeyServiceServer) GetKey(context.Context, *GetKeyRequest) (*KeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetKey not implemented")
@@ -341,6 +367,24 @@ func _KeyService_IncrementUsage_Handler(srv interface{}, ctx context.Context, de
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(KeyServiceServer).IncrementUsage(ctx, req.(*IncrementUsageRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _KeyService_UserHasKeyUsage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UserHasKeyUsageRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KeyServiceServer).UserHasKeyUsage(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KeyService_UserHasKeyUsage_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KeyServiceServer).UserHasKeyUsage(ctx, req.(*UserHasKeyUsageRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -479,6 +523,10 @@ var KeyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "IncrementUsage",
 			Handler:    _KeyService_IncrementUsage_Handler,
+		},
+		{
+			MethodName: "UserHasKeyUsage",
+			Handler:    _KeyService_UserHasKeyUsage_Handler,
 		},
 		{
 			MethodName: "GetKey",

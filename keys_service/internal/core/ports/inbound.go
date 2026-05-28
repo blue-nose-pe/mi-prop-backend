@@ -28,6 +28,11 @@ type KeyQueries interface {
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
 	ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
+	// UserHasKeyUsage: true si (key, user) ya tiene fila en key_usage.
+	// El gateway lo usa para decidir si un user puede entrar a una key
+	// con aforo lleno: si ya tiene plaza (true) es retry permitido; si
+	// no la tiene (false) → aforo lleno, bloquear pre-OTP.
+	UserHasKeyUsage(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (bool, error)
 }
 
 type GenerateKeyInput struct {

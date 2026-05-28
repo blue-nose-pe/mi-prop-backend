@@ -102,6 +102,18 @@ func (h *KeyHandler) IncrementUsage(ctx context.Context, req *pb.IncrementUsageR
 	return &pb.EmptyResponse{}, nil
 }
 
+// UserHasKeyUsage es RPC PUBLICO (jwtSkip en cmd/server/main.go). Lo
+// invoca el gateway en /api/auth/student/lookup-by-key para distinguir
+// "aforo lleno y user sin plaza" (bloquear pre-OTP) de "aforo lleno
+// pero user con plaza" (retry permitido).
+func (h *KeyHandler) UserHasKeyUsage(ctx context.Context, req *pb.UserHasKeyUsageRequest) (*pb.UserHasKeyUsageResponse, error) {
+	has, err := h.qrys.UserHasKeyUsage(ctx, domain.KeyID(req.GetKeyId()), domain.UserID(req.GetUserId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.UserHasKeyUsageResponse{HasUsage: has}, nil
+}
+
 func (h *KeyHandler) GetKey(ctx context.Context, req *pb.GetKeyRequest) (*pb.KeyResponse, error) {
 	k, err := h.qrys.Get(ctx, domain.KeyID(req.GetId()))
 	if err != nil {

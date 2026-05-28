@@ -60,7 +60,7 @@ func main() {
 
 	// Core (CQRS)
 	keyCmds := command.NewKeyHandler(keys, usages)
-	keyQrys := query.NewKeyHandler(keys)
+	keyQrys := query.NewKeyHandler(keys, usages)
 
 	// Inbound (gRPC)
 	keyHandler := grpchandler.NewKeyHandler(keyCmds, keyQrys)
@@ -81,7 +81,8 @@ func main() {
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||
 			fullMethod == "/keys.v1.KeyService/ValidateKey" ||
-			fullMethod == "/keys.v1.KeyService/GetByCode"
+			fullMethod == "/keys.v1.KeyService/GetByCode" ||
+			fullMethod == "/keys.v1.KeyService/UserHasKeyUsage"
 	}
 
 	s := grpc.NewServer(

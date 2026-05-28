@@ -90,28 +90,45 @@ func (p *Proxy) lookupStudentByKey(w http.ResponseWriter, r *http.Request) {
 		"max_attempts_per_user": int32(0),
 		"submitted_count":       int32(0),
 		"last_attempt_id":       "",
+		"block_reason":          "", // "max_attempts" | "aforo_lleno" cuando can_attempt=false
 	}
 
-	// 3) Quota check: solo si el alumno existe + la key tiene limite por usuario.
-	// Si no hay limite (max_attempts_per_user=0) o el alumno no existe (ira a
-	// registro), no consultamos exams_service.
-	if resp.GetExists() && key != nil && key.GetMaxAttemptsPerUser() > 0 {
+	if !resp.GetExists() || key == nil {
+		writeJSON(w, http.StatusOK, out)
+		return
+	}
+
+	// 3a) Cuota por usuario: si la key tiene max_attempts_per_user>0 y el
+	// alumno ya rindio ese maximo, bloqueamos.
+	if key.GetMaxAttemptsPerUser() > 0 {
 		out["max_attempts_per_user"] = key.GetMaxAttemptsPerUser()
 		countResp, err := p.cli.Attempts.CountSubmittedByKeyUser(r.Context(), &examsgrpcpb.CountSubmittedByKeyUserRequest{
 			KeyId:  key.GetId(),
 			UserId: resp.GetUserId(),
 		})
-		if err != nil {
-			// Si exams falla, NO bloqueamos el flow — caemos al chequeo del
-			// back en StartAttempt. Mejor que mostrar OTP que pre-bloquear
-			// erroneamente.
-			writeJSON(w, http.StatusOK, out)
-			return
+		if err == nil {
+			out["submitted_count"] = countResp.GetCount()
+			if countResp.GetCount() >= key.GetMaxAttemptsPerUser() {
+				out["can_attempt"] = false
+				out["block_reason"] = "max_attempts"
+				out["last_attempt_id"] = countResp.GetLastAttemptId()
+				writeJSON(w, http.StatusOK, out)
+				return
+			}
 		}
-		out["submitted_count"] = countResp.GetCount()
-		if countResp.GetCount() >= key.GetMaxAttemptsPerUser() {
+	}
+
+	// 3b) Aforo de la key: si max_uses>0 y current_uses>=max_uses, el alumno
+	// solo puede entrar si YA tiene plaza (key_usage row). Si no tiene plaza,
+	// la key esta llena para el — bloqueamos pre-OTP.
+	if key.GetMaxUses() > 0 && key.GetCurrentUses() >= key.GetMaxUses() {
+		hasResp, err := p.cli.Keys.UserHasKeyUsage(r.Context(), &keysgrpcpb.UserHasKeyUsageRequest{
+			KeyId:  key.GetId(),
+			UserId: resp.GetUserId(),
+		})
+		if err == nil && !hasResp.GetHasUsage() {
 			out["can_attempt"] = false
-			out["last_attempt_id"] = countResp.GetLastAttemptId()
+			out["block_reason"] = "aforo_lleno"
 		}
 	}
 

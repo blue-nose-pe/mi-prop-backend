@@ -13,6 +13,12 @@ service KeyService {
   rpc DeactivateKey (DeactivateKeyRequest)returns (EmptyResponse);
   rpc ValidateKey   (ValidateKeyRequest)  returns (KeyResponse);
   rpc IncrementUsage(IncrementUsageRequest) returns (EmptyResponse);
+  // UserHasKeyUsage: chequea si (key, user) ya tiene fila en key_usage —
+  // i.e. si ese alumno ya ocupa una plaza del aforo. Lo usa el gateway en
+  // /api/auth/student/lookup-by-key para distinguir "aforo lleno y user
+  // sin plaza" (bloquear pre-OTP) de "aforo lleno pero user con plaza"
+  // (dejar entrar como retry). Publico via jwtSkip.
+  rpc UserHasKeyUsage(UserHasKeyUsageRequest) returns (UserHasKeyUsageResponse);
   rpc GetKey        (GetKeyRequest)       returns (KeyResponse);
   rpc GetByCode     (GetByCodeRequest)    returns (KeyResponse);
   rpc ListByAsesor  (ListByAsesorRequest) returns (ListKeysResponse);
@@ -100,4 +106,12 @@ message IncrementUsageRequest {
   string key_id     = 1;
   string user_id    = 2;
   string attempt_id = 3;
+}
+
+message UserHasKeyUsageRequest {
+  string key_id  = 1;
+  string user_id = 2;
+}
+message UserHasKeyUsageResponse {
+  bool has_usage = 1;
 }

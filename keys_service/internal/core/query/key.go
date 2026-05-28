@@ -10,12 +10,15 @@ import (
 )
 
 type KeyHandler struct {
-	keys ports.KeyRepository
+	keys      ports.KeyRepository
+	keyUsages ports.KeyUsageRepository
 }
 
 var _ ports.KeyQueries = (*KeyHandler)(nil)
 
-func NewKeyHandler(keys ports.KeyRepository) *KeyHandler { return &KeyHandler{keys: keys} }
+func NewKeyHandler(keys ports.KeyRepository, keyUsages ports.KeyUsageRepository) *KeyHandler {
+	return &KeyHandler{keys: keys, keyUsages: keyUsages}
+}
 
 func (h *KeyHandler) Get(ctx context.Context, id domain.KeyID) (*domain.Key, error) {
 	return h.keys.FindByID(ctx, id)
@@ -39,4 +42,8 @@ func (h *KeyHandler) ListUserIDsByColegio(ctx context.Context, schoolID domain.S
 
 func (h *KeyHandler) Search(ctx context.Context, req search.Request) (*search.Response, error) {
 	return h.keys.Search(ctx, req)
+}
+
+func (h *KeyHandler) UserHasKeyUsage(ctx context.Context, keyID domain.KeyID, userID domain.UserID) (bool, error) {
+	return h.keyUsages.ExistsByKeyUser(ctx, keyID, userID)
 }
