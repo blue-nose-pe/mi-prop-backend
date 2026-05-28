@@ -40,6 +40,8 @@ func (h *KeyHandler) GenerateKey(ctx context.Context, req *pb.GenerateKeyRequest
 		SchoolRecordID:     req.GetSchoolRecordId(),
 		SchoolName:         req.GetSchoolName(),
 		AsesorEmail:        req.GetAsesorEmail(),
+		SchoolIntID:        req.GetSchoolIntId(),
+		AsesorIntID:        req.GetAsesorIntId(),
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()

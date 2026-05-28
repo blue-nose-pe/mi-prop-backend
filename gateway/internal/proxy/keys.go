@@ -121,12 +121,9 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "valid_to: " + err.Error()})
 		return
 	}
-	// Lookups pre-Generate: school.hubspot_record_id + name (para asociar
-	// Key->Company directo) + asesor.email (para que hubspot-service busque
-	// el Asesor record por email — User proto no expone hubspot_record_id
-	// pero email matchea entre v1 y v2). keys-service hace pass-through al
-	// hubspot.SyncKey en goroutine separada.
-	schoolRecordID, schoolName, asesorEmail := p.resolveHubspotIDsForKey(r.Context(), in.SchoolID, in.AsesorUserID)
+	// Lookups pre-Generate: school.hubspot_record_id + name + int_id + asesor.email.
+	// keys-service hace pass-through al hubspot.SyncKey en goroutine.
+	hids := p.resolveHubspotIDsForKey(r.Context(), in.SchoolID, in.AsesorUserID)
 
 	resp, err := p.cli.Keys.GenerateKey(r.Context(), &keysgrpcpb.GenerateKeyRequest{
 		Code:         in.Code,
@@ -141,9 +138,11 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		MaxUses:      in.MaxUses,
 		ExamId:       in.ExamID,
 		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
-		SchoolRecordId:     schoolRecordID,
-		SchoolName:         schoolName,
-		AsesorEmail:        asesorEmail,
+		SchoolRecordId:     hids.SchoolRecordID,
+		SchoolName:         hids.SchoolName,
+		SchoolIntId:        hids.SchoolIntID,
+		AsesorEmail:        hids.AsesorEmail,
+		AsesorIntId:        hids.AsesorIntID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -152,29 +151,40 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(resp.GetKey())})
 }
 
-// resolveHubspotIDsForKey hace 2 lookups a users-service para obtener:
-//   - school.hubspot_record_id + school.name (para asociar Key->Company)
-//   - user.email del asesor (para que hubspot-service busque el Asesor
-//     record por email — User proto no expone hubspot_record_id, pero
-//     el email es unique y matchea entre v1 y v2).
-// Best-effort: si los lookups fallan o devuelven vacio, hubspot-service
-// upserteara el Key igual y simplemente saltara las asociaciones.
-func (p *Proxy) resolveHubspotIDsForKey(ctx context.Context, schoolID, asesorUserID string) (string, string, string) {
-	schoolRID := ""
-	schoolName := ""
-	asesorEmail := ""
+// hubspotKeyIDs agrupa los lookups que el gateway resuelve antes de
+// llamar a keys.GenerateKey, para que hubspot-service tenga todo lo
+// necesario para upsertear el custom object Key + asociaciones.
+type hubspotKeyIDs struct {
+	SchoolRecordID string
+	SchoolName     string
+	SchoolIntID    int32
+	AsesorEmail    string
+	AsesorIntID    int32
+}
+
+// resolveHubspotIDsForKey hace 2 lookups a users-service:
+//   - Schools.GetSchool → hubspot_record_id + name + int_id
+//   - Users.GetUser     → email (asesor.int_id depende de que el User
+//     proto exponga int_id; cambio #4)
+// Best-effort: si los lookups fallan, los campos quedan en zero-value y
+// hubspot-service salta los seteos/asociaciones que dependen de ellos.
+func (p *Proxy) resolveHubspotIDsForKey(ctx context.Context, schoolID, asesorUserID string) hubspotKeyIDs {
+	out := hubspotKeyIDs{}
 	if schoolID != "" {
 		if sResp, err := p.cli.Schools.GetSchool(ctx, &usersgrpcpb.GetSchoolRequest{Id: schoolID}); err == nil && sResp.GetSchool() != nil {
-			schoolRID = sResp.GetSchool().GetHubspotRecordId()
-			schoolName = sResp.GetSchool().GetName()
+			s := sResp.GetSchool()
+			out.SchoolRecordID = s.GetHubspotRecordId()
+			out.SchoolName = s.GetName()
+			out.SchoolIntID = s.GetIntId()
 		}
 	}
 	if asesorUserID != "" {
 		if uResp, err := p.cli.Users.GetUser(ctx, &usersgrpcpb.GetUserRequest{Id: asesorUserID}); err == nil && uResp.GetUser() != nil {
-			asesorEmail = uResp.GetUser().GetEmail()
+			out.AsesorEmail = uResp.GetUser().GetEmail()
+			out.AsesorIntID = uResp.GetUser().GetIntId()
 		}
 	}
-	return schoolRID, schoolName, asesorEmail
+	return out
 }
 
 func (p *Proxy) getKey(w http.ResponseWriter, r *http.Request) {

@@ -51,6 +51,8 @@ type recordIDs struct {
 	SchoolRecordID string
 	SchoolName     string
 	AsesorEmail    string
+	SchoolIntID    int32
+	AsesorIntID    int32
 }
 
 func (h *KeyHandler) syncToHubspot(parent context.Context, k *domain.Key, rids recordIDs) {
@@ -66,6 +68,8 @@ func (h *KeyHandler) syncToHubspot(parent context.Context, k *domain.Key, rids r
 		AsesorRecordID: rids.AsesorRecordID,
 		SchoolRecordID: rids.SchoolRecordID,
 		AsesorEmail:    rids.AsesorEmail,
+		SchoolIntID:    rids.SchoolIntID,
+		AsesorIntID:    rids.AsesorIntID,
 		Grade:          k.Grade,
 		Section:        k.Section,
 		MaxUses:        k.MaxUses,
@@ -175,6 +179,8 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 		SchoolRecordID: in.SchoolRecordID,
 		SchoolName:     in.SchoolName,
 		AsesorEmail:    in.AsesorEmail,
+		SchoolIntID:    in.SchoolIntID,
+		AsesorIntID:    in.AsesorIntID,
 	})
 	return saved, nil
 }

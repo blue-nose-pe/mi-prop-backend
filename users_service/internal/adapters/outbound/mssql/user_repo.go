@@ -55,7 +55,8 @@ const userCols = `CONVERT(NVARCHAR(36), id),
 		ISNULL(hubspot_record_id, ''),
 		is_superadmin,
 		must_change_password,
-		ISNULL(phone, '')`
+		ISNULL(phone, ''),
+		int_id`
 
 func (r *UserRepo) Save(ctx context.Context, u *domain.User) (domain.UserID, error) {
 	// La BD genera el UNIQUEIDENTIFIER vía DEFAULT NEWID(); lo recuperamos
@@ -183,11 +184,12 @@ func scanUser(row rowScanner) (*domain.User, error) {
 		isSuperadmin       bool
 		mustChangePassword bool
 		phone              string
+		intID              int32
 	)
 
 	err := row.Scan(&idStr, &emailStr, &u.PasswordHash, &firstName, &lastName,
 		&doc, &schoolID, &active, &lastAccess, &u.CreatedAt, &updatedAt, &hubspotID,
-		&isSuperadmin, &mustChangePassword, &phone)
+		&isSuperadmin, &mustChangePassword, &phone, &intID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrUserNotFound
 	}
@@ -206,6 +208,7 @@ func scanUser(row rowScanner) (*domain.User, error) {
 	u.HubspotRecordID = hubspotID
 	u.IsSuperadmin = isSuperadmin
 	u.MustChangePassword = mustChangePassword
+	u.IntID = intID
 	if lastAccess.Valid {
 		t := lastAccess.Time
 		u.LastAccessAt = &t

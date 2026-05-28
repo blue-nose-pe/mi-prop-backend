@@ -98,6 +98,8 @@ func (h *HubspotHandler) SyncKey(ctx context.Context, req *pb.SyncKeyRequest) (*
 		AsesorRecordID: domain.RecordID(req.GetAsesorRecordId()),
 		SchoolRecordID: domain.RecordID(req.GetSchoolRecordId()),
 		AsesorEmail:    req.GetAsesorEmail(),
+		SchoolIntID:    req.GetSchoolIntId(),
+		AsesorIntID:    req.GetAsesorIntId(),
 	}); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}

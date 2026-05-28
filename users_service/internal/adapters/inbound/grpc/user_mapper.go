@@ -30,6 +30,7 @@ func toProtoUser(u *domain.User) *pb.User {
 		UpdatedAt:          tsOrNil(u.UpdatedAt),
 		IsSuperadmin:       u.IsSuperadmin,
 		MustChangePassword: u.MustChangePassword,
+		IntId:              u.IntID,
 	}
 }
 

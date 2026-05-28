@@ -124,6 +124,12 @@ message SyncKeyRequest {
   // donde users.hubspot_record_id aun no esta poblado para asesores
   // legacy de v1 — el email matchea entre v1 y v2 por ser unique global.
   string asesor_email      = 13;
+  // INT IDENTITY equivalents para las props colegio_id / asesor_id del
+  // portal UCSP (que son type number). school.int_id ya existe en v2
+  // (migration 020); users.int_id se agrega en migracion proxima.
+  // 0 = no setear la prop (el record se crea sin esos campos).
+  int32  school_int_id     = 14;
+  int32  asesor_int_id     = 15;
 }
 
 message SyncExamResultRequest {

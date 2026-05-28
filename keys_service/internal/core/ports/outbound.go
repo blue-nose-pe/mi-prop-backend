@@ -65,6 +65,8 @@ type HubspotSyncKeyInput struct {
 	AsesorRecordID string
 	SchoolRecordID string
 	AsesorEmail    string // fallback para resolver Asesor cuando no hay record_id
+	SchoolIntID    int32  // school.int_id (v2 equivalente al MySQL id de v1)
+	AsesorIntID    int32  // user.int_id (idem)
 }
 
 // Audit ----

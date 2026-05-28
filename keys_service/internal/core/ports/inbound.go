@@ -60,6 +60,8 @@ type GenerateKeyInput struct {
 	SchoolRecordID string
 	SchoolName     string
 	AsesorEmail    string
+	SchoolIntID    int32
+	AsesorIntID    int32
 }
 
 type UpdateKeyInput struct {

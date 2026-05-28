@@ -88,6 +88,10 @@ message GenerateKeyRequest {
   // antes de Generate y se reenvia a hubspot.SyncKey, que busca el
   // Asesor en HubSpot por email cuando record_id no esta disponible.
   string asesor_email     = 16;
+  // INT IDENTITY equivalents para llenar props HubSpot colegio_id /
+  // asesor_id (type number). El gateway los resuelve antes de Generate.
+  int32  school_int_id    = 17;
+  int32  asesor_int_id    = 18;
 }
 
 message UpdateKeyRequest {

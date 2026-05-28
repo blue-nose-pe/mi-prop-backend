@@ -68,6 +68,8 @@ func (g *Grpc) SyncKey(ctx context.Context, in ports.HubspotSyncKeyInput) error 
 		AsesorRecordId: in.AsesorRecordID,
 		SchoolRecordId: in.SchoolRecordID,
 		AsesorEmail:    in.AsesorEmail,
+		SchoolIntId:    in.SchoolIntID,
+		AsesorIntId:    in.AsesorIntID,
 	})
 	return err
 }

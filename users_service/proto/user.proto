@@ -264,6 +264,11 @@ message User {
   bool   is_superadmin         = 11;
   bool   must_change_password  = 12;
   string phone                 = 13;  // "" si no se cargo
+  // INT IDENTITY (migration 021). Equivalente v2 al ID MySQL int de v1.
+  // Lo usa la integracion con HubSpot — la prop custom mi_proposito_asesor_id
+  // del custom object Asesor (2-32448565) esta tipada como INTEGER y el
+  // UUID de v2 no es parseable.
+  int32  int_id               = 14;
 }
 
 message CreateUserRequest {

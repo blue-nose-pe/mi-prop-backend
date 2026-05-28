@@ -142,6 +142,13 @@ type KeyPayload struct {
 	// presente, hubspot-service busca el Asesor por email (prop unique).
 	// Email matchea entre v1 y v2 (los asesores migrados conservan email).
 	AsesorEmail string
+	// SchoolIntID / AsesorIntID: equivalente v2 de los IDs MySQL int de v1.
+	// SchoolIntID viene de school.int_id (migration 020). AsesorIntID viene
+	// de users.int_id (migration que se agrega en cambio #4). 0 = no setear
+	// la prop. Necesarios porque las props colegio_id/asesor_id del portal
+	// UCSP son INTEGER y los UUIDs de v2 no son parseables.
+	SchoolIntID int32
+	AsesorIntID int32
 }
 
 // herramientaLabel mapea exam_type_code al string que P1 grababa en la
@@ -161,21 +168,18 @@ func (k KeyPayload) HerramientaLabel() string {
 
 // ToProperties — bag de properties para el custom object Key.
 //
-// IMPORTANTE — props que P1 seteaba pero v2 NO setea por incompatibilidad
-// de tipos en el portal UCSP (definidos cuando v1 usaba IDs MySQL int):
-//   - colegio_id (INTEGER en HubSpot) — v2 SchoolID es UUID, no parseable
-//   - asesor_id  (INTEGER en HubSpot) — v2 AsesorUserID es UUID, idem
-//   - grado      (enum INTEGER [1,2,4]) — v2 Grade es string ("5to")
-//   - seccion    (enum INTEGER [1-12])  — v2 Section es letra ("A")
-// Mapear estos requiere lookup adicional / tabla de equivalencias. Por
-// ahora se omiten silenciosamente: el record queda con codigo +
-// herramienta + nombre_colegio + aforo + fechas, suficiente para que el
-// CRM identifique la key. Las asociaciones a Asesor/Company (object
-// links) se hacen aparte por record_id, no por estas props.
+// Props que se setean cuando hay datos parseables al formato esperado:
+//   - codigo (string) — siempre
+//   - herramienta (string) — derivado de exam_type_code
+//   - nombre_colegio (string) — si SchoolName != ""
+//   - aforo (int) — si MaxUses > 0
+//   - desde/hasta (date, midnight UTC ms) — si las fechas no son zero
+//   - seccion (enum INT [1-12]) — si Section es letra A..L (mapeo A=1..L=12)
+//   - colegio_id (INT) — si SchoolIntID > 0 (school.int_id de v2)
+//   - asesor_id (INT) — si AsesorIntID > 0 (user.int_id de v2 cuando exista)
 //
-// Fechas: HubSpot espera DATE en milisegundos UTC fijados a medianoche
-// (00:00:00). Truncamos cualquier hora del ValidFrom/ValidTo a date-only
-// antes de serializar.
+// Pendiente (requiere mapeo no determinado):
+//   - grado (enum INT [1,2,4]) — significado del enum desconocido en v2
 func (k KeyPayload) ToProperties() map[string]string {
 	props := map[string]string{
 		"codigo":      k.Code,
@@ -195,7 +199,33 @@ func (k KeyPayload) ToProperties() map[string]string {
 	if k.MaxUses > 0 {
 		props["aforo"] = intStr(k.MaxUses)
 	}
+	if n := seccionLetterToInt(k.Section); n > 0 {
+		props["seccion"] = intStr(n)
+	}
+	if k.SchoolIntID > 0 {
+		props["colegio_id"] = intStr(k.SchoolIntID)
+	}
+	if k.AsesorIntID > 0 {
+		props["asesor_id"] = intStr(k.AsesorIntID)
+	}
 	return props
+}
+
+// seccionLetterToInt mapea A..L → 1..12 (case-insensitive). v1 usaba
+// numeros, v2 usa letras. HubSpot prop seccion es enum INT [1-12].
+// Devuelve 0 si no es letra A-L (skip silencioso, no setea la prop).
+func seccionLetterToInt(s string) int32 {
+	if len(s) != 1 {
+		return 0
+	}
+	c := s[0]
+	if c >= 'a' && c <= 'z' {
+		c -= 'a' - 'A'
+	}
+	if c < 'A' || c > 'L' {
+		return 0
+	}
+	return int32(c - 'A' + 1)
 }
 
 // midnightUTCMillis — HubSpot DATE props requieren milisegundos UTC al

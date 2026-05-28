@@ -39,6 +39,12 @@ type User struct {
 	// la password). Mientras esté true, todas las rutas excepto
 	// /api/users/me y /api/users/me/change-password devuelven 403.
 	MustChangePassword bool
+
+	// IntID — INT IDENTITY (migration 021). Equivalente v2 al ID MySQL int
+	// que v1 usaba. Lo usa la integracion con HubSpot — la prop custom
+	// mi_proposito_asesor_id del custom object Asesor esta tipada como
+	// INTEGER y el UUID de v2 no es parseable.
+	IntID int32
 }
 
 var emailRegex = regexp.MustCompile(`^[^\s@]+@[^\s@]+\.[^\s@]+$`)
