@@ -3,6 +3,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"exams_service/internal/core/domain"
@@ -95,6 +96,20 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 	}
 	id, err := h.attempts.Save(ctx, att)
 	if err != nil {
+		// Race: otro request concurrente del mismo alumno gano la insercion
+		// del attempt activo (filtered UNIQUE uq_exam_attempt_active). Hacemos
+		// retry-find y devolvemos ese attempt como Reused para que el cliente
+		// vea exactamente el mismo resultado que si ese request hubiera llegado
+		// primero — sin error, sin attempt duplicado.
+		if errors.Is(err, ports.ErrConcurrentActiveAttempt) {
+			winner, ferr := h.attempts.FindActiveByExamUser(ctx, in.ExamID, in.UserID)
+			if ferr != nil {
+				return nil, ferr
+			}
+			if winner != nil {
+				return &ports.StartAttemptResult{Attempt: winner, Reused: true}, nil
+			}
+		}
 		return nil, err
 	}
 	att.ID = id

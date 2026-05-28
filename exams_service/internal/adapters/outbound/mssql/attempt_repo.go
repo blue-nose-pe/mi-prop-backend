@@ -4,10 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"exams_service/internal/core/domain"
 	"exams_service/internal/core/ports"
+
+	mssql "github.com/microsoft/go-mssqldb"
 )
 
 type AttemptRepo struct {
@@ -36,9 +39,23 @@ func (r *AttemptRepo) Save(ctx context.Context, a *domain.ExamAttempt) (domain.A
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)))`
 	var id string
 	if err := r.db.QueryRowContext(ctx, q, string(a.ExamID), string(a.UserID), string(a.KeyID)).Scan(&id); err != nil {
-		return "", err
+		return "", mapAttemptInsertError(err)
 	}
 	return domain.AttemptID(id), nil
+}
+
+// mapAttemptInsertError detecta violacion del filtered UNIQUE
+// uq_exam_attempt_active (migration 011) — significa que otro request
+// concurrente del mismo alumno ya creo el attempt activo. El core debe
+// hacer retry-find y devolver Reused en vez de propagar este error.
+func mapAttemptInsertError(err error) error {
+	var msErr mssql.Error
+	if errors.As(err, &msErr) && (msErr.Number == 2627 || msErr.Number == 2601) {
+		if strings.Contains(strings.ToLower(msErr.Message), "uq_exam_attempt_active") {
+			return ports.ErrConcurrentActiveAttempt
+		}
+	}
+	return err
 }
 
 func (r *AttemptRepo) FindByID(ctx context.Context, id domain.AttemptID) (*domain.ExamAttempt, error) {

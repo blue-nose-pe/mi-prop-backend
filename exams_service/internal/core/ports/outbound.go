@@ -2,11 +2,22 @@ package ports
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"exams_service/internal/core/domain"
 	"exams_service/internal/shared/search"
 )
+
+// ErrConcurrentActiveAttempt: el AttemptRepository.Save lo devuelve cuando
+// el filtered UNIQUE uq_exam_attempt_active (migration 011) rechaza un
+// INSERT porque otro request concurrente del mismo (exam, user) ya creo el
+// attempt activo. El core debe hacer FindActiveByExamUser de nuevo y
+// devolver Reused — el primero gana, el segundo NO crea un attempt extra.
+// Sin este sentinela, dos POST /api/attempts simultaneos podian saltar el
+// chequeo de max_attempts_per_user (race entre CountSubmittedByKeyUser y
+// Save).
+var ErrConcurrentActiveAttempt = errors.New("concurrent active attempt for (exam, user) — retry-find the existing one")
 
 // =============== Repositories ===============
 
