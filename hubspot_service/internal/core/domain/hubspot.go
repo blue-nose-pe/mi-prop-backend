@@ -177,9 +177,7 @@ func (k KeyPayload) HerramientaLabel() string {
 //   - seccion (enum INT [1-12]) — si Section es letra A..L (mapeo A=1..L=12)
 //   - colegio_id (INT) — si SchoolIntID > 0 (school.int_id de v2)
 //   - asesor_id (INT) — si AsesorIntID > 0 (user.int_id de v2 cuando exista)
-//
-// Pendiente (requiere mapeo no determinado):
-//   - grado (enum INT [1,2,4]) — significado del enum desconocido en v2
+//   - grado (enum INT [1,2,4]) — si Grade es "3"/"4"/"5" (mapeo 3ro=4, 4to=2, 5to=1)
 func (k KeyPayload) ToProperties() map[string]string {
 	props := map[string]string{
 		"codigo":      k.Code,
@@ -208,7 +206,28 @@ func (k KeyPayload) ToProperties() map[string]string {
 	if k.AsesorIntID > 0 {
 		props["asesor_id"] = intStr(k.AsesorIntID)
 	}
+	if n := gradoToEnum(k.Grade); n > 0 {
+		props["grado"] = intStr(n)
+	}
 	return props
+}
+
+// gradoToEnum mapea el grado escolar v2 (string "3"/"4"/"5") al enum INT
+// que la prop `grado` del custom object Key acepta en el portal UCSP:
+//   "5" → 1 (5to), "4" → 2 (4to), "3" → 4 (3ro). Valores definidos por
+// HubSpot (GET /crm/v3/properties/2-32450705/grado). Cualquier otro
+// input → 0 (skip silencioso, no se setea la prop — mismo patron que
+// seccionLetterToInt).
+func gradoToEnum(g string) int32 {
+	switch g {
+	case "5":
+		return 1
+	case "4":
+		return 2
+	case "3":
+		return 4
+	}
+	return 0
 }
 
 // seccionLetterToInt mapea A..L → 1..12 (case-insensitive). v1 usaba
