@@ -164,6 +164,32 @@ DELETE /api/users/{id}/permissions/groups/{permission_group_id}
 GET    /api/users/{id}/permissions             ← codes efectivos del usuario
 ```
 
+### Defensa en profundidad: route guards + rate limits específicos
+
+**Gateway** (Go) aplica varias capas además del JWT:
+
+- `permissionGuard()` por endpoint: cada handler de `/api/...` valida el
+  permiso atómico que corresponde (por ej. `db_users.users.write` antes
+  de aceptar `POST /api/users`).
+- **Scope checks por dueño**: endpoints como
+  `/api/analytics/asesor/{id}/dashboard` usan `enforceAsesorScope()`
+  para que un asesor solo vea SU dashboard (otro asesor → `403`). Vistas
+  agregadas globales (`/api/analytics/comparativo`,
+  `/api/analytics/colegios/historico`) son `superadmin`-only.
+- **Rate limit global**: 600 req/min/IP (Redis sliding window), bucket
+  `rl:ip:`.
+- **Rate limit estricto en endpoints públicos sensibles**:
+  `POST /api/auth/student/lookup-by-key` usa
+  `RateLimitNamed(rdb, 30, "lookup")` con bucket independiente
+  (`rl:lookup:`) — anti-enumeration: 30 req/min/IP, 6× lo que un
+  estudiante real necesita.
+
+**Front Angular** (`ucsp-front/src/app/app.routes.ts`) aplica
+`permissionGuard('<code>')` a cada ruta de `/app/*` para que un user sin
+el permiso correspondiente NO vea siquiera el formulario (route guards
+redirigen a `/app/dashboard`). El componente sigue verificando con
+`AuthService.hasPermission()` antes de invocar la API.
+
 ### Por qué el catálogo de permisos atómicos es read-only
 
 Cada code (`db_users.users.read`, etc.) está mapeado en el código Go a
@@ -205,8 +231,19 @@ kubectl get secret <release>-users-service-superadmin -n <namespace> \
 
 Hasta que el superadmin haga su primer login y cambie su password, el
 backend rechaza con `403 PASSWORD_CHANGE_REQUIRED` cualquier ruta que no
-sea `/api/users/me` o `/api/users/me/change-password`. Esto es deliberado
-y aplica a cualquier usuario al que se le haga `reset-password`.
+sea `/api/users/me`, `/api/users/me/change-password` o
+`/api/auth/logout`. Esto es deliberado y aplica a cualquier usuario al
+que se le haga `reset-password`.
+
+El **flag viaja en el access token** como claim `mcp` (boolean). El
+middleware `MustChangePasswordGuard` del gateway lo lee y bloquea
+endpoints no permitidos. El **front Angular** (`ucsp-front`) lo expone
+vía `AuthService.mustChangePassword()` y un guard global
+(`mustChangePasswordGuard`) aplicado al árbol `/app/*` redirige a
+`/app/cambiar-password` en cuanto el flag está activo. La pantalla forza
+ingresar la contraseña actual + nueva (mínimo 12 caracteres) y
+post-update fuerza un logout para que el siguiente login emita un JWT
+limpio (sin `mcp`).
 
 ### Flujo de login
 

@@ -582,6 +582,24 @@ info:
     estudiante (`/api/analytics/estudiante/{id}/dashboard`) y comparativo
     cross-asesor (`/api/analytics/comparativo`).
 
+    **Reglas de scope en analytics** (todas validadas en el gateway,
+    devolviendo `403 FORBIDDEN` en vez de filtrar la query):
+
+    - `/api/analytics/asesor/{id}/dashboard`,
+      `/api/analytics/asesor/{id}/pendientes`,
+      `/api/analytics/asesor/{id}/export.xlsx` →
+      solo el asesor dueño o un superadmin. Otro asesor recibe `403`.
+    - `/api/analytics/colegio/{id}/...` →
+      asesor o coordinador con el colegio asignado, o superadmin.
+    - `/api/analytics/estudiante/{id}/...` →
+      el propio estudiante (self-scope) o superadmin.
+    - `/api/analytics/comparativo`,
+      `/api/analytics/colegios/historico`,
+      `/api/analytics/comparativo/export.xlsx`,
+      `/api/analytics/dashboard` (global) →
+      **superadmin-only** (vistas agregadas de TODOS los colegios; un
+      asesor no debería ver scores de colegios fuera de su zona).
+
     ### Flujo 8 — Sync HubSpot
 
     **Al crear o actualizar un user, el sync a HubSpot es automático**: el
@@ -1161,6 +1179,108 @@ paths:
                 code: "OTP_DELIVERY_FAIL"
                 message: "could not dispatch OTP email"
                 category: "INTERNAL_ERROR"
+
+  /api/auth/student/lookup-by-key:
+    post:
+      tags: [Auth]
+      summary: Preflight para la pantalla pública de acceso al test
+      description: |
+        Endpoint público que el front llama desde
+        `/test/{vocacional|simulacro|eda}/acceso` para decidir qué hacer
+        ANTES de pedir OTP:
+
+        | Respuesta | Front hace |
+        |---|---|
+        | `exists=false` | Redirige al form de registro (`/registro`). |
+        | `exists=true, can_attempt=true` | Pide OTP normalmente. |
+        | `exists=true, can_attempt=false` | Bloquea con mensaje (no manda OTP). |
+
+        ### Anti-enumeration
+
+        El payload requiere `key_code` además de `email`. El gateway
+        **valida la key PRIMERO** (`keys.ValidateKey`) y solo si la key
+        existe + está activa + dentro de su ventana responde algo sobre
+        el email. Un atacante sin una key válida no puede iterar emails.
+
+        Además aplica **rate-limit estricto**: `30 req/min/IP` con bucket
+        Redis separado (`rl:lookup:`) del global. Un script de
+        enumeration recibe `429 RATE_LIMIT` antes de poder cubrir un
+        dominio razonable de emails.
+
+        ### Reglas para `can_attempt`
+
+        - `max_attempts_per_user > 0` y el estudiante ya rindió esa
+          cantidad de attempts SUBMITTED con esta key → `can_attempt=false`,
+          `block_reason="max_attempts"`.
+        - `max_uses > 0` y `current_uses >= max_uses` y el estudiante
+          **no tiene `key_usage` previo** → `can_attempt=false`,
+          `block_reason="aforo_lleno"`.
+        - En cualquier otro caso → `can_attempt=true`.
+      security: []  # público
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, key_code]
+              properties:
+                email:    { type: string, format: email, example: "maria.gonzalez@gmail.com" }
+                key_code: { type: string, example: "SI-000018" }
+      responses:
+        '200':
+          description: Resultado del preflight. La forma es uniforme aún si el email no existe (anti-enumeration).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [exists, can_attempt, max_attempts_per_user, submitted_count, last_attempt_id, block_reason]
+                properties:
+                  exists:                { type: boolean }
+                  can_attempt:           { type: boolean }
+                  max_attempts_per_user: { type: integer, description: "0 = sin limite" }
+                  submitted_count:       { type: integer }
+                  last_attempt_id:       { type: string, description: "vacio si el usuario no tiene attempts previos con esta key" }
+                  block_reason:
+                    type: string
+                    enum: ["", "max_attempts", "aforo_lleno"]
+                    description: "Motivo del block. Vacio cuando can_attempt=true."
+              examples:
+                puede:
+                  summary: Existe y puede intentar
+                  value: { exists: true, can_attempt: true, max_attempts_per_user: 0, submitted_count: 0, last_attempt_id: "", block_reason: "" }
+                cuota_agotada:
+                  summary: Existe pero ya rindio el max
+                  value: { exists: true, can_attempt: false, max_attempts_per_user: 1, submitted_count: 1, last_attempt_id: "AT-018af2...", block_reason: "max_attempts" }
+                aforo_lleno:
+                  summary: Existe pero la key esta llena
+                  value: { exists: true, can_attempt: false, max_attempts_per_user: 0, submitted_count: 0, last_attempt_id: "", block_reason: "aforo_lleno" }
+                no_existe:
+                  summary: Email desconocido
+                  value: { exists: false, can_attempt: true, max_attempts_per_user: 0, submitted_count: 0, last_attempt_id: "", block_reason: "" }
+        '400':
+          description: Faltan email o key_code
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { status: "error", code: "VALIDATION_ERROR", message: "email y key_code son obligatorios", category: "VALIDATION_ERROR" }
+        '404':
+          description: La key no existe o esta fuera de vigencia / desactivada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { status: "error", code: "KEY_NOT_FOUND", message: "key not found", category: "NOT_FOUND" }
+        '429':
+          description: |
+            Excedio el rate-limit estricto de este endpoint (30 req/min/IP).
+            El header `Retry-After: 60` indica cuanto esperar.
+          headers:
+            Retry-After:
+              schema: { type: integer, example: 60 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { status: "error", code: "RATE_LIMIT", message: "too many requests" }
 
   /api/auth/logout:
     post:
@@ -5231,7 +5351,9 @@ paths:
           en la pantalla principal.
         - `by_exam_type`: stats por tipo de examen (puede traer 0..N entradas).
 
-        Permiso requerido: `analytics.dashboard.read` o ser el propio asesor.
+        Permiso requerido: el asesor dueño del `{id}` o superadmin. Otro
+        usuario autenticado (otro asesor, coordinador, estudiante) recibe
+        `403 FORBIDDEN`.
       responses:
         '200':
           description: Dashboard
@@ -5258,6 +5380,12 @@ paths:
                     avg_score: 62.4
                     avg_max_score: 100.0
                 generated_at: "2026-05-09T16:00:00Z"
+        '403':
+          description: El caller no es el asesor dueño ni un superadmin.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { status: "error", code: "FORBIDDEN", message: "no access to this asesor" }
 
   /api/analytics/colegio/{id}/dashboard:
     parameters: [{ $ref: '#/components/parameters/SchoolID' }]
@@ -5392,7 +5520,8 @@ paths:
         Este endpoint sirve directamente la grilla **Histórico de Colegio**
         del dashboard de admin.
 
-        Permiso requerido: `analytics.dashboard.read`.
+        Permiso requerido: **superadmin** (vista agregada de TODOS los
+        colegios). Un asesor o coordinador autenticado recibe `403`.
       parameters:
         - in: query
           name: period
@@ -5429,7 +5558,8 @@ paths:
         promedio (`avg_score`) y cantidad de attempts. Útil para la pantalla
         de gerencia UCSP que compara desempeño entre instituciones.
 
-        Permiso requerido: `analytics.dashboard.read`.
+        Permiso requerido: **superadmin**. Como agrega data de TODOS los
+        colegios, un asesor o coordinador autenticado recibe `403`.
       parameters:
         - in: query
           name: exam_type_code
@@ -5464,6 +5594,12 @@ paths:
                 code: "VALIDATION_ERROR"
                 message: "exam_type_code query param is required"
                 category: "VALIDATION_ERROR"
+        '403':
+          description: El caller no es superadmin.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorResponse' }
+              example: { status: "error", code: "FORBIDDEN", message: "solo superadmin puede ver el comparativo global" }
 
   /api/analytics/asesor/{id}/pendientes:
     parameters: [{ $ref: '#/components/parameters/UserID' }]

@@ -79,6 +79,16 @@ func main() {
 		"/health",
 	}
 
+	// Allow-list del MustChangePasswordGuard: rutas accesibles aun cuando
+	// el JWT lleva mcp=true. El user puede leer su perfil (/me), cambiar
+	// su pass, y cerrar sesion. Cualquier otra ruta devuelve 403.
+	mcpAllow := []string{
+		"/api/users/me/change-password",
+		"/api/users/me",
+		"/api/auth/logout",
+		"/health",
+	}
+
 	handler := middleware.Chain(mux,
 		middleware.Recovery,
 		middleware.CorrelationID,
@@ -86,6 +96,7 @@ func main() {
 		middleware.CORS(cfg.CORSAllowedOrigins),
 		middleware.RateLimit(rdb, cfg.RateLimitPerIPPerMinute),
 		middleware.JWT([]byte(cfg.JWTSecret), cfg.JWTIssuer, jwtSkip),
+		middleware.MustChangePasswordGuard(mcpAllow),
 	)
 
 	srv := &http.Server{

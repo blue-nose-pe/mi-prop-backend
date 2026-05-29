@@ -16,6 +16,11 @@ type JWTClaims struct {
 	Permissions []string `json:"permissions,omitempty"`
 	SchoolID    string   `json:"school_id,omitempty"`
 	Type        string   `json:"type"`
+	// MustChangePassword (BUG #31 fix): el user esta forzado a cambiar
+	// su pass antes de usar la app. El middleware MustChangePasswordGuard
+	// rechaza con 403 cualquier endpoint distinto de /me, /change-password
+	// y /logout cuando este claim es true.
+	MustChangePassword bool `json:"mcp,omitempty"`
 	jwt.RegisteredClaims
 }
 

@@ -125,11 +125,12 @@ func (h *AuthHandler) Login(ctx context.Context, in ports.LoginInput) (*ports.Lo
 		roles = append(roles, "superadmin")
 	}
 	pair, err := h.tokens.IssuePair(ports.TokenIssueParams{
-		UserID:      u.ID,
-		Email:       string(u.Email),
-		Roles:       roles,
-		Permissions: codes,
-		SchoolID:    string(u.SchoolID),
+		UserID:             u.ID,
+		Email:              string(u.Email),
+		Roles:              roles,
+		Permissions:        codes,
+		SchoolID:           string(u.SchoolID),
+		MustChangePassword: u.MustChangePassword,
 	})
 	if err != nil {
 		return nil, err
@@ -192,11 +193,12 @@ func (h *AuthHandler) Refresh(ctx context.Context, in ports.RefreshInput) (*port
 		roles = append(roles, "superadmin")
 	}
 	pair, err := h.tokens.IssuePair(ports.TokenIssueParams{
-		Roles:       roles,
-		UserID:      u.ID,
-		Email:       string(u.Email),
-		Permissions: codes,
-		SchoolID:    string(u.SchoolID),
+		Roles:              roles,
+		UserID:             u.ID,
+		Email:              string(u.Email),
+		Permissions:        codes,
+		SchoolID:           string(u.SchoolID),
+		MustChangePassword: u.MustChangePassword,
 	})
 	if err != nil {
 		return nil, err
@@ -333,11 +335,12 @@ func (h *AuthHandler) VerifyStudentOTP(ctx context.Context, in ports.VerifyStude
 
 	roles := []string{}
 	pair, err := h.tokens.IssuePair(ports.TokenIssueParams{
-		UserID:      u.ID,
-		Email:       string(u.Email),
-		Roles:       roles,
-		Permissions: codes,
-		SchoolID:    string(u.SchoolID),
+		UserID:             u.ID,
+		Email:              string(u.Email),
+		Roles:              roles,
+		Permissions:        codes,
+		SchoolID:           string(u.SchoolID),
+		MustChangePassword: u.MustChangePassword,
 	})
 	if err != nil {
 		return nil, err

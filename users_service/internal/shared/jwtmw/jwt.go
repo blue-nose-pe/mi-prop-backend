@@ -35,6 +35,11 @@ type Claims struct {
 	Permissions []string `json:"permissions,omitempty"`
 	SchoolID    string   `json:"school_id,omitempty"`
 	Type        string   `json:"type"` // "access" | "refresh"
+	// MustChangePassword (BUG #31 fix): viaja en el access token para que
+	// el gateway pueda bloquear con 403 PASSWORD_CHANGE_REQUIRED cualquier
+	// endpoint distinto de /me y /change-password. El bootstrap del admin
+	// (helm Job) crea el user con flag=true; SetPassword lo limpia.
+	MustChangePassword bool `json:"mcp,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -79,11 +84,12 @@ func NewSigner(cfg SignerConfig) (*Signer, error) {
 
 // IssueParams son los datos del usuario para emitir un par access+refresh.
 type IssueParams struct {
-	UserID      string
-	Email       string
-	Roles       []string
-	Permissions []string
-	SchoolID    string
+	UserID             string
+	Email              string
+	Roles              []string
+	Permissions        []string
+	SchoolID           string
+	MustChangePassword bool
 }
 
 // IssuePair emite (access, refresh) y devuelve también el jti del refresh
@@ -104,11 +110,12 @@ func (s *Signer) IssuePair(p IssueParams) (Pair, error) {
 	refreshJTI := uuid.NewString()
 
 	access, err := s.sign(Claims{
-		Email:       p.Email,
-		Roles:       p.Roles,
-		Permissions: p.Permissions,
-		SchoolID:    p.SchoolID,
-		Type:        "access",
+		Email:              p.Email,
+		Roles:              p.Roles,
+		Permissions:        p.Permissions,
+		SchoolID:           p.SchoolID,
+		Type:               "access",
+		MustChangePassword: p.MustChangePassword,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.issuer,
 			Subject:   p.UserID,

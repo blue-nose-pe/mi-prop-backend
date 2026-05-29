@@ -156,11 +156,12 @@ type TokenPair struct {
 }
 
 type TokenIssueParams struct {
-	UserID      domain.UserID
-	Email       string
-	Roles       []string
-	Permissions []string
-	SchoolID    string
+	UserID             domain.UserID
+	Email              string
+	Roles              []string
+	Permissions        []string
+	SchoolID           string
+	MustChangePassword bool
 }
 
 type TokenClaims struct {

@@ -20,11 +20,12 @@ func NewIssuer(s *jwtmw.Signer) *Issuer { return &Issuer{signer: s} }
 
 func (i *Issuer) IssuePair(p ports.TokenIssueParams) (*ports.TokenPair, error) {
 	pair, err := i.signer.IssuePair(jwtmw.IssueParams{
-		UserID:      string(p.UserID),
-		Email:       p.Email,
-		Roles:       p.Roles,
-		Permissions: p.Permissions,
-		SchoolID:    p.SchoolID,
+		UserID:             string(p.UserID),
+		Email:              p.Email,
+		Roles:              p.Roles,
+		Permissions:        p.Permissions,
+		SchoolID:           p.SchoolID,
+		MustChangePassword: p.MustChangePassword,
 	})
 	if err != nil {
 		return nil, err
