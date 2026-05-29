@@ -16,13 +16,26 @@ import (
 //
 // Si rdb es nil → middleware noop (deshabilitado).
 func RateLimit(rdb *redis.Client, perMinute int) Middleware {
+	return rateLimitWithBucket(rdb, perMinute, "ip")
+}
+
+// RateLimitNamed crea un contador separado bajo el bucket `name`. Util
+// para endpoints sensibles que necesitan un cap MAS ESTRICTO que el
+// global — p.ej. /api/auth/student/lookup-by-key (Bug #27): el endpoint
+// es publico (sin JWT) y permite enumeration de combos email+key.
+// Limitarlo a ~30 req/min/IP cierra el ataque sin afectar UX legitimo.
+func RateLimitNamed(rdb *redis.Client, perMinute int, name string) Middleware {
+	return rateLimitWithBucket(rdb, perMinute, name)
+}
+
+func rateLimitWithBucket(rdb *redis.Client, perMinute int, bucket string) Middleware {
 	if rdb == nil || perMinute <= 0 {
 		return func(next http.Handler) http.Handler { return next }
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := clientIP(r)
-			key := fmt.Sprintf("rl:ip:%s:%d", ip, time.Now().Unix()/60)
+			key := fmt.Sprintf("rl:%s:%s:%d", bucket, ip, time.Now().Unix()/60)
 			ctx, cancel := context.WithTimeout(r.Context(), 100*time.Millisecond)
 			defer cancel()
 

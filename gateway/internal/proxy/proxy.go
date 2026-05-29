@@ -4,16 +4,28 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/redis/go-redis/v9"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Proxy agrupa los clientes gRPC y los handlers REST.
 // El método Register* registra rutas en un *http.ServeMux.
+//
+// rdb (opcional, puede ser nil) habilita rate-limits per-endpoint mas
+// estrictos que el global de main.go. Se usa para endpoints publicos
+// sensibles a enumeration (Bug #27: lookup-by-key).
 type Proxy struct {
 	cli *Clients
+	rdb *redis.Client
 }
 
 func New(c *Clients) *Proxy { return &Proxy{cli: c} }
+
+// NewWithRedis crea un Proxy con rate-limit per-endpoint habilitado.
+// Si rdb es nil cae a noop (igual que New).
+func NewWithRedis(c *Clients, rdb *redis.Client) *Proxy {
+	return &Proxy{cli: c, rdb: rdb}
+}
 
 // RegisterAll registra TODOS los grupos de rutas en el mux.
 // Convención de paths del frontend Angular ya en producción:

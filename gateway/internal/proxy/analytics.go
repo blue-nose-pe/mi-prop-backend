@@ -155,8 +155,19 @@ func (p *Proxy) getGlobalDashboard(w http.ResponseWriter, r *http.Request) {
 // ---------- Dashboards ----------
 
 func (p *Proxy) getAsesorDashboard(w http.ResponseWriter, r *http.Request) {
+	// Bug #22 fix: scope check antes de invocar analytics_service. Antes,
+	// llamar al endpoint sin permission o como otro asesor terminaba en
+	// HTTP 500 (analytics_service explotaba al no encontrar data del
+	// caller — gRPC Internal). Ahora devolvemos 403 limpio.
+	asesorID := enforceAsesorScope(r, r.PathValue("id"))
+	if asesorID == "" || (asesorID != r.PathValue("id") && !isSuperadminContext(r)) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "no access to this asesor",
+		})
+		return
+	}
 	resp, err := p.cli.Analytics.GetAsesorDashboard(r.Context(), &analyticsgrpcpb.GetAsesorDashboardRequest{
-		AsesorId: r.PathValue("id"),
+		AsesorId: asesorID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -226,6 +237,16 @@ func (p *Proxy) getEstudianteDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getComparativo(w http.ResponseWriter, r *http.Request) {
+	// Bug #22 fix: comparativo global = data agregada de TODOS los colegios.
+	// Es vista superadmin (sale del menu Reporteria del admin). Asesores y
+	// coordinadores no deberian poder llamarlo directo. Antes el endpoint
+	// pasaba sin check y analytics_service tiraba 500 en algunos casos.
+	if !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "solo superadmin puede ver el comparativo global",
+		})
+		return
+	}
 	examType := r.URL.Query().Get("exam_type_code")
 	if examType == "" {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "exam_type_code query param is required"})
@@ -452,6 +473,14 @@ func (p *Proxy) getReporteEstudiante(w http.ResponseWriter, r *http.Request) {
 //   - period (opcional, "" o "current" = quarter actual; sino "YYYY-QN")
 //   - exam_type_code (opcional)
 func (p *Proxy) getColegiosHistorico(w http.ResponseWriter, r *http.Request) {
+	// Bug #22 fix: vista historica global de TODOS los colegios — superadmin only.
+	// Mismo razonamiento que getComparativo.
+	if !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "solo superadmin puede ver el historico global de colegios",
+		})
+		return
+	}
 	q := r.URL.Query()
 	resp, err := p.cli.Analytics.GetColegiosHistorico(r.Context(), &analyticsgrpcpb.GetColegiosHistoricoRequest{
 		Period:       q.Get("period"),
@@ -521,6 +550,13 @@ func (p *Proxy) exportColegioXLSX(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) exportComparativoXLSX(w http.ResponseWriter, r *http.Request) {
+	// Bug #22 fix: export del comparativo = mismo dato global. Superadmin only.
+	if !isSuperadminContext(r) {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "FORBIDDEN", Message: "solo superadmin puede exportar el comparativo global",
+		})
+		return
+	}
 	examType := r.URL.Query().Get("exam_type_code")
 	if examType == "" {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "exam_type_code query param is required"})

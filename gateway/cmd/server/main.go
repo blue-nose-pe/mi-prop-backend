@@ -57,7 +57,7 @@ func main() {
 
 	// ---------- 3. Mux + middlewares ----------
 	mux := http.NewServeMux()
-	pr := proxy.New(clients)
+	pr := proxy.NewWithRedis(clients, rdb)
 	pr.RegisterAll(mux)
 
 	// JWT skip-list: rutas que no requieren auth.

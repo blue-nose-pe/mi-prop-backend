@@ -14,10 +14,19 @@ import (
 	"net/http"
 	"strings"
 
+	"gateway/internal/middleware"
+
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 )
+
+// lookupRateLimitPerMinute es la cuota de rate-limit per-IP especifica
+// para /api/auth/student/lookup-by-key. Fix de Bug #27: el endpoint es
+// publico (jwtSkip lo deja pasar) y permite enumeration de combos
+// email+key. 30 req/min es 6x lo que un estudiante real necesitaria
+// (acceso normal hace 1-2 lookups) y corta el script de ataque.
+const lookupRateLimitPerMinute = 30
 
 func (p *Proxy) RegisterAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/login", p.login)
@@ -26,7 +35,10 @@ func (p *Proxy) RegisterAuth(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/student/request-otp", p.requestStudentOTP)
 	mux.HandleFunc("POST /api/auth/student/verify-otp", p.verifyStudentOTP)
 	mux.HandleFunc("POST /api/auth/student/register-with-key", p.registerStudentWithKey)
-	mux.HandleFunc("POST /api/auth/student/lookup-by-key", p.lookupStudentByKey)
+	// Bug #27 fix: rate-limit estricto, bucket separado del global. Si
+	// p.rdb es nil (dev sin redis) cae a noop — sigue funcionando.
+	lookupMw := middleware.RateLimitNamed(p.rdb, lookupRateLimitPerMinute, "lookup")
+	mux.Handle("POST /api/auth/student/lookup-by-key", lookupMw(http.HandlerFunc(p.lookupStudentByKey)))
 }
 
 // lookupStudentByKey — chequeo previo del flujo /test/{simulacro|vocacional|eda}/acceso.
