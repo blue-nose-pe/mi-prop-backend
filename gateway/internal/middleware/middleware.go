@@ -103,7 +103,13 @@ func CORS(allowed []string) Middleware {
 			}
 			if r.Method == http.MethodOptions {
 				w.Header().Set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-Correlation-Id")
+				// BUG #34 fix: el interceptor del front agrega `x-auth-retry`
+				// para marcar requests que ya pasaron por refresh (anti-loop
+				// infinito). Sin agregarlo aca el browser bloquea el preflight
+				// y nada con ese header llega al gateway — el sintoma era que
+				// /api/users/me/change-password fallaba con ERR_FAILED en
+				// CORS y el front no podia cambiar la pass.
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization,Content-Type,X-Correlation-Id,X-Auth-Retry")
 				w.Header().Set("Access-Control-Expose-Headers", "X-Correlation-Id")
 				w.WriteHeader(http.StatusNoContent)
 				return
