@@ -23,7 +23,11 @@ func NewQuestionHandler(cmds ports.QuestionCommands, qrys ports.QuestionQueries)
 }
 
 func (h *QuestionHandler) CreateQuestion(ctx context.Context, req *pb.CreateQuestionRequest) (*pb.QuestionResponse, error) {
-	q, err := h.cmds.Create(ctx, ports.CreateQuestionInput{Text: req.GetText(), Category: req.GetCategory()})
+	q, err := h.cmds.Create(ctx, ports.CreateQuestionInput{
+		Text:     req.GetText(),
+		Category: req.GetCategory(),
+		Kind:     req.GetKind(),
+	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}
@@ -35,6 +39,7 @@ func (h *QuestionHandler) UpdateQuestion(ctx context.Context, req *pb.UpdateQues
 		ID:       domain.QuestionID(req.GetId()),
 		Text:     req.GetText(),
 		Category: req.GetCategory(),
+		Kind:     req.GetKind(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

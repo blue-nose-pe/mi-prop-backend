@@ -244,6 +244,7 @@ func (p *Proxy) searchExams(w http.ResponseWriter, r *http.Request) {
 type createQuestionRequest struct {
 	Text     string `json:"text"`
 	Category string `json:"category"`
+	Kind     string `json:"kind"`
 }
 
 func (p *Proxy) createQuestion(w http.ResponseWriter, r *http.Request) {
@@ -255,6 +256,7 @@ func (p *Proxy) createQuestion(w http.ResponseWriter, r *http.Request) {
 	resp, err := p.cli.Questions.CreateQuestion(r.Context(), &examsgrpcpb.CreateQuestionRequest{
 		Text:     in.Text,
 		Category: in.Category,
+		Kind:     in.Kind,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -275,6 +277,7 @@ func (p *Proxy) getQuestion(w http.ResponseWriter, r *http.Request) {
 type updateQuestionRequest struct {
 	Text     string `json:"text"`
 	Category string `json:"category"`
+	Kind     string `json:"kind"`
 }
 
 func (p *Proxy) updateQuestion(w http.ResponseWriter, r *http.Request) {
@@ -287,6 +290,7 @@ func (p *Proxy) updateQuestion(w http.ResponseWriter, r *http.Request) {
 		Id:       r.PathValue("id"),
 		Text:     in.Text,
 		Category: in.Category,
+		Kind:     in.Kind,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -661,6 +665,7 @@ func (p *Proxy) listAttemptAnswers(w http.ResponseWriter, r *http.Request) {
 			"question_id":       a.GetQuestionId(),
 			"question_text":     a.GetQuestionText(),
 			"question_category": a.GetQuestionCategory(),
+			"question_kind":     a.GetQuestionKind(),
 			"option_id":         a.GetOptionId(),
 			"option_text":       a.GetOptionText(),
 			"option_sort_order": a.GetOptionSortOrder(),
@@ -727,6 +732,7 @@ func protoQuestionToJSON(q *examsgrpcpb.Question) map[string]any {
 		"id":         q.GetId(),
 		"text":       q.GetText(),
 		"category":   q.GetCategory(),
+		"kind":       q.GetKind(),
 		"active":     q.GetActive(),
 		"created_at": optionalTimestamp(q.GetCreatedAt()),
 		"updated_at": optionalTimestamp(q.GetUpdatedAt()),

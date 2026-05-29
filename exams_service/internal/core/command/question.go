@@ -24,9 +24,13 @@ func NewQuestionHandler(
 }
 
 func (h *QuestionHandler) Create(ctx context.Context, in ports.CreateQuestionInput) (*domain.Question, error) {
+	if !domain.ValidKind(in.Kind) {
+		return nil, domain.ErrInvalidQuestionKind
+	}
 	q := &domain.Question{
 		Text:     strings.TrimSpace(in.Text),
 		Category: strings.TrimSpace(in.Category),
+		Kind:     domain.NormalizeKind(in.Kind),
 		Active:   true,
 	}
 	id, err := h.questions.Save(ctx, q)
@@ -37,6 +41,9 @@ func (h *QuestionHandler) Create(ctx context.Context, in ports.CreateQuestionInp
 }
 
 func (h *QuestionHandler) Update(ctx context.Context, in ports.UpdateQuestionInput) (*domain.Question, error) {
+	if !domain.ValidKind(in.Kind) {
+		return nil, domain.ErrInvalidQuestionKind
+	}
 	q, err := h.questions.FindByID(ctx, in.ID)
 	if err != nil {
 		return nil, err
@@ -46,6 +53,11 @@ func (h *QuestionHandler) Update(ctx context.Context, in ports.UpdateQuestionInp
 	}
 	if v := strings.TrimSpace(in.Category); v != "" {
 		q.Category = v
+	}
+	// Kind vacio = no cambiar el actual. Solo lo sobreescribimos si el
+	// caller mando algo explicitamente.
+	if in.Kind != "" {
+		q.Kind = domain.NormalizeKind(in.Kind)
 	}
 	if err := h.questions.Update(ctx, q); err != nil {
 		return nil, err

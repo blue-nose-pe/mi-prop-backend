@@ -68,12 +68,17 @@ type QuestionQueries interface {
 type CreateQuestionInput struct {
 	Text     string
 	Category string
+	// Kind opcional. Vacio = SINGLE_CHOICE (back-compat con clientes viejos).
+	// El handler valida con domain.ValidKind antes de persistir.
+	Kind string
 }
 
 type UpdateQuestionInput struct {
 	ID       domain.QuestionID
 	Text     string
 	Category string
+	// Kind opcional. Vacio = no se cambia el kind actual.
+	Kind string
 }
 
 type AddOptionInput struct {

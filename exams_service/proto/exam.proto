@@ -92,6 +92,10 @@ message Question {
   bool   active    = 4;
   google.protobuf.Timestamp created_at = 5;
   google.protobuf.Timestamp updated_at = 6;
+  // SINGLE_CHOICE (default), TRUE_FALSE o SCALE. Lo agrega la migration 012;
+  // requests viejos (kind vacio) se interpretan como SINGLE_CHOICE para
+  // back-compat.
+  string kind      = 7;
 }
 
 message QuestionOption {
@@ -149,8 +153,8 @@ message CloneExamRequest      { string id = 1; }
 message ExamResponse          { Exam exam = 1; }
 
 // ----- Question requests -----
-message CreateQuestionRequest    { string text = 1; string category = 2; }
-message UpdateQuestionRequest    { string id = 1; string text = 2; string category = 3; }
+message CreateQuestionRequest    { string text = 1; string category = 2; string kind = 3; }
+message UpdateQuestionRequest    { string id = 1; string text = 2; string category = 3; string kind = 4; }
 message DeactivateQuestionRequest{ string id = 1; }
 message GetQuestionRequest       { string id = 1; }
 message QuestionResponse         { Question question = 1; }
@@ -221,6 +225,10 @@ message EnrichedAnswer {
   int32  option_sort_order  = 6; // utilizable como peso Likert 0..N
   bool   option_is_correct  = 7;
   google.protobuf.Timestamp answered_at = 8;
+  // SINGLE_CHOICE | TRUE_FALSE | SCALE. Necesario para que el reporting
+  // sepa interpretar el option_sort_order: en SCALE es el peso Likert (1..5),
+  // en SINGLE/TF solo es un orden visual sin semantica de scoring.
+  string question_kind      = 9;
 }
 message ListEnrichedAnswersResponse { repeated EnrichedAnswer items = 1; }
 

@@ -44,11 +44,51 @@ type Exam struct {
 	UpdatedAt       *time.Time
 }
 
+// QuestionKind discrimina cómo el front renderiza la pregunta y cómo el
+// reporting interpreta el option_sort_order.
+//
+//   - QuestionKindSingleChoice — N opciones, 1 is_correct. Score binario.
+//   - QuestionKindTrueFalse    — 2 opciones (V/F). Mismo scoring binario.
+//   - QuestionKindScale        — N opciones "1..N" con sort_order=peso
+//     Likert. Sin is_correct → no contribuye al score, pero reporting puede
+//     promediarlo por question_id.
+//
+// MULTIPLE_CHOICE y OPEN_TEXT NO están modelados aquí: requerirían cambiar
+// el PK de attempt_answer (multi-fila por pregunta) y/o agregar una columna
+// answer_text. Documentar el gap si en algún momento se exponen.
+type QuestionKind string
+
+const (
+	QuestionKindSingleChoice QuestionKind = "SINGLE_CHOICE"
+	QuestionKindTrueFalse    QuestionKind = "TRUE_FALSE"
+	QuestionKindScale        QuestionKind = "SCALE"
+)
+
+// ValidKind retorna true si v es un kind soportado. Vacío también vale (se
+// interpreta como SINGLE_CHOICE para back-compat con requests viejos).
+func ValidKind(v string) bool {
+	switch QuestionKind(v) {
+	case "", QuestionKindSingleChoice, QuestionKindTrueFalse, QuestionKindScale:
+		return true
+	}
+	return false
+}
+
+// NormalizeKind aplica el default SINGLE_CHOICE a kinds vacíos. Asume que
+// el caller ya validó con ValidKind.
+func NormalizeKind(v string) QuestionKind {
+	if v == "" {
+		return QuestionKindSingleChoice
+	}
+	return QuestionKind(v)
+}
+
 // Question vive en el banco (independiente del exam).
 type Question struct {
 	ID        QuestionID
 	Text      string
 	Category  string // útil para Vocacional (matemática, lengua, ...)
+	Kind      QuestionKind
 	Active    bool
 	CreatedAt time.Time
 	UpdatedAt *time.Time
@@ -98,6 +138,7 @@ type EnrichedAnswer struct {
 	QuestionID       QuestionID
 	QuestionText     string
 	QuestionCategory string // p.ej. R/I/A/S/E/C para vocacional (RIASEC)
+	QuestionKind     QuestionKind
 	OptionID         OptionID
 	OptionText       string
 	OptionSortOrder  int32 // usable como peso Likert (Nada=0..Mucho=3)

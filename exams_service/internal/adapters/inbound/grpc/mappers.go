@@ -40,6 +40,7 @@ func toProtoQuestion(q *domain.Question) *pb.Question {
 		Id:        string(q.ID),
 		Text:      q.Text,
 		Category:  q.Category,
+		Kind:      string(domain.NormalizeKind(string(q.Kind))),
 		Active:    q.Active,
 		CreatedAt: timestamppb.New(q.CreatedAt),
 	}

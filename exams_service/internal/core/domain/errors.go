@@ -22,6 +22,7 @@ var (
 	ErrEmptyExamName    = apperr.NewValidation("EXAM_NAME_REQUIRED", "exam name is required", "name")
 	ErrNoCorrectOption  = apperr.NewValidation("NO_CORRECT_OPTION", "question must have at least one correct option", "options")
 	ErrInvalidReorder   = apperr.NewValidation("INVALID_REORDER", "reorder list must contain exactly the same question_ids that the exam has, with no duplicates", "question_ids")
+	ErrInvalidQuestionKind = apperr.NewValidation("INVALID_QUESTION_KIND", "question kind must be one of SINGLE_CHOICE, TRUE_FALSE, SCALE", "kind")
 
 	// Business
 	ErrExamClosed         = apperr.NewPermissionDenied("EXAM_CLOSED", "exam is not currently open for attempts")

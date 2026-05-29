@@ -222,6 +222,7 @@ func (h *AttemptHandler) ListEnrichedAnswers(ctx context.Context, req *pb.ListEn
 			QuestionId:       string(a.QuestionID),
 			QuestionText:     a.QuestionText,
 			QuestionCategory: a.QuestionCategory,
+			QuestionKind:     string(domain.NormalizeKind(string(a.QuestionKind))),
 			OptionId:         string(a.OptionID),
 			OptionText:       a.OptionText,
 			OptionSortOrder:  a.OptionSortOrder,

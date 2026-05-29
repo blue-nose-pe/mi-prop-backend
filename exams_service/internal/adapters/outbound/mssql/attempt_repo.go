@@ -185,6 +185,7 @@ func (r *AttemptRepo) ListEnrichedAnswers(ctx context.Context, attemptID domain.
 		SELECT CONVERT(NVARCHAR(36), aa.question_id),
 		       q.text,
 		       ISNULL(q.category, ''),
+		       q.kind,
 		       CONVERT(NVARCHAR(36), aa.question_option_id),
 		       qo.text,
 		       qo.sort_order,
@@ -206,16 +207,18 @@ func (r *AttemptRepo) ListEnrichedAnswers(ctx context.Context, attemptID domain.
 		var (
 			a          domain.EnrichedAnswer
 			questionID string
+			kindStr    string
 			optionID   string
 		)
 		if err := rows.Scan(
-			&questionID, &a.QuestionText, &a.QuestionCategory,
+			&questionID, &a.QuestionText, &a.QuestionCategory, &kindStr,
 			&optionID, &a.OptionText, &a.OptionSortOrder, &a.OptionIsCorrect,
 			&a.AnsweredAt,
 		); err != nil {
 			return nil, err
 		}
 		a.QuestionID = domain.QuestionID(questionID)
+		a.QuestionKind = domain.QuestionKind(kindStr)
 		a.OptionID = domain.OptionID(optionID)
 		out = append(out, a)
 	}
