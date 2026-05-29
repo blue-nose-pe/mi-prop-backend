@@ -166,16 +166,38 @@ GET    /api/users/{id}/permissions             ← codes efectivos del usuario
 
 ### Defensa en profundidad: route guards + rate limits específicos
 
+**Filosofía de autorización**: **ningún endpoint es "superadmin-only" en
+sentido fuerte**. Todos los gates son permission-based vía
+`hasPermission(r, "<code>")`, que internamente bypasea para superadmin.
+Así UCSP puede dar a cualquier rol custom el acceso a cualquier
+recurso simplemente armando un `permission_group` con los codes
+correspondientes — sin pedirnos cambios de código. Las únicas
+excepciones son distinciones operacionales internas (ej. "el caller
+debe ser el propio dueño de este attempt") que no son privilegios
+sino reglas de negocio.
+
 **Gateway** (Go) aplica varias capas además del JWT:
 
-- `permissionGuard()` por endpoint: cada handler de `/api/...` valida el
-  permiso atómico que corresponde (por ej. `db_users.users.write` antes
-  de aceptar `POST /api/users`).
-- **Scope checks por dueño**: endpoints como
-  `/api/analytics/asesor/{id}/dashboard` usan `enforceAsesorScope()`
-  para que un asesor solo vea SU dashboard (otro asesor → `403`). Vistas
-  agregadas globales (`/api/analytics/comparativo`,
-  `/api/analytics/colegios/historico`) son `superadmin`-only.
+- **Permission gates por endpoint** (`hasPermission(r, "<code>")`):
+  cada handler sensible de `/api/...` valida el permiso atómico que
+  corresponde. Ejemplos:
+  - `/api/analytics/comparativo`, `/api/analytics/colegios/historico`,
+    `/api/analytics/dashboard` → `analytics.dashboard.read`
+  - `/api/analytics/comparativo/export.xlsx` → `analytics.export.write`
+  - `/api/exams/{id}/attempts` (list all attempts of an exam) →
+    `db_exams.exam_attempt.read`
+  - `/api/keys/resync-all` → `db_keys.key.write`
+- **Self-scope + permission fallback**: endpoints como
+  `/api/analytics/asesor/{id}/dashboard` aceptan al asesor dueño SIN
+  permiso extra (self-service); para ver el dashboard de OTRO asesor
+  hace falta `analytics.dashboard.read`. Lo mismo para attempts
+  (`/api/attempts/{id}` requiere `db_exams.exam_attempt.read` si no
+  sos el dueño).
+- **Scope por colegio asignado**: endpoints como
+  `/api/analytics/colegio/{id}/dashboard` o
+  `POST /api/users/students` validan que el `school_id` esté en la
+  lista de colegios asignados al asesor caller (vía
+  `enforceColegioScope` / `ListSchoolsByAsesor`).
 - **Rate limit global**: 600 req/min/IP (Redis sliding window), bucket
   `rl:ip:`.
 - **Rate limit estricto en endpoints públicos sensibles**:
@@ -183,6 +205,15 @@ GET    /api/users/{id}/permissions             ← codes efectivos del usuario
   `RateLimitNamed(rdb, 30, "lookup")` con bucket independiente
   (`rl:lookup:`) — anti-enumeration: 30 req/min/IP, 6× lo que un
   estudiante real necesita.
+
+**El superadmin como bypass, no como gate**: el flag
+`users.is_superadmin = 1` hace que `hasPermission(r, anything)`
+devuelva `true` siempre. Es un atajo operacional para el primer
+install (no hay que crear el permission_group antes de poder usar la
+app) y para recovery (siempre hay una vía para destrabar el sistema).
+En operación normal UCSP debería trabajar con un user no-superadmin
+que tenga `admin_permissions` (o un grupo similar) — el superadmin
+queda como "break glass".
 
 **Front Angular** (`ucsp-front/src/app/app.routes.ts`) aplica
 `permissionGuard('<code>')` a cada ruta de `/app/*` para que un user sin

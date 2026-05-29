@@ -494,18 +494,20 @@ func (p *Proxy) startAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	effectiveUserID := callerID
-	if isSuperadminContext(r) && in.UserID != "" {
-		// Superadmin puede arrancar attempt en nombre de un alumno (caso
-		// admin que ayuda en sesion presencial). Pasa el user_id del body.
+	if in.UserID != "" && in.UserID != callerID {
+		// El caller esta intentando iniciar un attempt en nombre de OTRO
+		// user. Hace falta db_exams.exam_attempt.write — caso: proctor o
+		// asesor asistiendo a un estudiante en presencial. Superadmin
+		// pasa por hasPermission.
+		if !hasPermission(r, "db_exams.exam_attempt.write") {
+			writeJSON(w, http.StatusForbidden, errorBody{
+				Status:  "error",
+				Code:    "PERMISSION_DENIED",
+				Message: "no tienes permiso para iniciar attempts en nombre de otro user",
+			})
+			return
+		}
 		effectiveUserID = in.UserID
-	} else if in.UserID != "" && in.UserID != callerID {
-		// User comun mandando user_id distinto al suyo: bloqueamos.
-		writeJSON(w, http.StatusForbidden, errorBody{
-			Status:  "error",
-			Code:    "FORBIDDEN",
-			Message: "cannot start attempt on behalf of another user",
-		})
-		return
 	}
 	resp, err := p.cli.Attempts.StartAttempt(r.Context(), &examsgrpcpb.StartAttemptRequest{
 		ExamId:  in.ExamID,
@@ -527,15 +529,14 @@ func (p *Proxy) getAttempt(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	// Bug 1 fix: ownership del attempt. Permitimos solo si:
-	//   - el caller es el dueño del attempt, o
-	//   - el caller es superadmin
-	// Asesores/coordinadores podran ver attempts de sus alumnos via los
-	// endpoints de analytics (que ya tienen sus propios scopes).
+	// Ownership del attempt: el dueno SIEMPRE puede verlo (self-service).
+	// Para ver el attempt de OTRO user hace falta db_exams.exam_attempt.read
+	// (superadmin bypasea automatico). UCSP asigna ese permiso a asesores
+	// / coordinadores que necesiten revisar attempts de sus alumnos.
 	att := resp.GetAttempt()
-	if att != nil && att.GetUserId() != userIDFromContext(r) && !isSuperadminContext(r) {
+	if att != nil && att.GetUserId() != userIDFromContext(r) && !hasPermission(r, "db_exams.exam_attempt.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "attempt belongs to another user",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a este attempt",
 		})
 		return
 	}
@@ -591,9 +592,11 @@ func (p *Proxy) finishAttempt(w http.ResponseWriter, r *http.Request) {
 
 // callerOwnsAttempt resuelve el ownership del attempt en el path.
 // Lookup adicional al exams-service, costo aceptable porque attemptId
-// no es enumerable. Devuelve true tambien para superadmin.
+// no es enumerable. Devuelve true tambien para superadmin y para users
+// con db_exams.exam_attempt.write (que permite operar sobre attempts ajenos
+// — caso un proctor o asesor asistiendo a un estudiante en presencial).
 func (p *Proxy) callerOwnsAttempt(r *http.Request) bool {
-	if isSuperadminContext(r) {
+	if hasPermission(r, "db_exams.exam_attempt.write") {
 		return true
 	}
 	caller := userIDFromContext(r)
@@ -610,14 +613,12 @@ func (p *Proxy) callerOwnsAttempt(r *http.Request) bool {
 }
 
 func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {
-	// Bug 1 fix: solo self o superadmin pueden listar attempts de un user.
-	// Staff (asesor/coordinador) que necesite ver historial de sus alumnos
-	// tiene que usar los endpoints de analytics, que tienen scope por
-	// colegio asignado.
+	// Self-scope por defecto: cualquier user ve sus propios attempts.
+	// Para listar attempts de OTRO user hace falta db_exams.exam_attempt.read.
 	targetID := r.PathValue("id")
-	if targetID != userIDFromContext(r) && !isSuperadminContext(r) {
+	if targetID != userIDFromContext(r) && !hasPermission(r, "db_exams.exam_attempt.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "cannot list attempts of another user",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a los attempts de este user",
 		})
 		return
 	}
@@ -671,14 +672,12 @@ func (p *Proxy) listAttemptAnswers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) listAttemptsByExam(w http.ResponseWriter, r *http.Request) {
-	// Bug 1 fix: este endpoint listaba TODOS los attempts de un exam,
-	// exponiendo nombres y scores de estudiantes de colegios donde el
-	// caller no tiene jurisdiccion. Politica conservadora: solo superadmin.
-	// Asesores que necesiten ver sus alumnos pasan por
-	// /api/analytics/asesor/{id}/dashboard que ya filtra por su scope.
-	if !isSuperadminContext(r) {
+	// Este endpoint lista TODOS los attempts de un exam, exponiendo
+	// nombres y scores. Permission gate: db_exams.exam_attempt.read.
+	// UCSP define quien tiene ese permiso via permission_group.
+	if !hasPermission(r, "db_exams.exam_attempt.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "only superadmin can list all attempts of an exam",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_exams.exam_attempt.read",
 		})
 		return
 	}

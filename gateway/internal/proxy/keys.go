@@ -180,9 +180,12 @@ type hubspotKeyIDs struct {
 // codigo — re-correrlo en una key ya sincronizada solo refresca props,
 // no crea duplicados.
 func (p *Proxy) resyncAllKeys(w http.ResponseWriter, r *http.Request) {
-	if !isSuperadminContext(r) {
+	// Operacion de mantenimiento: re-sincroniza TODAS las keys hacia
+	// HubSpot. Permission gate: db_keys.key.write (puede modificar keys).
+	// UCSP asigna ese permiso al equipo que opera la sync.
+	if !hasPermission(r, "db_keys.key.write") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "only superadmin can resync all keys",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write",
 		})
 		return
 	}

@@ -133,8 +133,10 @@ func userIDFromContext(r *http.Request) string {
 }
 
 // isSuperadminContext devuelve true si los claims del request incluyen
-// el rol "superadmin". Cualquier otro usuario debe restringirse a los
-// recursos cuyo asesor_user_id coincide con su Subject.
+// el rol "superadmin". Casi nunca se debe usar como GATE directo —
+// preferir hasPermission(r, "<code>") que ya bypasea para superadmin.
+// Sigue util internamente para distinciones legitimas (ej. let admin
+// actuar en nombre de otro user al iniciar un attempt).
 func isSuperadminContext(r *http.Request) bool {
 	c := middleware.ClaimsFromContext(r.Context())
 	if c == nil {
@@ -142,6 +144,36 @@ func isSuperadminContext(r *http.Request) bool {
 	}
 	for _, role := range c.Roles {
 		if role == "superadmin" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasPermission devuelve true si el caller tiene el permission code
+// indicado en sus claims, O si es superadmin (bypass automatico).
+//
+// Esta es la forma CANONICA de gatear un endpoint. La filosofia del
+// sistema es que NADA es exclusivo del superadmin: si UCSP quiere darle
+// a un asesor de confianza la posibilidad de ver el comparativo global,
+// crea un permission_group con `analytics.dashboard.read` y se lo asigna.
+// El superadmin solo es un atajo operacional para no tener que crear el
+// grupo al primer install.
+//
+// Las unicas excepciones son las distinciones operacionales internas
+// (ej. "iniciar attempt en nombre de otro user") donde el comportamiento
+// difiere entre superadmin y user comun — eso sigue usando
+// isSuperadminContext directamente.
+func hasPermission(r *http.Request, code string) bool {
+	if isSuperadminContext(r) {
+		return true
+	}
+	c := middleware.ClaimsFromContext(r.Context())
+	if c == nil {
+		return false
+	}
+	for _, p := range c.Permissions {
+		if p == code {
 			return true
 		}
 	}

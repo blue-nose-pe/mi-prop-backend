@@ -583,22 +583,34 @@ info:
     cross-asesor (`/api/analytics/comparativo`).
 
     **Reglas de scope en analytics** (todas validadas en el gateway,
-    devolviendo `403 FORBIDDEN` en vez de filtrar la query):
+    devolviendo `403 PERMISSION_DENIED` en vez de filtrar la query):
 
-    - `/api/analytics/asesor/{id}/dashboard`,
-      `/api/analytics/asesor/{id}/pendientes`,
-      `/api/analytics/asesor/{id}/export.xlsx` →
-      solo el asesor dueño o un superadmin. Otro asesor recibe `403`.
-    - `/api/analytics/colegio/{id}/...` →
-      asesor o coordinador con el colegio asignado, o superadmin.
-    - `/api/analytics/estudiante/{id}/...` →
-      el propio estudiante (self-scope) o superadmin.
-    - `/api/analytics/comparativo`,
-      `/api/analytics/colegios/historico`,
-      `/api/analytics/comparativo/export.xlsx`,
-      `/api/analytics/dashboard` (global) →
-      **superadmin-only** (vistas agregadas de TODOS los colegios; un
-      asesor no debería ver scores de colegios fuera de su zona).
+    Ningún endpoint es "superadmin-only" en sentido fuerte. Todos
+    usan `hasPermission(r, "<code>")` que **bypasea para superadmin**;
+    UCSP define qué grupo de permisos ve qué cosa:
+
+    - **Self-scope + permission fallback**:
+      - `/api/analytics/asesor/{id}/dashboard`,
+        `/api/analytics/asesor/{id}/pendientes` —
+        el asesor dueño SIEMPRE puede verse a sí mismo. Para ver el
+        de OTRO asesor hace falta `analytics.dashboard.read`.
+      - `/api/analytics/asesor/{id}/export.xlsx` —
+        igual pero el permiso para "otro" es
+        `analytics.export.write` (= "puede generar XLSX").
+    - **Permission-gated** (cualquier user con el code puede entrar):
+      - `/api/analytics/comparativo`,
+        `/api/analytics/colegios/historico`,
+        `/api/analytics/dashboard` (vista global) →
+        `analytics.dashboard.read`.
+      - `/api/analytics/comparativo/export.xlsx` →
+        `analytics.export.write`.
+    - **Scope por colegio asignado**:
+      - `/api/analytics/colegio/{id}/...` →
+        asesor o coordinador con el colegio asignado, o cualquier user
+        con `analytics.dashboard.read`.
+      - `/api/analytics/estudiante/{id}/...` →
+        el propio estudiante (self-scope) o user con
+        `analytics.dashboard.read`.
 
     ### Flujo 8 — Sync HubSpot
 
@@ -5351,9 +5363,9 @@ paths:
           en la pantalla principal.
         - `by_exam_type`: stats por tipo de examen (puede traer 0..N entradas).
 
-        Permiso requerido: el asesor dueño del `{id}` o superadmin. Otro
-        usuario autenticado (otro asesor, coordinador, estudiante) recibe
-        `403 FORBIDDEN`.
+        Permiso requerido: **el asesor dueño** del `{id}` (self-scope, sin
+        permiso extra) **o cualquier user con `analytics.dashboard.read`**
+        (incluye superadmin como bypass). Sin eso → `403 PERMISSION_DENIED`.
       responses:
         '200':
           description: Dashboard
@@ -5381,11 +5393,11 @@ paths:
                     avg_max_score: 100.0
                 generated_at: "2026-05-09T16:00:00Z"
         '403':
-          description: El caller no es el asesor dueño ni un superadmin.
+          description: El caller no es el asesor dueño ni tiene `analytics.dashboard.read`.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
-              example: { status: "error", code: "FORBIDDEN", message: "no access to this asesor" }
+              example: { status: "error", code: "PERMISSION_DENIED", message: "no tienes acceso a este asesor" }
 
   /api/analytics/colegio/{id}/dashboard:
     parameters: [{ $ref: '#/components/parameters/SchoolID' }]
@@ -5520,8 +5532,10 @@ paths:
         Este endpoint sirve directamente la grilla **Histórico de Colegio**
         del dashboard de admin.
 
-        Permiso requerido: **superadmin** (vista agregada de TODOS los
-        colegios). Un asesor o coordinador autenticado recibe `403`.
+        Permiso requerido: **`analytics.dashboard.read`** (superadmin
+        bypasea). UCSP decide qué grupos lo tienen — por default los
+        cuatro grupos canónicos `admin`, `asesor` y `coordinador` lo
+        incluyen; un grupo custom puede o no.
       parameters:
         - in: query
           name: period
@@ -5558,8 +5572,9 @@ paths:
         promedio (`avg_score`) y cantidad de attempts. Útil para la pantalla
         de gerencia UCSP que compara desempeño entre instituciones.
 
-        Permiso requerido: **superadmin**. Como agrega data de TODOS los
-        colegios, un asesor o coordinador autenticado recibe `403`.
+        Permiso requerido: **`analytics.dashboard.read`** (superadmin
+        bypasea). Como agrega data de TODOS los colegios, conviene
+        restringirlo a los roles administrativos vía el `permission_group`.
       parameters:
         - in: query
           name: exam_type_code
@@ -5595,11 +5610,11 @@ paths:
                 message: "exam_type_code query param is required"
                 category: "VALIDATION_ERROR"
         '403':
-          description: El caller no es superadmin.
+          description: El caller no tiene `analytics.dashboard.read`.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/ErrorResponse' }
-              example: { status: "error", code: "FORBIDDEN", message: "solo superadmin puede ver el comparativo global" }
+              example: { status: "error", code: "PERMISSION_DENIED", message: "no tienes permiso analytics.dashboard.read" }
 
   /api/analytics/asesor/{id}/pendientes:
     parameters: [{ $ref: '#/components/parameters/UserID' }]

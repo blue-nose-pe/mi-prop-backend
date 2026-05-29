@@ -54,15 +54,17 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 // Shape: misma estructura que AsesorDashboardResponse pero con totales
 // globales, sin asesor_id/asesor_name (en su lugar lleva total_asesores).
 func (p *Proxy) getGlobalDashboard(w http.ResponseWriter, r *http.Request) {
-	// Bug 2 fix: gating superadmin. El dashboard global lista TODOS los
-	// asesores con sus metricas, datos sensibles del equipo entero de UCSP.
-	// Antes cualquier user autenticado (incluidos estudiantes) podia
-	// invocarlo y obtener nombres + emails + scores de todo el staff.
-	if !isSuperadminContext(r) {
+	// Permission gate: el dashboard global lista TODOS los asesores con
+	// sus metricas. Cualquier user con analytics.dashboard.read puede
+	// verlo (superadmin bypasea por hasPermission). UCSP define quien
+	// tiene ese permiso via permission_group. No es un endpoint
+	// "superadmin-only" — es un endpoint sensible cuyo acceso se
+	// gestiona como cualquier otro recurso del sistema.
+	if !hasPermission(r, "analytics.dashboard.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
 			Status:  "error",
-			Code:    "FORBIDDEN",
-			Message: "Solo superadmin puede ver el dashboard global.",
+			Code:    "PERMISSION_DENIED",
+			Message: "no tienes permiso analytics.dashboard.read",
 		})
 		return
 	}
@@ -155,19 +157,25 @@ func (p *Proxy) getGlobalDashboard(w http.ResponseWriter, r *http.Request) {
 // ---------- Dashboards ----------
 
 func (p *Proxy) getAsesorDashboard(w http.ResponseWriter, r *http.Request) {
-	// Bug #22 fix: scope check antes de invocar analytics_service. Antes,
-	// llamar al endpoint sin permission o como otro asesor terminaba en
-	// HTTP 500 (analytics_service explotaba al no encontrar data del
-	// caller — gRPC Internal). Ahora devolvemos 403 limpio.
-	asesorID := enforceAsesorScope(r, r.PathValue("id"))
-	if asesorID == "" || (asesorID != r.PathValue("id") && !isSuperadminContext(r)) {
+	// Scope check: el asesor dueno SIEMPRE puede ver su propio dashboard
+	// sin necesidad de un permiso extra. Para ver el de OTRO asesor hace
+	// falta analytics.dashboard.read (y superadmin bypasea por hasPermission).
+	targetID := r.PathValue("id")
+	callerID := userIDFromContext(r)
+	if targetID == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "VALIDATION_ERROR", Message: "id de asesor es requerido",
+		})
+		return
+	}
+	if targetID != callerID && !hasPermission(r, "analytics.dashboard.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "no access to this asesor",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a este asesor",
 		})
 		return
 	}
 	resp, err := p.cli.Analytics.GetAsesorDashboard(r.Context(), &analyticsgrpcpb.GetAsesorDashboardRequest{
-		AsesorId: asesorID,
+		AsesorId: targetID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -237,13 +245,13 @@ func (p *Proxy) getEstudianteDashboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getComparativo(w http.ResponseWriter, r *http.Request) {
-	// Bug #22 fix: comparativo global = data agregada de TODOS los colegios.
-	// Es vista superadmin (sale del menu Reporteria del admin). Asesores y
-	// coordinadores no deberian poder llamarlo directo. Antes el endpoint
-	// pasaba sin check y analytics_service tiraba 500 en algunos casos.
-	if !isSuperadminContext(r) {
+	// Permission gate: comparativo agrega data de TODOS los colegios. UCSP
+	// asigna analytics.dashboard.read a los users que deban verlo
+	// (default: solo superadmin; UCSP puede extender al equipo de
+	// gerencia con un permission_group custom).
+	if !hasPermission(r, "analytics.dashboard.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "solo superadmin puede ver el comparativo global",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso analytics.dashboard.read",
 		})
 		return
 	}
@@ -346,15 +354,22 @@ func (p *Proxy) getColegioHistorico(w http.ResponseWriter, r *http.Request) {
 // Lista tests publicados+activos que estudiantes de los colegios del
 // asesor todavia no han rendido.
 func (p *Proxy) getAsesorPendientes(w http.ResponseWriter, r *http.Request) {
-	asesorID := enforceAsesorScope(r, r.PathValue("id"))
-	if asesorID == "" || (asesorID != r.PathValue("id") && !isSuperadminContext(r)) {
+	targetID := r.PathValue("id")
+	callerID := userIDFromContext(r)
+	if targetID == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "VALIDATION_ERROR", Message: "id de asesor es requerido",
+		})
+		return
+	}
+	if targetID != callerID && !hasPermission(r, "analytics.dashboard.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "no access to this asesor",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a este asesor",
 		})
 		return
 	}
 	resp, err := p.cli.Analytics.GetAsesorPendientes(r.Context(), &analyticsgrpcpb.GetAsesorPendientesRequest{
-		AsesorId: asesorID,
+		AsesorId: targetID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -473,11 +488,11 @@ func (p *Proxy) getReporteEstudiante(w http.ResponseWriter, r *http.Request) {
 //   - period (opcional, "" o "current" = quarter actual; sino "YYYY-QN")
 //   - exam_type_code (opcional)
 func (p *Proxy) getColegiosHistorico(w http.ResponseWriter, r *http.Request) {
-	// Bug #22 fix: vista historica global de TODOS los colegios — superadmin only.
-	// Mismo razonamiento que getComparativo.
-	if !isSuperadminContext(r) {
+	// Permission gate: vista historica global de TODOS los colegios.
+	// Cualquier user con analytics.dashboard.read puede verlo.
+	if !hasPermission(r, "analytics.dashboard.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "solo superadmin puede ver el historico global de colegios",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso analytics.dashboard.read",
 		})
 		return
 	}
@@ -514,15 +529,25 @@ func (p *Proxy) getColegiosHistorico(w http.ResponseWriter, r *http.Request) {
 // ---------- Exports XLSX (binarios) ----------
 
 func (p *Proxy) exportAsesorXLSX(w http.ResponseWriter, r *http.Request) {
-	asesorID := enforceAsesorScope(r, r.PathValue("id"))
-	if asesorID != r.PathValue("id") && !isSuperadminContext(r) {
+	// El asesor dueno puede exportar SU propio reporte sin necesidad de
+	// analytics.export.write (uso self-service). Para exportar el de OTRO
+	// asesor hace falta analytics.export.write (= "puede generar XLSX").
+	targetID := r.PathValue("id")
+	callerID := userIDFromContext(r)
+	if targetID == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "VALIDATION_ERROR", Message: "id de asesor es requerido",
+		})
+		return
+	}
+	if targetID != callerID && !hasPermission(r, "analytics.export.write") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "no access to this asesor",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a este asesor",
 		})
 		return
 	}
 	resp, err := p.cli.Analytics.ExportAsesorXLSX(r.Context(), &analyticsgrpcpb.ExportAsesorXLSXRequest{
-		AsesorId: asesorID,
+		AsesorId: targetID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -550,10 +575,11 @@ func (p *Proxy) exportColegioXLSX(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) exportComparativoXLSX(w http.ResponseWriter, r *http.Request) {
-	// Bug #22 fix: export del comparativo = mismo dato global. Superadmin only.
-	if !isSuperadminContext(r) {
+	// Export del comparativo global. Cualquier user con
+	// analytics.export.write puede generarlo.
+	if !hasPermission(r, "analytics.export.write") {
 		writeJSON(w, http.StatusForbidden, errorBody{
-			Status: "error", Code: "FORBIDDEN", Message: "solo superadmin puede exportar el comparativo global",
+			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso analytics.export.write",
 		})
 		return
 	}
