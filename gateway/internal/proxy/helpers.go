@@ -132,6 +132,18 @@ func userIDFromContext(r *http.Request) string {
 	return c.Subject
 }
 
+// schoolIDFromContext recupera el school_id del JWT del caller. Lo usa
+// enforceColegioScope para reconocer cuentas del rol Colegio que acceden
+// a su propio portal. Devuelve "" si el user no tiene school_id atado
+// (asesores/admins/superadmin no lo necesitan).
+func schoolIDFromContext(r *http.Request) string {
+	c := middleware.ClaimsFromContext(r.Context())
+	if c == nil {
+		return ""
+	}
+	return c.SchoolID
+}
+
 // isSuperadminContext devuelve true si los claims del request incluyen
 // el rol "superadmin". Casi nunca se debe usar como GATE directo —
 // preferir hasPermission(r, "<code>") que ya bypasea para superadmin.
@@ -244,6 +256,8 @@ func (p *Proxy) callerOwnsKeyOrSuperadmin(r *http.Request, keyID string) bool {
 // enforceColegioScope devuelve true si el caller puede ver/modificar
 // recursos del colegio target. Politica:
 //   - superadmin: cualquier colegio
+//   - user con school_id propio == target (cuenta del rol Colegio que
+//     accede al portal de su propio colegio)
 //   - cualquier user autenticado con assignment vigente al colegio (sea
 //     asesor o coordinador). Llama users-service.ListSchoolsByAsesor del
 //     caller y chequea inclusion.
@@ -259,6 +273,10 @@ func (p *Proxy) enforceColegioScope(r *http.Request, targetSchoolID string) bool
 	caller := userIDFromContext(r)
 	if caller == "" || targetSchoolID == "" {
 		return false
+	}
+	// Cuenta del rol Colegio: el school_id del JWT == target.
+	if callerSchoolID := schoolIDFromContext(r); callerSchoolID != "" && callerSchoolID == targetSchoolID {
+		return true
 	}
 	resp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{
 		AsesorId: caller,

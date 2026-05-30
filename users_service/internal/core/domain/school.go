@@ -15,7 +15,15 @@ type School struct {
 	UserID          UserID // usuario que representa al colegio
 	Name            string
 	City            string // ciudad/distrito del colegio. "" = sin definir.
-	Category        string // tag UCSP: A+, A, B, C, D o "" si no clasificado.
+	Category        string // Segmento UCSP: A1/A2/B1/B2/C/OP/OR (o legacy
+	                        // A+/A/B/C/D para data pre-2026). "" si no
+	                        // clasificado todavia.
+	// Cliente: codigo modular MINEDU. Obligatorio y unico (constraint
+	// ux_school_code filtered index, permite NULL durante backfill).
+	Code            string
+	// Cliente: nivel de penetracion del producto en el colegio. Editable
+	// solo post-creacion. Valores: "Alta" / "Media" / "Baja" / "".
+	Penetration     string
 	Active          bool
 	CreatedAt       time.Time
 	UpdatedAt       *time.Time

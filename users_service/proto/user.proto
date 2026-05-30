@@ -169,7 +169,9 @@ message CreateSchoolRequest {
   string user_id           = 2;  // user_id del coordinador owner (obligatorio)
   string hubspot_record_id = 3;  // opcional, "" si todavia no se sincronizo
   string city              = 4;  // opcional, ciudad/distrito del colegio
-  string category          = 5;  // opcional, tag UCSP: A+, A, B, C, D
+  string category          = 5;  // Segmento UCSP: A1/A2/B1/B2/C/OP/OR (o legacy A+/A/B/C/D)
+  string code              = 6;  // Codigo modular MINEDU (unico cuando no vacio)
+  string penetration       = 7;  // Alta/Media/Baja, opcional
 }
 message UpdateSchoolRequest {
   string id                = 1;
@@ -178,6 +180,8 @@ message UpdateSchoolRequest {
   string hubspot_record_id = 4;  // "" = no tocar
   string city              = 5;  // "" = no tocar; "-" = limpiar (NULL)
   string category          = 6;  // "" = no tocar; "-" = limpiar (NULL)
+  string code              = 7;  // "" = no tocar; "-" = limpiar (NULL)
+  string penetration       = 8;  // "" = no tocar; "-" = limpiar (NULL)
 }
 
 message School {
@@ -189,12 +193,14 @@ message School {
   google.protobuf.Timestamp updated_at = 6;
   string hubspot_record_id = 7;
   string city              = 8;
-  string category          = 9;
+  string category          = 9;  // Segmento (A1/A2/B1/B2/C/OP/OR)
   // INT IDENTITY (migration 020). Lo usa la integracion con HubSpot
   // donde la prop custom mi_proposito___id_colegio esta tipada como
   // INTEGER (heredado de P1 que usaba MySQL autoincrement). NUNCA es PK
   // semantica — id (UUID) sigue siendo la PK.
   int32  int_id            = 10;
+  string code              = 11; // Codigo modular MINEDU
+  string penetration       = 12; // Alta/Media/Baja
 }
 
 // AuthService — separado de UserService porque los endpoints de auth

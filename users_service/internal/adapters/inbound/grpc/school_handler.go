@@ -44,13 +44,18 @@ func (h *SchoolHandler) CreateSchool(ctx context.Context, req *pb.CreateSchoolRe
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_USER_ID", "user_id (coordinador owner) is required", "user_id"))
 	}
 	if cat := req.GetCategory(); cat != "" && !isValidSchoolCategory(cat) {
-		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A+, A, B, C, D", "category"))
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A1, A2, B1, B2, C, OP, OR (or legacy A+/A/B/D)", "category"))
+	}
+	if pen := req.GetPenetration(); pen != "" && !isValidPenetration(pen) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_PENETRATION", "penetration must be one of: Alta, Media, Baja", "penetration"))
 	}
 	s := &domain.School{
 		Name:            req.GetName(),
 		UserID:          domain.UserID(req.GetUserId()),
 		City:            req.GetCity(),
 		Category:        req.GetCategory(),
+		Code:            req.GetCode(),
+		Penetration:     req.GetPenetration(),
 		Active:          true,
 		HubspotRecordID: req.GetHubspotRecordId(),
 		CreatedAt:       time.Now(),
@@ -68,7 +73,10 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_ID", "id is required", "id"))
 	}
 	if cat := req.GetCategory(); cat != "" && cat != "-" && !isValidSchoolCategory(cat) {
-		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A+, A, B, C, D", "category"))
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A1, A2, B1, B2, C, OP, OR (or legacy A+/A/B/D)", "category"))
+	}
+	if pen := req.GetPenetration(); pen != "" && pen != "-" && !isValidPenetration(pen) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_PENETRATION", "penetration must be one of: Alta, Media, Baja", "penetration"))
 	}
 	s := &domain.School{
 		ID:              domain.SchoolID(req.GetId()),
@@ -77,6 +85,8 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 		HubspotRecordID: req.GetHubspotRecordId(),
 		City:            req.GetCity(),
 		Category:        req.GetCategory(),
+		Code:            req.GetCode(),
+		Penetration:     req.GetPenetration(),
 	}
 	if err := h.repo.Update(ctx, s); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -178,6 +188,8 @@ func schoolToProto(s *domain.School) *pb.School {
 		Name:            s.Name,
 		City:            s.City,
 		Category:        s.Category,
+		Code:            s.Code,
+		Penetration:     s.Penetration,
 		Active:          s.Active,
 		HubspotRecordId: s.HubspotRecordID,
 		IntId:           s.IntID,
@@ -190,10 +202,25 @@ func schoolToProto(s *domain.School) *pb.School {
 }
 
 // isValidSchoolCategory acepta los valores que el constraint check de la
-// migracion 018 permite. Sincronizar si cambian alli.
+// migracion 023 permite (catalogo cliente 2026 + legacy preservado).
+// Sincronizar si cambian alli.
 func isValidSchoolCategory(c string) bool {
 	switch c {
-	case "A+", "A", "B", "C", "D":
+	// Catalogo nuevo (Segmento) — cliente 2026.
+	case "A1", "A2", "B1", "B2", "C", "OP", "OR":
+		return true
+	// Catalogo legacy preservado durante migracion gradual.
+	case "A+", "A", "B", "D":
+		return true
+	}
+	return false
+}
+
+// isValidPenetration acepta los valores que el constraint check de la
+// migracion 023 permite para school.penetration.
+func isValidPenetration(p string) bool {
+	switch p {
+	case "Alta", "Media", "Baja":
 		return true
 	}
 	return false
