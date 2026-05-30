@@ -125,26 +125,77 @@ func (r *AttemptRepo) list(ctx context.Context, query, arg string) ([]domain.Exa
 	return out, rows.Err()
 }
 
-// UpsertAnswer: idempotente — si ya existía respuesta para esa pregunta,
-// se sobreescribe el option_id (un attempt elige UNA opción por pregunta).
+// UpsertAnswer (legacy SINGLE_CHOICE/TF/SCALE): idempotente — si ya
+// existía respuesta para esa pregunta, se sobreescribe la fila previa.
+// Implementado como DELETE+INSERT para que funcione con el PK nuevo
+// (attempt, question, option_id_pk) que admite multi-fila pero aqui se
+// usa con 1 sola opcion.
 func (r *AttemptRepo) UpsertAnswer(ctx context.Context, ans *domain.AttemptAnswer) error {
-	const q = `
-		MERGE INTO attempt_answer AS target
-		USING (SELECT
-		           CONVERT(UNIQUEIDENTIFIER, @p1) AS exam_attempt_id,
-		           CONVERT(UNIQUEIDENTIFIER, @p2) AS question_id,
-		           CONVERT(UNIQUEIDENTIFIER, @p3) AS question_option_id
-		      ) AS source
-		ON target.exam_attempt_id = source.exam_attempt_id
-		   AND target.question_id = source.question_id
-		WHEN MATCHED THEN
-		    UPDATE SET question_option_id = source.question_option_id,
-		               answered_at = SYSUTCDATETIME()
-		WHEN NOT MATCHED THEN
-		    INSERT (exam_attempt_id, question_id, question_option_id)
-		    VALUES (source.exam_attempt_id, source.question_id, source.question_option_id);`
-	_, err := r.db.ExecContext(ctx, q, string(ans.AttemptID), string(ans.QuestionID), string(ans.OptionID))
-	return err
+	return r.ReplaceAnswer(ctx, ans.AttemptID, ans.QuestionID, []domain.OptionID{ans.OptionID}, "")
+}
+
+// ReplaceAnswer borra todas las filas previas del (attempt, question) y
+// re-inserta:
+//   - SINGLE_CHOICE / TRUE_FALSE / SCALE: 1 fila con question_option_id
+//   - MULTIPLE_CHOICE: N filas, una por option_id en optionIDs
+//   - OPEN_TEXT: 1 fila con question_option_id=NULL y answer_text seteado
+//     (optionIDs queda vacio)
+//
+// Es idempotente — el alumno puede cambiar de respuesta tantas veces como
+// quiera dentro del attempt y el back siempre refleja la ultima eleccion.
+func (r *AttemptRepo) ReplaceAnswer(
+	ctx context.Context,
+	attemptID domain.AttemptID,
+	questionID domain.QuestionID,
+	optionIDs []domain.OptionID,
+	answerText string,
+) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM attempt_answer
+		  WHERE exam_attempt_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		    AND question_id     = CONVERT(UNIQUEIDENTIFIER, @p2)`,
+		string(attemptID), string(questionID),
+	); err != nil {
+		return err
+	}
+
+	if len(optionIDs) == 0 {
+		// OPEN_TEXT: 1 fila con option NULL y answer_text seteado. Si el
+		// caller no manda texto tampoco, no insertamos nada (deja la
+		// pregunta sin responder).
+		if answerText == "" {
+			return tx.Commit()
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO attempt_answer (exam_attempt_id, question_id, question_option_id, answer_text)
+			 VALUES (CONVERT(UNIQUEIDENTIFIER, @p1), CONVERT(UNIQUEIDENTIFIER, @p2), NULL, @p3)`,
+			string(attemptID), string(questionID), answerText,
+		); err != nil {
+			return err
+		}
+		return tx.Commit()
+	}
+
+	// SINGLE/TF/SCALE (1 option) o MULTIPLE_CHOICE (N options).
+	for _, optID := range optionIDs {
+		if optID == "" {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO attempt_answer (exam_attempt_id, question_id, question_option_id)
+			 VALUES (CONVERT(UNIQUEIDENTIFIER, @p1), CONVERT(UNIQUEIDENTIFIER, @p2), CONVERT(UNIQUEIDENTIFIER, @p3))`,
+			string(attemptID), string(questionID), string(optID),
+		); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func (r *AttemptRepo) ListAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.AttemptAnswer, error) {

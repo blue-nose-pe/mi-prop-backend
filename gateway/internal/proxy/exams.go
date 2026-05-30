@@ -548,8 +548,13 @@ func (p *Proxy) getAttempt(w http.ResponseWriter, r *http.Request) {
 }
 
 type answerAttemptRequest struct {
-	QuestionID string `json:"question_id"`
-	OptionID   string `json:"option_id"`
+	QuestionID string   `json:"question_id"`
+	// SINGLE_CHOICE / TRUE_FALSE / SCALE: una sola opcion.
+	OptionID   string   `json:"option_id"`
+	// MULTIPLE_CHOICE: lista de opciones marcadas.
+	OptionIDs  []string `json:"option_ids"`
+	// OPEN_TEXT: respuesta libre.
+	AnswerText string   `json:"answer_text"`
 }
 
 func (p *Proxy) answerAttempt(w http.ResponseWriter, r *http.Request) {
@@ -569,6 +574,8 @@ func (p *Proxy) answerAttempt(w http.ResponseWriter, r *http.Request) {
 		AttemptId:  r.PathValue("id"),
 		QuestionId: in.QuestionID,
 		OptionId:   in.OptionID,
+		OptionIds:  in.OptionIDs,
+		AnswerText: in.AnswerText,
 	}); err != nil {
 		writeGRPCError(w, err)
 		return

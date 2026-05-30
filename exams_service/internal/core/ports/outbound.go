@@ -79,6 +79,10 @@ type AttemptRepository interface {
 	// (exam_attempt.key_id = X). Excluye attempts sin key (modo admin).
 	ListByKey(ctx context.Context, keyID domain.KeyID) ([]domain.ExamAttempt, error)
 	UpsertAnswer(ctx context.Context, ans *domain.AttemptAnswer) error
+	// ReplaceAnswer borra las respuestas previas del (attempt, question) y
+	// re-inserta una o mas filas (MULTIPLE_CHOICE) o un answer_text (OPEN_TEXT).
+	// Si optionIDs vacio y answerText vacio, la pregunta queda sin responder.
+	ReplaceAnswer(ctx context.Context, attemptID domain.AttemptID, questionID domain.QuestionID, optionIDs []domain.OptionID, answerText string) error
 	ListAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.AttemptAnswer, error)
 	// ListEnrichedAnswers devuelve las respuestas del attempt con la pregunta
 	// y la opcion elegida pre-resueltas en un solo viaje a la DB. Pensado

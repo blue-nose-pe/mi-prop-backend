@@ -26,6 +26,10 @@ type AttemptHandler struct {
 	exams         ports.ExamRepository
 	examQuestions ports.ExamQuestionRepository
 	options       ports.QuestionOptionRepository
+	// questions: necesario para resolver el kind de cada pregunta y
+	// aplicar el scoring correcto en Finish (MULTIPLE_CHOICE = set-match
+	// exacto, SCALE/OPEN_TEXT = sin score, etc.).
+	questions     ports.QuestionRepository
 	attempts      ports.AttemptRepository
 }
 
@@ -35,12 +39,14 @@ func NewAttemptHandler(
 	exams ports.ExamRepository,
 	examQuestions ports.ExamQuestionRepository,
 	options ports.QuestionOptionRepository,
+	questions ports.QuestionRepository,
 	attempts ports.AttemptRepository,
 ) *AttemptHandler {
 	return &AttemptHandler{
 		exams:         exams,
 		examQuestions: examQuestions,
 		options:       options,
+		questions:     questions,
 		attempts:      attempts,
 	}
 }
@@ -116,6 +122,14 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 	return &ports.StartAttemptResult{Attempt: att, Reused: false}, nil
 }
 
+// Answer persiste la respuesta del alumno a una pregunta. Soporta los 5
+// kinds:
+//   - SINGLE_CHOICE / TRUE_FALSE / SCALE: in.OptionID (single)
+//   - MULTIPLE_CHOICE: in.OptionIDs (slice, todas marcadas)
+//   - OPEN_TEXT: in.AnswerText (texto libre, sin option)
+//
+// Las opciones se validan contra la pregunta para evitar inyectar option
+// ids de OTRA pregunta. Para OPEN_TEXT no hay opciones que validar.
 func (h *AttemptHandler) Answer(ctx context.Context, in ports.AnswerInput) error {
 	att, err := h.attempts.FindByID(ctx, in.AttemptID)
 	if err != nil {
@@ -124,26 +138,37 @@ func (h *AttemptHandler) Answer(ctx context.Context, in ports.AnswerInput) error
 	if att.SubmittedAt != nil {
 		return domain.ErrAttemptAlreadyDone
 	}
-	opts, err := h.options.ListByQuestion(ctx, in.QuestionID)
-	if err != nil {
-		return err
+
+	// Resolver el set de option ids a persistir segun el shape del input
+	// que mando el caller (back-compat con clientes que solo mandan
+	// OptionID singular).
+	optionIDs := in.OptionIDs
+	if len(optionIDs) == 0 && in.OptionID != "" {
+		optionIDs = []domain.OptionID{in.OptionID}
 	}
-	valid := false
-	for _, o := range opts {
-		if o.ID == in.OptionID {
-			valid = true
-			break
+
+	// Si hay options (path SINGLE/TF/SCALE/MULTI), validar inclusion en
+	// el set de opciones de la pregunta.
+	if len(optionIDs) > 0 {
+		opts, err := h.options.ListByQuestion(ctx, in.QuestionID)
+		if err != nil {
+			return err
+		}
+		validIDs := make(map[domain.OptionID]struct{}, len(opts))
+		for _, o := range opts {
+			validIDs[o.ID] = struct{}{}
+		}
+		for _, oid := range optionIDs {
+			if _, ok := validIDs[oid]; !ok {
+				return domain.ErrAnswerOptionMismatch
+			}
 		}
 	}
-	if !valid {
-		return domain.ErrAnswerOptionMismatch
-	}
-	return h.attempts.UpsertAnswer(ctx, &domain.AttemptAnswer{
-		AttemptID:  att.ID,
-		QuestionID: in.QuestionID,
-		OptionID:   in.OptionID,
-		AnsweredAt: time.Now().UTC(),
-	})
+
+	// OPEN_TEXT: si no hay options ni answer_text, el alumno esta
+	// "des-respondiendo" la pregunta. Aceptamos — ReplaceAnswer hace
+	// DELETE sin INSERT y queda en blanco.
+	return h.attempts.ReplaceAnswer(ctx, att.ID, in.QuestionID, optionIDs, in.AnswerText)
 }
 
 func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*domain.ExamAttempt, error) {
@@ -194,15 +219,69 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 	if e.ExamTypeID == examTypeVocacional {
 		maxScore = 0
 	} else {
+		// Agrupamos respuestas por question — necesario para MULTIPLE_CHOICE
+		// donde el alumno puede marcar N opciones para la misma pregunta.
+		answersByQuestion := make(map[domain.QuestionID][]domain.AttemptAnswer, len(eqs))
 		for _, a := range answers {
-			opts, err := h.options.ListByQuestion(ctx, a.QuestionID)
+			answersByQuestion[a.QuestionID] = append(answersByQuestion[a.QuestionID], a)
+		}
+
+		// Cargar el kind de cada question una sola vez (cache en mapa).
+		// Por question_id resolvemos via repo.questions.FindByID.
+		for qid, ansRows := range answersByQuestion {
+			q, err := h.questions.FindByID(ctx, qid)
 			if err != nil {
 				return nil, err
 			}
-			for _, o := range opts {
-				if o.ID == a.OptionID && o.IsCorrect {
-					score += pointsByQuestion[a.QuestionID]
-					break
+			opts, err := h.options.ListByQuestion(ctx, qid)
+			if err != nil {
+				return nil, err
+			}
+			pts := pointsByQuestion[qid]
+			switch q.Kind {
+			case domain.QuestionKindScale, domain.QuestionKindOpenText:
+				// No tienen scoring automatico — escala Likert es para
+				// reporting psicometrico; open text se corrige a mano.
+				continue
+			case domain.QuestionKindMultipleChoice:
+				// Full points si el alumno marco EXACTAMENTE las opciones
+				// correctas (set-match exacto).
+				correctSet := make(map[domain.OptionID]struct{})
+				for _, o := range opts {
+					if o.IsCorrect {
+						correctSet[o.ID] = struct{}{}
+					}
+				}
+				markedSet := make(map[domain.OptionID]struct{}, len(ansRows))
+				for _, a := range ansRows {
+					if a.OptionID != "" {
+						markedSet[a.OptionID] = struct{}{}
+					}
+				}
+				if len(correctSet) > 0 && len(correctSet) == len(markedSet) {
+					ok := true
+					for id := range correctSet {
+						if _, present := markedSet[id]; !present {
+							ok = false
+							break
+						}
+					}
+					if ok {
+						score += pts
+					}
+				}
+			default:
+				// SINGLE_CHOICE / TRUE_FALSE / kind vacio (back-compat) →
+				// 1 fila esperada; cuenta el primer option_id marcado.
+				if len(ansRows) == 0 {
+					continue
+				}
+				marked := ansRows[0].OptionID
+				for _, o := range opts {
+					if o.ID == marked && o.IsCorrect {
+						score += pts
+						break
+					}
 				}
 			}
 		}

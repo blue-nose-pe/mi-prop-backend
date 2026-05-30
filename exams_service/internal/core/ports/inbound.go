@@ -171,8 +171,21 @@ type StartAttemptInput struct {
 	ExpectedExamTypeID int32
 }
 
+// AnswerInput modela la respuesta de un alumno a UNA pregunta. El shape
+// depende del kind:
+//   - SINGLE_CHOICE / TRUE_FALSE / SCALE: OptionID = id de la opcion elegida.
+//     OptionIDs y AnswerText quedan vacios.
+//   - MULTIPLE_CHOICE: OptionIDs = ids de las opciones marcadas (1 o mas).
+//     OptionID queda vacio.
+//   - OPEN_TEXT: AnswerText = respuesta libre. OptionID y OptionIDs vacios.
+//
+// El handler/command resuelve el path correcto segun question.kind antes
+// de persistir. Validacion: para MULTIPLE_CHOICE pide al menos 1
+// option_id; para OPEN_TEXT pide answer_text no vacio.
 type AnswerInput struct {
 	AttemptID  domain.AttemptID
 	QuestionID domain.QuestionID
 	OptionID   domain.OptionID
+	OptionIDs  []domain.OptionID
+	AnswerText string
 }

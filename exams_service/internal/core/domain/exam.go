@@ -47,28 +47,34 @@ type Exam struct {
 // QuestionKind discrimina cómo el front renderiza la pregunta y cómo el
 // reporting interpreta el option_sort_order.
 //
-//   - QuestionKindSingleChoice — N opciones, 1 is_correct. Score binario.
-//   - QuestionKindTrueFalse    — 2 opciones (V/F). Mismo scoring binario.
-//   - QuestionKindScale        — N opciones "1..N" con sort_order=peso
+//   - QuestionKindSingleChoice    — N opciones, 1 is_correct. Score binario.
+//   - QuestionKindTrueFalse       — 2 opciones (V/F). Mismo scoring binario.
+//   - QuestionKindScale           — N opciones "1..N" con sort_order=peso
 //     Likert. Sin is_correct → no contribuye al score, pero reporting puede
 //     promediarlo por question_id.
-//
-// MULTIPLE_CHOICE y OPEN_TEXT NO están modelados aquí: requerirían cambiar
-// el PK de attempt_answer (multi-fila por pregunta) y/o agregar una columna
-// answer_text. Documentar el gap si en algún momento se exponen.
+//   - QuestionKindMultipleChoice  — N opciones, M de ellas is_correct.
+//     attempt_answer permite multi-fila por (attempt, question, option) via
+//     PK extendido (migration 013/014). Scoring: full points si el alumno
+//     marca EXACTAMENTE las correctas (set match); 0 en caso contrario.
+//   - QuestionKindOpenText        — sin opciones; answer_text NVARCHAR(MAX)
+//     guarda la respuesta libre. Scoring=0 automatico (el especialista
+//     corrige manualmente despues).
 type QuestionKind string
 
 const (
-	QuestionKindSingleChoice QuestionKind = "SINGLE_CHOICE"
-	QuestionKindTrueFalse    QuestionKind = "TRUE_FALSE"
-	QuestionKindScale        QuestionKind = "SCALE"
+	QuestionKindSingleChoice   QuestionKind = "SINGLE_CHOICE"
+	QuestionKindTrueFalse      QuestionKind = "TRUE_FALSE"
+	QuestionKindScale          QuestionKind = "SCALE"
+	QuestionKindMultipleChoice QuestionKind = "MULTIPLE_CHOICE"
+	QuestionKindOpenText       QuestionKind = "OPEN_TEXT"
 )
 
 // ValidKind retorna true si v es un kind soportado. Vacío también vale (se
 // interpreta como SINGLE_CHOICE para back-compat con requests viejos).
 func ValidKind(v string) bool {
 	switch QuestionKind(v) {
-	case "", QuestionKindSingleChoice, QuestionKindTrueFalse, QuestionKindScale:
+	case "", QuestionKindSingleChoice, QuestionKindTrueFalse, QuestionKindScale,
+		QuestionKindMultipleChoice, QuestionKindOpenText:
 		return true
 	}
 	return false

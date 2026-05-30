@@ -85,7 +85,7 @@ func main() {
 	examCmds := command.NewExamHandler(examTypes, exams, examQuestions)
 	questionCmds := command.NewQuestionHandler(questions, options)
 	examQuestionCmds := command.NewExamQuestionHandler(exams, examQuestions)
-	attemptCmds := command.NewAttemptHandler(exams, examQuestions, options, attempts)
+	attemptCmds := command.NewAttemptHandler(exams, examQuestions, options, questions, attempts)
 
 	examQrys := query.NewExamHandler(exams)
 	questionQrys := query.NewQuestionHandler(questions, options)

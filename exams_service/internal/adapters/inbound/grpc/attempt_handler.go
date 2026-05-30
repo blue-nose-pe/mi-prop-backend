@@ -126,10 +126,19 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 }
 
 func (h *AttemptHandler) Answer(ctx context.Context, req *pb.AnswerRequest) (*pb.EmptyResponse, error) {
+	// Mapeo de option_ids[] del proto a []domain.OptionID. Cuando el
+	// alumno usa el campo legacy option_id (single), el command lo
+	// degrada a un []OptionID de 1 elemento.
+	optIDs := make([]domain.OptionID, 0, len(req.GetOptionIds()))
+	for _, id := range req.GetOptionIds() {
+		optIDs = append(optIDs, domain.OptionID(id))
+	}
 	err := h.cmds.Answer(ctx, ports.AnswerInput{
 		AttemptID:  domain.AttemptID(req.GetAttemptId()),
 		QuestionID: domain.QuestionID(req.GetQuestionId()),
 		OptionID:   domain.OptionID(req.GetOptionId()),
+		OptionIDs:  optIDs,
+		AnswerText: req.GetAnswerText(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

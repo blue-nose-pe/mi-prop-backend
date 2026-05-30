@@ -196,7 +196,14 @@ message StartAttemptRequest {
 message AnswerRequest {
   string attempt_id  = 1;
   string question_id = 2;
+  // SINGLE_CHOICE / TRUE_FALSE / SCALE: option_id es el id elegido.
   string option_id   = 3;
+  // MULTIPLE_CHOICE: option_ids contiene los ids de las opciones que el
+  // alumno marco (>=1). Se ignora option_id cuando este array tiene items.
+  repeated string option_ids = 4;
+  // OPEN_TEXT: answer_text es la respuesta libre del alumno. Se ignora
+  // option_id / option_ids cuando este string esta seteado y no hay opciones.
+  string answer_text = 5;
 }
 message FinishAttemptRequest      { string attempt_id = 1; }
 message GetAttemptRequest         { string attempt_id = 1; }
