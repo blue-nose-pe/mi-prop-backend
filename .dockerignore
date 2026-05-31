@@ -1,0 +1,27 @@
+# Contexto de build ACR = monorepo root para los servicios Go (go.work).
+# Sin esto el contexto incluia ucsp-front/node_modules + .git + dist y la
+# subida a ACR se colgaba. Los Dockerfiles Go solo necesitan go.work + los
+# dirs de cada servicio, asi que excluimos todo lo pesado/irrelevante.
+
+# Front (Angular) — ningun Dockerfile Go lo usa
+ucsp-front/
+
+# Git / IDE / OS
+.git/
+.github/
+.vscode/
+.idea/
+**/.DS_Store
+
+# Artefactos de build Go locales
+**/bin/
+**/dist/
+**/*.exe
+**/*.test
+
+# Rescate de sesiones / tmp
+.chat-rescue/
+**/*.log
+
+# Docs y deploy (no entran al binario)
+deploy/api-docs/
