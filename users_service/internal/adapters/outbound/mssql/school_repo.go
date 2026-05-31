@@ -19,10 +19,16 @@ var _ ports.SchoolRepository = (*SchoolRepo)(nil)
 func NewSchoolRepo(db *sql.DB) *SchoolRepo { return &SchoolRepo{db: db} }
 
 func (r *SchoolRepo) FindByID(ctx context.Context, id domain.SchoolID) (*domain.School, error) {
+	// Cliente: code + penetration vienen del commit f96164d (migration 023).
+	// El SELECT de FindByID se olvidó incluirlos mientras el Scan abajo SI los
+	// lee — eso causaba "Internal" en GetSchool por column count mismatch.
+	// Resultado visible: el detalle del colegio mostraba cards Ciudad /
+	// Segmento / Key de acceso vacias (front recibia error y caia al else).
 	const q = `SELECT CONVERT(NVARCHAR(36), id),
 	                  int_id,
 	                  CONVERT(NVARCHAR(36), user_id),
 	                  name, ISNULL(city, ''), ISNULL(category, ''),
+	                  ISNULL(code, ''), ISNULL(penetration, ''),
 	                  active, created_at, updated_at,
 	                  ISNULL(hubspot_record_id, '')
 	             FROM school WHERE id = CONVERT(UNIQUEIDENTIFIER, @p1)`
