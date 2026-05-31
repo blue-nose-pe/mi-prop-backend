@@ -53,11 +53,15 @@ func (r *SurveyRepo) Save(ctx context.Context, s *domain.Survey) (domain.SurveyI
 }
 
 func (r *SurveyRepo) Update(ctx context.Context, s *domain.Survey) error {
+	// Cliente: trigger_kind editable post-creacion. Persistimos con NULLIF
+	// para que "" -> NULL (consistente con como se persiste al crear).
 	const q = `
 		UPDATE survey
-		   SET title = @p1, description = NULLIF(@p2, '')
-		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p3)`
-	res, err := r.db.ExecContext(ctx, q, s.Title, s.Description, string(s.ID))
+		   SET title        = @p1,
+		       description  = NULLIF(@p2, ''),
+		       trigger_kind = NULLIF(@p3, '')
+		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p4)`
+	res, err := r.db.ExecContext(ctx, q, s.Title, s.Description, s.Trigger, string(s.ID))
 	if err != nil {
 		return err
 	}

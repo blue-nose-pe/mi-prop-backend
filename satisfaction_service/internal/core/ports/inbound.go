@@ -57,6 +57,8 @@ type UpdateSurveyInput struct {
 	ID          domain.SurveyID
 	Title       string
 	Description string
+	// Cliente: trigger_kind editable post-creacion. "" = no tocar.
+	Trigger     string
 }
 
 type AddQuestionInput struct {

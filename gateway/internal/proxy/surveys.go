@@ -96,6 +96,9 @@ func (p *Proxy) getSurvey(w http.ResponseWriter, r *http.Request) {
 type updateSurveyRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
+	// Cliente: trigger_kind editable post-creacion ("simulacro"/"vocacional"/
+	// "estilos"). "" -> no tocar.
+	TriggerKind string `json:"trigger_kind"`
 }
 
 func (p *Proxy) updateSurvey(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +111,7 @@ func (p *Proxy) updateSurvey(w http.ResponseWriter, r *http.Request) {
 		Id:          r.PathValue("id"),
 		Title:       in.Title,
 		Description: in.Description,
+		TriggerKind: in.TriggerKind,
 	})
 	if err != nil {
 		writeGRPCError(w, err)

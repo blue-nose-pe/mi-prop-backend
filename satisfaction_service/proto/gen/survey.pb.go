@@ -471,6 +471,10 @@ type UpdateSurveyRequest struct {
 	Id          string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	Title       string `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	Description string `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	// Cliente: trigger_kind editable post-creacion (parche manual del .pb.go
+	// — sin regenerar via protoc. Cuando UCSP corra `make proto`, este
+	// archivo se regenera y el field permanece consistent con el .proto).
+	TriggerKind string `protobuf:"bytes,4,opt,name=trigger_kind,json=triggerKind,proto3" json:"trigger_kind,omitempty"`
 }
 
 func (x *UpdateSurveyRequest) Reset() {
@@ -520,6 +524,13 @@ func (x *UpdateSurveyRequest) GetTitle() string {
 func (x *UpdateSurveyRequest) GetDescription() string {
 	if x != nil {
 		return x.Description
+	}
+	return ""
+}
+
+func (x *UpdateSurveyRequest) GetTriggerKind() string {
+	if x != nil {
+		return x.TriggerKind
 	}
 	return ""
 }

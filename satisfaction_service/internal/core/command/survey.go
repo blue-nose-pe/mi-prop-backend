@@ -59,6 +59,13 @@ func (h *SurveyHandler) Update(ctx context.Context, in ports.UpdateSurveyInput) 
 	if in.Description != "" {
 		s.Description = in.Description
 	}
+	// Cliente: trigger_kind editable post-creacion. "" = no tocar (mantiene
+	// el valor previo). Permite cambiar a que tipo de examen aplica la
+	// encuesta despues de crearla — el survey-builder usa esto para
+	// guardar el dropdown "Aplicar a".
+	if v := strings.TrimSpace(in.Trigger); v != "" {
+		s.Trigger = v
+	}
 	if err := h.surveys.Update(ctx, s); err != nil {
 		return nil, err
 	}
@@ -220,9 +227,14 @@ func validRole(r string) bool {
 	return false
 }
 
+// validTrigger acepta los valores de timing legacy (post_test/on_demand/
+// recurring) y, desde el rediseño del survey-builder, los tipos de examen
+// a los que la encuesta "Aplica a" (simulacro/vocacional/estilos). Ver
+// migration 005_survey_applies_to.sql.
 func validTrigger(t string) bool {
 	switch t {
-	case "post_test", "on_demand", "recurring":
+	case "post_test", "on_demand", "recurring",
+		"simulacro", "vocacional", "estilos":
 		return true
 	}
 	return false

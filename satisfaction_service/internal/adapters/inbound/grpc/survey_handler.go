@@ -45,6 +45,8 @@ func (h *SurveyHandler) UpdateSurvey(ctx context.Context, req *pb.UpdateSurveyRe
 		ID:          domain.SurveyID(req.GetId()),
 		Title:       req.GetTitle(),
 		Description: req.GetDescription(),
+		// Cliente: appliesTo (trigger_kind) editable post-creacion.
+		Trigger: req.GetTriggerKind(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

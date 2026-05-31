@@ -77,9 +77,16 @@ message CreateSurveyRequest {
 }
 
 message UpdateSurveyRequest {
-  string id          = 1;
-  string title       = 2;
-  string description = 3;
+  string id           = 1;
+  string title        = 2;
+  string description  = 3;
+  // Cliente: trigger_kind editable post-creacion. Valores esperados:
+  // 'simulacro' | 'vocacional' | 'estilos' (a que examen aplica esta
+  // encuesta). Sin esto el survey-builder pintaba el dropdown "Aplicar a"
+  // pero el valor nunca viajaba al back → la encuesta nunca podia
+  // dispararse al fin del examen del estudiante porque no habia como
+  // filtrar surveys por exam_type.
+  string trigger_kind = 4;
 }
 
 message PublishSurveyRequest    { string id = 1; }
