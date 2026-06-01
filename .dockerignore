@@ -4,7 +4,11 @@
 # dirs de cada servicio, asi que excluimos todo lo pesado/irrelevante.
 
 # Front (Angular) — ningun Dockerfile Go lo usa
-ucsp-front/
+ucsp-front
+ucsp-front/**
+**/node_modules
+**/node_modules/**
+.deploy-state
 
 # Git / IDE / OS
 .git/
