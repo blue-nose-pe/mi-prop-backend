@@ -23,7 +23,12 @@ var PermissionMap = map[string]string{
 	"/users.v1.UserService/UpdateUser":             "db_users.users.write",
 	"/users.v1.UserService/DeactivateUser":         "db_users.users.write",
 	"/users.v1.UserService/ReactivateUser":         "db_users.users.write",
-	"/users.v1.UserService/GetUser":                "db_users.users.read",
+	// GetUser NO va en el map: un user puede leer su PROPIO registro sin
+	// db_users.users.read (igual que ListUserPermissions/Me). Lo necesita el
+	// sync de resultados a HubSpot: tras finalizar un examen, el gateway
+	// resuelve el DNI del alumno con el token del propio alumno (que no tiene
+	// users.read). El check "self OR db_users.users.read" se hace dentro del
+	// handler (user_handler.go:GetUser).
 	"/users.v1.UserService/GetUserByEmail":         "db_users.users.read",
 	"/users.v1.UserService/SearchUsers":            "db_users.users.read",
 

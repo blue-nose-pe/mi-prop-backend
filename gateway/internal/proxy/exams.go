@@ -43,6 +43,8 @@ import (
 	examscommonpb "exams_service/proto/gen/common"
 	hubspotgrpcpb "hubspot_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
+
+	"google.golang.org/grpc/metadata"
 )
 
 func (p *Proxy) RegisterExams(mux *http.ServeMux) {
@@ -607,7 +609,10 @@ func (p *Proxy) finishAttempt(w http.ResponseWriter, r *http.Request) {
 	// al Contact de HubSpot. Antes NADIE disparaba esto → los puntajes de examen
 	// nunca viajaban a HubSpot (observacion del cliente). Fire-and-forget: no
 	// bloquea ni hace fallar la finalizacion del examen para el alumno.
-	go p.syncResultToHubspot(resp.GetAttempt())
+	// Capturamos el Bearer ANTES de lanzar la goroutine: corre con
+	// context.Background() (r.Context() ya estara cancelado), y los RPCs
+	// upstream (GetExam/GetUser/SyncExamResult) requieren el JWT del caller.
+	go p.syncResultToHubspot(resp.GetAttempt(), r.Header.Get("Authorization"))
 	writeJSON(w, http.StatusOK, map[string]any{"attempt": protoAttemptToJSON(resp.GetAttempt())})
 }
 
@@ -618,12 +623,15 @@ var examTypeCodeByID = map[int32]string{1: "vocacional", 2: "simulacro", 3: "hab
 // syncResultToHubspot resuelve el exam_type_code (via GetExam) y el DNI del
 // alumno (via GetUser) y encola el SyncExamResult en hubspot-service. Best-effort:
 // cualquier fallo se loguea y se ignora (el examen ya quedo guardado localmente).
-func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt) {
+func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt, authz string) {
 	if a == nil {
 		return
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+	if authz != "" {
+		ctx = metadata.AppendToOutgoingContext(ctx, "authorization", authz)
+	}
 
 	exResp, err := p.cli.Exams.GetExam(ctx, &examsgrpcpb.GetExamRequest{Id: a.GetExamId()})
 	if err != nil || exResp.GetExam() == nil {

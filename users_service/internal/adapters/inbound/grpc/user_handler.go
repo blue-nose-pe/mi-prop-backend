@@ -96,7 +96,21 @@ func (h *UserHandler) ReactivateUser(ctx context.Context, req *pb.ReactivateUser
 // ---------- User queries ----------
 
 func (h *UserHandler) GetUser(ctx context.Context, req *pb.GetUserRequest) (*pb.UserResponse, error) {
-	u, err := h.userQrys.Get(ctx, domain.UserID(req.GetId()))
+	// Self-access: un user puede leer su PROPIO registro sin db_users.users.read
+	// (misma excepcion que ListUserPermissions/Me). Para leer OTRO user se exige
+	// la permission. La respuesta (toProtoUser) no incluye el password hash.
+	caller := callerID(ctx)
+	target := domain.UserID(req.GetId())
+	if caller == "" {
+		return nil, apperr.ToGRPC(ctx, domain.ErrForbidden)
+	}
+	if target != caller {
+		ok, perr := h.permQrys.HasPermission(ctx, caller, "db_users.users.read")
+		if perr != nil || !ok {
+			return nil, apperr.ToGRPC(ctx, domain.ErrForbidden)
+		}
+	}
+	u, err := h.userQrys.Get(ctx, target)
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}
