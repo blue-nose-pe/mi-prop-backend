@@ -183,6 +183,38 @@ func (r *KeyRepo) ListUserIDsByColegio(ctx context.Context, schoolID domain.Scho
 	return out, rows.Err()
 }
 
+// ListStudentKeyInfoByColegio: por cada uso de key del colegio, el grado/
+// sección/exam_type de la key. Ordenado por used_at DESC para que el caller
+// tome la key más reciente por user. Grado/sección viven en la key, no en
+// el user — esto enriquece el listado "Ver estudiantes".
+func (r *KeyRepo) ListStudentKeyInfoByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.StudentKeyInfo, error) {
+	const q = `
+		SELECT CONVERT(NVARCHAR(36), ku.user_id),
+		       ISNULL(k.grade, ''), ISNULL(k.section, ''),
+		       k.exam_type_id, ku.used_at
+		  FROM key_usage ku
+		  JOIN [key] k ON ku.key_id = k.id
+		 WHERE k.school_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		   AND ku.user_id IS NOT NULL
+		 ORDER BY ku.used_at DESC`
+	rows, err := r.db.QueryContext(ctx, q, string(schoolID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.StudentKeyInfo
+	for rows.Next() {
+		var si domain.StudentKeyInfo
+		var uid string
+		if err := rows.Scan(&uid, &si.Grade, &si.Section, &si.ExamTypeID, &si.UsedAt); err != nil {
+			return nil, err
+		}
+		si.UserID = domain.UserID(uid)
+		out = append(out, si)
+	}
+	return out, rows.Err()
+}
+
 func (r *KeyRepo) list(ctx context.Context, query, arg string) ([]domain.Key, error) {
 	rows, err := r.db.QueryContext(ctx, query, arg)
 	if err != nil {

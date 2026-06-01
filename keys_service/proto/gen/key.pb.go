@@ -865,6 +865,128 @@ func (x *ListUserIDsResponse) GetUserIds() []string {
 	return nil
 }
 
+type StudentKeyInfo struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	UserId     string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Grade      string                 `protobuf:"bytes,2,opt,name=grade,proto3" json:"grade,omitempty"`
+	Section    string                 `protobuf:"bytes,3,opt,name=section,proto3" json:"section,omitempty"`
+	ExamTypeId int32                  `protobuf:"varint,4,opt,name=exam_type_id,json=examTypeId,proto3" json:"exam_type_id,omitempty"`
+	UsedAt     *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=used_at,json=usedAt,proto3" json:"used_at,omitempty"`
+}
+
+func (x *StudentKeyInfo) Reset() {
+	*x = StudentKeyInfo{}
+	mi := &file_key_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *StudentKeyInfo) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*StudentKeyInfo) ProtoMessage() {}
+
+func (x *StudentKeyInfo) ProtoReflect() protoreflect.Message {
+	mi := &file_key_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use StudentKeyInfo.ProtoReflect.Descriptor instead.
+func (*StudentKeyInfo) Descriptor() ([]byte, []int) {
+	return file_key_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *StudentKeyInfo) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *StudentKeyInfo) GetGrade() string {
+	if x != nil {
+		return x.Grade
+	}
+	return ""
+}
+
+func (x *StudentKeyInfo) GetSection() string {
+	if x != nil {
+		return x.Section
+	}
+	return ""
+}
+
+func (x *StudentKeyInfo) GetExamTypeId() int32 {
+	if x != nil {
+		return x.ExamTypeId
+	}
+	return 0
+}
+
+func (x *StudentKeyInfo) GetUsedAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.UsedAt
+	}
+	return nil
+}
+
+type ListStudentKeyInfoResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Items []*StudentKeyInfo `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+}
+
+func (x *ListStudentKeyInfoResponse) Reset() {
+	*x = ListStudentKeyInfoResponse{}
+	mi := &file_key_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListStudentKeyInfoResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListStudentKeyInfoResponse) ProtoMessage() {}
+
+func (x *ListStudentKeyInfoResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_key_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListStudentKeyInfoResponse.ProtoReflect.Descriptor instead.
+func (*ListStudentKeyInfoResponse) Descriptor() ([]byte, []int) {
+	return file_key_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *ListStudentKeyInfoResponse) GetItems() []*StudentKeyInfo {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
 type KeyResponse struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -875,7 +997,7 @@ type KeyResponse struct {
 
 func (x *KeyResponse) Reset() {
 	*x = KeyResponse{}
-	mi := &file_key_proto_msgTypes[11]
+	mi := &file_key_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -887,7 +1009,7 @@ func (x *KeyResponse) String() string {
 func (*KeyResponse) ProtoMessage() {}
 
 func (x *KeyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_key_proto_msgTypes[11]
+	mi := &file_key_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -900,7 +1022,7 @@ func (x *KeyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use KeyResponse.ProtoReflect.Descriptor instead.
 func (*KeyResponse) Descriptor() ([]byte, []int) {
-	return file_key_proto_rawDescGZIP(), []int{11}
+	return file_key_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *KeyResponse) GetKey() *Key {
@@ -918,7 +1040,7 @@ type EmptyResponse struct {
 
 func (x *EmptyResponse) Reset() {
 	*x = EmptyResponse{}
-	mi := &file_key_proto_msgTypes[12]
+	mi := &file_key_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -930,7 +1052,7 @@ func (x *EmptyResponse) String() string {
 func (*EmptyResponse) ProtoMessage() {}
 
 func (x *EmptyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_key_proto_msgTypes[12]
+	mi := &file_key_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -943,7 +1065,7 @@ func (x *EmptyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmptyResponse.ProtoReflect.Descriptor instead.
 func (*EmptyResponse) Descriptor() ([]byte, []int) {
-	return file_key_proto_rawDescGZIP(), []int{12}
+	return file_key_proto_rawDescGZIP(), []int{14}
 }
 
 type ResyncKeyRequest struct {
@@ -965,7 +1087,7 @@ type ResyncKeyRequest struct {
 
 func (x *ResyncKeyRequest) Reset() {
 	*x = ResyncKeyRequest{}
-	mi := &file_key_proto_msgTypes[13]
+	mi := &file_key_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -977,7 +1099,7 @@ func (x *ResyncKeyRequest) String() string {
 func (*ResyncKeyRequest) ProtoMessage() {}
 
 func (x *ResyncKeyRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_key_proto_msgTypes[13]
+	mi := &file_key_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -990,7 +1112,7 @@ func (x *ResyncKeyRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResyncKeyRequest.ProtoReflect.Descriptor instead.
 func (*ResyncKeyRequest) Descriptor() ([]byte, []int) {
-	return file_key_proto_rawDescGZIP(), []int{13}
+	return file_key_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ResyncKeyRequest) GetId() string {
@@ -1050,7 +1172,7 @@ type ListAllKeysRequest struct {
 
 func (x *ListAllKeysRequest) Reset() {
 	*x = ListAllKeysRequest{}
-	mi := &file_key_proto_msgTypes[14]
+	mi := &file_key_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1062,7 +1184,7 @@ func (x *ListAllKeysRequest) String() string {
 func (*ListAllKeysRequest) ProtoMessage() {}
 
 func (x *ListAllKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_key_proto_msgTypes[14]
+	mi := &file_key_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1075,7 +1197,7 @@ func (x *ListAllKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListAllKeysRequest.ProtoReflect.Descriptor instead.
 func (*ListAllKeysRequest) Descriptor() ([]byte, []int) {
-	return file_key_proto_rawDescGZIP(), []int{14}
+	return file_key_proto_rawDescGZIP(), []int{16}
 }
 
 type IncrementUsageRequest struct {
@@ -1090,7 +1212,7 @@ type IncrementUsageRequest struct {
 
 func (x *IncrementUsageRequest) Reset() {
 	*x = IncrementUsageRequest{}
-	mi := &file_key_proto_msgTypes[15]
+	mi := &file_key_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1102,7 +1224,7 @@ func (x *IncrementUsageRequest) String() string {
 func (*IncrementUsageRequest) ProtoMessage() {}
 
 func (x *IncrementUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_key_proto_msgTypes[15]
+	mi := &file_key_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1115,7 +1237,7 @@ func (x *IncrementUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use IncrementUsageRequest.ProtoReflect.Descriptor instead.
 func (*IncrementUsageRequest) Descriptor() ([]byte, []int) {
-	return file_key_proto_rawDescGZIP(), []int{15}
+	return file_key_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *IncrementUsageRequest) GetKeyId() string {
@@ -1150,7 +1272,7 @@ type UserHasKeyUsageRequest struct {
 
 func (x *UserHasKeyUsageRequest) Reset() {
 	*x = UserHasKeyUsageRequest{}
-	mi := &file_key_proto_msgTypes[16]
+	mi := &file_key_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1162,7 +1284,7 @@ func (x *UserHasKeyUsageRequest) String() string {
 func (*UserHasKeyUsageRequest) ProtoMessage() {}
 
 func (x *UserHasKeyUsageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_key_proto_msgTypes[16]
+	mi := &file_key_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1175,7 +1297,7 @@ func (x *UserHasKeyUsageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserHasKeyUsageRequest.ProtoReflect.Descriptor instead.
 func (*UserHasKeyUsageRequest) Descriptor() ([]byte, []int) {
-	return file_key_proto_rawDescGZIP(), []int{16}
+	return file_key_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *UserHasKeyUsageRequest) GetKeyId() string {
@@ -1202,7 +1324,7 @@ type UserHasKeyUsageResponse struct {
 
 func (x *UserHasKeyUsageResponse) Reset() {
 	*x = UserHasKeyUsageResponse{}
-	mi := &file_key_proto_msgTypes[17]
+	mi := &file_key_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1214,7 +1336,7 @@ func (x *UserHasKeyUsageResponse) String() string {
 func (*UserHasKeyUsageResponse) ProtoMessage() {}
 
 func (x *UserHasKeyUsageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_key_proto_msgTypes[17]
+	mi := &file_key_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1227,7 +1349,7 @@ func (x *UserHasKeyUsageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserHasKeyUsageResponse.ProtoReflect.Descriptor instead.
 func (*UserHasKeyUsageResponse) Descriptor() ([]byte, []int) {
-	return file_key_proto_rawDescGZIP(), []int{17}
+	return file_key_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *UserHasKeyUsageResponse) GetHasUsage() bool {
@@ -1369,7 +1491,23 @@ var file_key_proto_rawDesc = []byte{
 	0x65, 0x79, 0x52, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x22, 0x30, 0x0a, 0x13, 0x4c, 0x69, 0x73,
 	0x74, 0x55, 0x73, 0x65, 0x72, 0x49, 0x44, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
 	0x12, 0x19, 0x0a, 0x08, 0x75, 0x73, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x73, 0x18, 0x01, 0x20, 0x03,
-	0x28, 0x09, 0x52, 0x07, 0x75, 0x73, 0x65, 0x72, 0x49, 0x64, 0x73, 0x22, 0x2d, 0x0a, 0x0b, 0x4b,
+	0x28, 0x09, 0x52, 0x07, 0x75, 0x73, 0x65, 0x72, 0x49, 0x64, 0x73, 0x22, 0xb0, 0x01, 0x0a, 0x0e,
+	0x53, 0x74, 0x75, 0x64, 0x65, 0x6e, 0x74, 0x4b, 0x65, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x12, 0x17,
+	0x0a, 0x07, 0x75, 0x73, 0x65, 0x72, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52,
+	0x06, 0x75, 0x73, 0x65, 0x72, 0x49, 0x64, 0x12, 0x14, 0x0a, 0x05, 0x67, 0x72, 0x61, 0x64, 0x65,
+	0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x67, 0x72, 0x61, 0x64, 0x65, 0x12, 0x18, 0x0a,
+	0x07, 0x73, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x18, 0x03, 0x20, 0x01, 0x28, 0x09, 0x52, 0x07,
+	0x73, 0x65, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x20, 0x0a, 0x0c, 0x65, 0x78, 0x61, 0x6d, 0x5f,
+	0x74, 0x79, 0x70, 0x65, 0x5f, 0x69, 0x64, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x52, 0x0a, 0x65,
+	0x78, 0x61, 0x6d, 0x54, 0x79, 0x70, 0x65, 0x49, 0x64, 0x12, 0x33, 0x0a, 0x07, 0x75, 0x73, 0x65,
+	0x64, 0x5f, 0x61, 0x74, 0x18, 0x05, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1a, 0x2e, 0x67, 0x6f, 0x6f,
+	0x67, 0x6c, 0x65, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x62, 0x75, 0x66, 0x2e, 0x54, 0x69, 0x6d,
+	0x65, 0x73, 0x74, 0x61, 0x6d, 0x70, 0x52, 0x06, 0x75, 0x73, 0x65, 0x64, 0x41, 0x74, 0x22, 0x4b,
+	0x0a, 0x1a, 0x4c, 0x69, 0x73, 0x74, 0x53, 0x74, 0x75, 0x64, 0x65, 0x6e, 0x74, 0x4b, 0x65, 0x79,
+	0x49, 0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2d, 0x0a, 0x05,
+	0x69, 0x74, 0x65, 0x6d, 0x73, 0x18, 0x01, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x17, 0x2e, 0x6b, 0x65,
+	0x79, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x74, 0x75, 0x64, 0x65, 0x6e, 0x74, 0x4b, 0x65, 0x79,
+	0x49, 0x6e, 0x66, 0x6f, 0x52, 0x05, 0x69, 0x74, 0x65, 0x6d, 0x73, 0x22, 0x2d, 0x0a, 0x0b, 0x4b,
 	0x65, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x1e, 0x0a, 0x03, 0x6b, 0x65,
 	0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x0c, 0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76,
 	0x31, 0x2e, 0x4b, 0x65, 0x79, 0x52, 0x03, 0x6b, 0x65, 0x79, 0x22, 0x0f, 0x0a, 0x0d, 0x45, 0x6d,
@@ -1406,7 +1544,7 @@ var file_key_proto_rawDesc = []byte{
 	0x48, 0x61, 0x73, 0x4b, 0x65, 0x79, 0x55, 0x73, 0x61, 0x67, 0x65, 0x52, 0x65, 0x73, 0x70, 0x6f,
 	0x6e, 0x73, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x68, 0x61, 0x73, 0x5f, 0x75, 0x73, 0x61, 0x67, 0x65,
 	0x18, 0x01, 0x20, 0x01, 0x28, 0x08, 0x52, 0x08, 0x68, 0x61, 0x73, 0x55, 0x73, 0x61, 0x67, 0x65,
-	0x32, 0xdf, 0x07, 0x0a, 0x0a, 0x4b, 0x65, 0x79, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12,
+	0x32, 0xc2, 0x08, 0x0a, 0x0a, 0x4b, 0x65, 0x79, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12,
 	0x40, 0x0a, 0x0b, 0x47, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74, 0x65, 0x4b, 0x65, 0x79, 0x12, 0x1b,
 	0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x6e, 0x65, 0x72, 0x61, 0x74,
 	0x65, 0x4b, 0x65, 0x79, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x14, 0x2e, 0x6b, 0x65,
@@ -1455,22 +1593,28 @@ var file_key_proto_rawDesc = []byte{
 	0x79, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x42, 0x79, 0x43, 0x6f, 0x6c, 0x65,
 	0x67, 0x69, 0x6f, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1c, 0x2e, 0x6b, 0x65, 0x79,
 	0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x55, 0x73, 0x65, 0x72, 0x49, 0x44, 0x73,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x41, 0x0a, 0x0a, 0x53, 0x65, 0x61, 0x72,
-	0x63, 0x68, 0x4b, 0x65, 0x79, 0x73, 0x12, 0x18, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e,
-	0x76, 0x31, 0x2e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
-	0x1a, 0x19, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x61,
-	0x72, 0x63, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3e, 0x0a, 0x09, 0x52,
-	0x65, 0x73, 0x79, 0x6e, 0x63, 0x4b, 0x65, 0x79, 0x12, 0x19, 0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e,
-	0x76, 0x31, 0x2e, 0x52, 0x65, 0x73, 0x79, 0x6e, 0x63, 0x4b, 0x65, 0x79, 0x52, 0x65, 0x71, 0x75,
-	0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x6d,
-	0x70, 0x74, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x45, 0x0a, 0x0b, 0x4c,
-	0x69, 0x73, 0x74, 0x41, 0x6c, 0x6c, 0x4b, 0x65, 0x79, 0x73, 0x12, 0x1b, 0x2e, 0x6b, 0x65, 0x79,
-	0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x41, 0x6c, 0x6c, 0x4b, 0x65, 0x79, 0x73,
-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x19, 0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76,
-	0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4b, 0x65, 0x79, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x42, 0x1f, 0x5a, 0x1d, 0x6b, 0x65, 0x79, 0x73, 0x5f, 0x73, 0x65, 0x72, 0x76, 0x69,
-	0x63, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x65, 0x6e, 0x3b, 0x6b, 0x65, 0x79,
-	0x73, 0x70, 0x62, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x61, 0x0a, 0x1b, 0x4c, 0x69, 0x73, 0x74,
+	0x53, 0x74, 0x75, 0x64, 0x65, 0x6e, 0x74, 0x4b, 0x65, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x42, 0x79,
+	0x43, 0x6f, 0x6c, 0x65, 0x67, 0x69, 0x6f, 0x12, 0x1d, 0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76,
+	0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x42, 0x79, 0x43, 0x6f, 0x6c, 0x65, 0x67, 0x69, 0x6f, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x23, 0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76, 0x31,
+	0x2e, 0x4c, 0x69, 0x73, 0x74, 0x53, 0x74, 0x75, 0x64, 0x65, 0x6e, 0x74, 0x4b, 0x65, 0x79, 0x49,
+	0x6e, 0x66, 0x6f, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x41, 0x0a, 0x0a, 0x53,
+	0x65, 0x61, 0x72, 0x63, 0x68, 0x4b, 0x65, 0x79, 0x73, 0x12, 0x18, 0x2e, 0x63, 0x6f, 0x6d, 0x6d,
+	0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x1a, 0x19, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e,
+	0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3e,
+	0x0a, 0x09, 0x52, 0x65, 0x73, 0x79, 0x6e, 0x63, 0x4b, 0x65, 0x79, 0x12, 0x19, 0x2e, 0x6b, 0x65,
+	0x79, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x73, 0x79, 0x6e, 0x63, 0x4b, 0x65, 0x79, 0x52,
+	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x16, 0x2e, 0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76, 0x31,
+	0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x45,
+	0x0a, 0x0b, 0x4c, 0x69, 0x73, 0x74, 0x41, 0x6c, 0x6c, 0x4b, 0x65, 0x79, 0x73, 0x12, 0x1b, 0x2e,
+	0x6b, 0x65, 0x79, 0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x41, 0x6c, 0x6c, 0x4b,
+	0x65, 0x79, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x19, 0x2e, 0x6b, 0x65, 0x79,
+	0x73, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4b, 0x65, 0x79, 0x73, 0x52, 0x65, 0x73,
+	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x1f, 0x5a, 0x1d, 0x6b, 0x65, 0x79, 0x73, 0x5f, 0x73, 0x65,
+	0x72, 0x76, 0x69, 0x63, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x65, 0x6e, 0x3b,
+	0x6b, 0x65, 0x79, 0x73, 0x70, 0x62, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1485,74 +1629,80 @@ func file_key_proto_rawDescGZIP() []byte {
 	return file_key_proto_rawDescData
 }
 
-var file_key_proto_msgTypes = make([]protoimpl.MessageInfo, 18)
+var file_key_proto_msgTypes = make([]protoimpl.MessageInfo, 20)
 var file_key_proto_goTypes = []any{
-	(*Key)(nil),                     // 0: keys.v1.Key
-	(*GenerateKeyRequest)(nil),      // 1: keys.v1.GenerateKeyRequest
-	(*UpdateKeyRequest)(nil),        // 2: keys.v1.UpdateKeyRequest
-	(*DeactivateKeyRequest)(nil),    // 3: keys.v1.DeactivateKeyRequest
-	(*ValidateKeyRequest)(nil),      // 4: keys.v1.ValidateKeyRequest
-	(*GetKeyRequest)(nil),           // 5: keys.v1.GetKeyRequest
-	(*GetByCodeRequest)(nil),        // 6: keys.v1.GetByCodeRequest
-	(*ListByAsesorRequest)(nil),     // 7: keys.v1.ListByAsesorRequest
-	(*ListByColegioRequest)(nil),    // 8: keys.v1.ListByColegioRequest
-	(*ListKeysResponse)(nil),        // 9: keys.v1.ListKeysResponse
-	(*ListUserIDsResponse)(nil),     // 10: keys.v1.ListUserIDsResponse
-	(*KeyResponse)(nil),             // 11: keys.v1.KeyResponse
-	(*EmptyResponse)(nil),           // 12: keys.v1.EmptyResponse
-	(*ResyncKeyRequest)(nil),        // 13: keys.v1.ResyncKeyRequest
-	(*ListAllKeysRequest)(nil),      // 14: keys.v1.ListAllKeysRequest
-	(*IncrementUsageRequest)(nil),   // 15: keys.v1.IncrementUsageRequest
-	(*UserHasKeyUsageRequest)(nil),  // 16: keys.v1.UserHasKeyUsageRequest
-	(*UserHasKeyUsageResponse)(nil), // 17: keys.v1.UserHasKeyUsageResponse
-	(*timestamppb.Timestamp)(nil),   // 18: google.protobuf.Timestamp
-	(*common.SearchRequest)(nil),    // 19: common.v1.SearchRequest
-	(*common.SearchResponse)(nil),   // 20: common.v1.SearchResponse
+	(*Key)(nil),                        // 0: keys.v1.Key
+	(*GenerateKeyRequest)(nil),         // 1: keys.v1.GenerateKeyRequest
+	(*UpdateKeyRequest)(nil),           // 2: keys.v1.UpdateKeyRequest
+	(*DeactivateKeyRequest)(nil),       // 3: keys.v1.DeactivateKeyRequest
+	(*ValidateKeyRequest)(nil),         // 4: keys.v1.ValidateKeyRequest
+	(*GetKeyRequest)(nil),              // 5: keys.v1.GetKeyRequest
+	(*GetByCodeRequest)(nil),           // 6: keys.v1.GetByCodeRequest
+	(*ListByAsesorRequest)(nil),        // 7: keys.v1.ListByAsesorRequest
+	(*ListByColegioRequest)(nil),       // 8: keys.v1.ListByColegioRequest
+	(*ListKeysResponse)(nil),           // 9: keys.v1.ListKeysResponse
+	(*ListUserIDsResponse)(nil),        // 10: keys.v1.ListUserIDsResponse
+	(*StudentKeyInfo)(nil),             // 11: keys.v1.StudentKeyInfo
+	(*ListStudentKeyInfoResponse)(nil), // 12: keys.v1.ListStudentKeyInfoResponse
+	(*KeyResponse)(nil),                // 13: keys.v1.KeyResponse
+	(*EmptyResponse)(nil),              // 14: keys.v1.EmptyResponse
+	(*ResyncKeyRequest)(nil),           // 15: keys.v1.ResyncKeyRequest
+	(*ListAllKeysRequest)(nil),         // 16: keys.v1.ListAllKeysRequest
+	(*IncrementUsageRequest)(nil),      // 17: keys.v1.IncrementUsageRequest
+	(*UserHasKeyUsageRequest)(nil),     // 18: keys.v1.UserHasKeyUsageRequest
+	(*UserHasKeyUsageResponse)(nil),    // 19: keys.v1.UserHasKeyUsageResponse
+	(*timestamppb.Timestamp)(nil),      // 20: google.protobuf.Timestamp
+	(*common.SearchRequest)(nil),       // 21: common.v1.SearchRequest
+	(*common.SearchResponse)(nil),      // 22: common.v1.SearchResponse
 }
 var file_key_proto_depIdxs = []int32{
-	18, // 0: keys.v1.Key.valid_from:type_name -> google.protobuf.Timestamp
-	18, // 1: keys.v1.Key.valid_to:type_name -> google.protobuf.Timestamp
-	18, // 2: keys.v1.Key.created_at:type_name -> google.protobuf.Timestamp
-	18, // 3: keys.v1.Key.updated_at:type_name -> google.protobuf.Timestamp
-	18, // 4: keys.v1.GenerateKeyRequest.valid_from:type_name -> google.protobuf.Timestamp
-	18, // 5: keys.v1.GenerateKeyRequest.valid_to:type_name -> google.protobuf.Timestamp
-	18, // 6: keys.v1.UpdateKeyRequest.valid_from:type_name -> google.protobuf.Timestamp
-	18, // 7: keys.v1.UpdateKeyRequest.valid_to:type_name -> google.protobuf.Timestamp
+	20, // 0: keys.v1.Key.valid_from:type_name -> google.protobuf.Timestamp
+	20, // 1: keys.v1.Key.valid_to:type_name -> google.protobuf.Timestamp
+	20, // 2: keys.v1.Key.created_at:type_name -> google.protobuf.Timestamp
+	20, // 3: keys.v1.Key.updated_at:type_name -> google.protobuf.Timestamp
+	20, // 4: keys.v1.GenerateKeyRequest.valid_from:type_name -> google.protobuf.Timestamp
+	20, // 5: keys.v1.GenerateKeyRequest.valid_to:type_name -> google.protobuf.Timestamp
+	20, // 6: keys.v1.UpdateKeyRequest.valid_from:type_name -> google.protobuf.Timestamp
+	20, // 7: keys.v1.UpdateKeyRequest.valid_to:type_name -> google.protobuf.Timestamp
 	0,  // 8: keys.v1.ListKeysResponse.items:type_name -> keys.v1.Key
-	0,  // 9: keys.v1.KeyResponse.key:type_name -> keys.v1.Key
-	1,  // 10: keys.v1.KeyService.GenerateKey:input_type -> keys.v1.GenerateKeyRequest
-	2,  // 11: keys.v1.KeyService.UpdateKey:input_type -> keys.v1.UpdateKeyRequest
-	3,  // 12: keys.v1.KeyService.DeactivateKey:input_type -> keys.v1.DeactivateKeyRequest
-	4,  // 13: keys.v1.KeyService.ValidateKey:input_type -> keys.v1.ValidateKeyRequest
-	15, // 14: keys.v1.KeyService.IncrementUsage:input_type -> keys.v1.IncrementUsageRequest
-	16, // 15: keys.v1.KeyService.UserHasKeyUsage:input_type -> keys.v1.UserHasKeyUsageRequest
-	5,  // 16: keys.v1.KeyService.GetKey:input_type -> keys.v1.GetKeyRequest
-	6,  // 17: keys.v1.KeyService.GetByCode:input_type -> keys.v1.GetByCodeRequest
-	7,  // 18: keys.v1.KeyService.ListByAsesor:input_type -> keys.v1.ListByAsesorRequest
-	8,  // 19: keys.v1.KeyService.ListByColegio:input_type -> keys.v1.ListByColegioRequest
-	8,  // 20: keys.v1.KeyService.ListUserIDsByColegio:input_type -> keys.v1.ListByColegioRequest
-	19, // 21: keys.v1.KeyService.SearchKeys:input_type -> common.v1.SearchRequest
-	13, // 22: keys.v1.KeyService.ResyncKey:input_type -> keys.v1.ResyncKeyRequest
-	14, // 23: keys.v1.KeyService.ListAllKeys:input_type -> keys.v1.ListAllKeysRequest
-	11, // 24: keys.v1.KeyService.GenerateKey:output_type -> keys.v1.KeyResponse
-	11, // 25: keys.v1.KeyService.UpdateKey:output_type -> keys.v1.KeyResponse
-	12, // 26: keys.v1.KeyService.DeactivateKey:output_type -> keys.v1.EmptyResponse
-	11, // 27: keys.v1.KeyService.ValidateKey:output_type -> keys.v1.KeyResponse
-	12, // 28: keys.v1.KeyService.IncrementUsage:output_type -> keys.v1.EmptyResponse
-	17, // 29: keys.v1.KeyService.UserHasKeyUsage:output_type -> keys.v1.UserHasKeyUsageResponse
-	11, // 30: keys.v1.KeyService.GetKey:output_type -> keys.v1.KeyResponse
-	11, // 31: keys.v1.KeyService.GetByCode:output_type -> keys.v1.KeyResponse
-	9,  // 32: keys.v1.KeyService.ListByAsesor:output_type -> keys.v1.ListKeysResponse
-	9,  // 33: keys.v1.KeyService.ListByColegio:output_type -> keys.v1.ListKeysResponse
-	10, // 34: keys.v1.KeyService.ListUserIDsByColegio:output_type -> keys.v1.ListUserIDsResponse
-	20, // 35: keys.v1.KeyService.SearchKeys:output_type -> common.v1.SearchResponse
-	12, // 36: keys.v1.KeyService.ResyncKey:output_type -> keys.v1.EmptyResponse
-	9,  // 37: keys.v1.KeyService.ListAllKeys:output_type -> keys.v1.ListKeysResponse
-	24, // [24:38] is the sub-list for method output_type
-	10, // [10:24] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	20, // 9: keys.v1.StudentKeyInfo.used_at:type_name -> google.protobuf.Timestamp
+	11, // 10: keys.v1.ListStudentKeyInfoResponse.items:type_name -> keys.v1.StudentKeyInfo
+	0,  // 11: keys.v1.KeyResponse.key:type_name -> keys.v1.Key
+	1,  // 12: keys.v1.KeyService.GenerateKey:input_type -> keys.v1.GenerateKeyRequest
+	2,  // 13: keys.v1.KeyService.UpdateKey:input_type -> keys.v1.UpdateKeyRequest
+	3,  // 14: keys.v1.KeyService.DeactivateKey:input_type -> keys.v1.DeactivateKeyRequest
+	4,  // 15: keys.v1.KeyService.ValidateKey:input_type -> keys.v1.ValidateKeyRequest
+	17, // 16: keys.v1.KeyService.IncrementUsage:input_type -> keys.v1.IncrementUsageRequest
+	18, // 17: keys.v1.KeyService.UserHasKeyUsage:input_type -> keys.v1.UserHasKeyUsageRequest
+	5,  // 18: keys.v1.KeyService.GetKey:input_type -> keys.v1.GetKeyRequest
+	6,  // 19: keys.v1.KeyService.GetByCode:input_type -> keys.v1.GetByCodeRequest
+	7,  // 20: keys.v1.KeyService.ListByAsesor:input_type -> keys.v1.ListByAsesorRequest
+	8,  // 21: keys.v1.KeyService.ListByColegio:input_type -> keys.v1.ListByColegioRequest
+	8,  // 22: keys.v1.KeyService.ListUserIDsByColegio:input_type -> keys.v1.ListByColegioRequest
+	8,  // 23: keys.v1.KeyService.ListStudentKeyInfoByColegio:input_type -> keys.v1.ListByColegioRequest
+	21, // 24: keys.v1.KeyService.SearchKeys:input_type -> common.v1.SearchRequest
+	15, // 25: keys.v1.KeyService.ResyncKey:input_type -> keys.v1.ResyncKeyRequest
+	16, // 26: keys.v1.KeyService.ListAllKeys:input_type -> keys.v1.ListAllKeysRequest
+	13, // 27: keys.v1.KeyService.GenerateKey:output_type -> keys.v1.KeyResponse
+	13, // 28: keys.v1.KeyService.UpdateKey:output_type -> keys.v1.KeyResponse
+	14, // 29: keys.v1.KeyService.DeactivateKey:output_type -> keys.v1.EmptyResponse
+	13, // 30: keys.v1.KeyService.ValidateKey:output_type -> keys.v1.KeyResponse
+	14, // 31: keys.v1.KeyService.IncrementUsage:output_type -> keys.v1.EmptyResponse
+	19, // 32: keys.v1.KeyService.UserHasKeyUsage:output_type -> keys.v1.UserHasKeyUsageResponse
+	13, // 33: keys.v1.KeyService.GetKey:output_type -> keys.v1.KeyResponse
+	13, // 34: keys.v1.KeyService.GetByCode:output_type -> keys.v1.KeyResponse
+	9,  // 35: keys.v1.KeyService.ListByAsesor:output_type -> keys.v1.ListKeysResponse
+	9,  // 36: keys.v1.KeyService.ListByColegio:output_type -> keys.v1.ListKeysResponse
+	10, // 37: keys.v1.KeyService.ListUserIDsByColegio:output_type -> keys.v1.ListUserIDsResponse
+	12, // 38: keys.v1.KeyService.ListStudentKeyInfoByColegio:output_type -> keys.v1.ListStudentKeyInfoResponse
+	22, // 39: keys.v1.KeyService.SearchKeys:output_type -> common.v1.SearchResponse
+	14, // 40: keys.v1.KeyService.ResyncKey:output_type -> keys.v1.EmptyResponse
+	9,  // 41: keys.v1.KeyService.ListAllKeys:output_type -> keys.v1.ListKeysResponse
+	27, // [27:42] is the sub-list for method output_type
+	12, // [12:27] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_key_proto_init() }
@@ -1567,7 +1717,7 @@ func file_key_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_key_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   18,
+			NumMessages:   20,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

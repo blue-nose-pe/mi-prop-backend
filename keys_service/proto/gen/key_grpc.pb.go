@@ -20,20 +20,21 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	KeyService_GenerateKey_FullMethodName          = "/keys.v1.KeyService/GenerateKey"
-	KeyService_UpdateKey_FullMethodName            = "/keys.v1.KeyService/UpdateKey"
-	KeyService_DeactivateKey_FullMethodName        = "/keys.v1.KeyService/DeactivateKey"
-	KeyService_ValidateKey_FullMethodName          = "/keys.v1.KeyService/ValidateKey"
-	KeyService_IncrementUsage_FullMethodName       = "/keys.v1.KeyService/IncrementUsage"
-	KeyService_UserHasKeyUsage_FullMethodName      = "/keys.v1.KeyService/UserHasKeyUsage"
-	KeyService_GetKey_FullMethodName               = "/keys.v1.KeyService/GetKey"
-	KeyService_GetByCode_FullMethodName            = "/keys.v1.KeyService/GetByCode"
-	KeyService_ListByAsesor_FullMethodName         = "/keys.v1.KeyService/ListByAsesor"
-	KeyService_ListByColegio_FullMethodName        = "/keys.v1.KeyService/ListByColegio"
-	KeyService_ListUserIDsByColegio_FullMethodName = "/keys.v1.KeyService/ListUserIDsByColegio"
-	KeyService_SearchKeys_FullMethodName           = "/keys.v1.KeyService/SearchKeys"
-	KeyService_ResyncKey_FullMethodName            = "/keys.v1.KeyService/ResyncKey"
-	KeyService_ListAllKeys_FullMethodName          = "/keys.v1.KeyService/ListAllKeys"
+	KeyService_GenerateKey_FullMethodName                 = "/keys.v1.KeyService/GenerateKey"
+	KeyService_UpdateKey_FullMethodName                   = "/keys.v1.KeyService/UpdateKey"
+	KeyService_DeactivateKey_FullMethodName               = "/keys.v1.KeyService/DeactivateKey"
+	KeyService_ValidateKey_FullMethodName                 = "/keys.v1.KeyService/ValidateKey"
+	KeyService_IncrementUsage_FullMethodName              = "/keys.v1.KeyService/IncrementUsage"
+	KeyService_UserHasKeyUsage_FullMethodName             = "/keys.v1.KeyService/UserHasKeyUsage"
+	KeyService_GetKey_FullMethodName                      = "/keys.v1.KeyService/GetKey"
+	KeyService_GetByCode_FullMethodName                   = "/keys.v1.KeyService/GetByCode"
+	KeyService_ListByAsesor_FullMethodName                = "/keys.v1.KeyService/ListByAsesor"
+	KeyService_ListByColegio_FullMethodName               = "/keys.v1.KeyService/ListByColegio"
+	KeyService_ListUserIDsByColegio_FullMethodName        = "/keys.v1.KeyService/ListUserIDsByColegio"
+	KeyService_ListStudentKeyInfoByColegio_FullMethodName = "/keys.v1.KeyService/ListStudentKeyInfoByColegio"
+	KeyService_SearchKeys_FullMethodName                  = "/keys.v1.KeyService/SearchKeys"
+	KeyService_ResyncKey_FullMethodName                   = "/keys.v1.KeyService/ResyncKey"
+	KeyService_ListAllKeys_FullMethodName                 = "/keys.v1.KeyService/ListAllKeys"
 )
 
 // KeyServiceClient is the client API for KeyService service.
@@ -60,6 +61,12 @@ type KeyServiceClient interface {
 	// Colegio X" aditivo: incluir tambien a quienes consumieron aforo de las
 	// keys del colegio, aunque su users.school_id apunte a otro.
 	ListUserIDsByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListUserIDsResponse, error)
+	// Devuelve, por cada alumno que usó alguna key del colegio, el grado /
+	// sección / exam_type de la key (vía key_usage <-> key). El gateway lo
+	// usa para enriquecer el listado "Ver estudiantes" (grado y sección
+	// viven en la key, no en el user). Trae TODAS las filas ordenadas por
+	// used_at DESC; el caller toma la más reciente por user_id.
+	ListStudentKeyInfoByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListStudentKeyInfoResponse, error)
 	SearchKeys(ctx context.Context, in *common.SearchRequest, opts ...grpc.CallOption) (*common.SearchResponse, error)
 	// ResyncKey re-dispara el sync a HubSpot para una key ya creada. Lo
 	// invoca el endpoint admin /api/admin/keys/resync-all del gateway para
@@ -190,6 +197,16 @@ func (c *keyServiceClient) ListUserIDsByColegio(ctx context.Context, in *ListByC
 	return out, nil
 }
 
+func (c *keyServiceClient) ListStudentKeyInfoByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListStudentKeyInfoResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListStudentKeyInfoResponse)
+	err := c.cc.Invoke(ctx, KeyService_ListStudentKeyInfoByColegio_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *keyServiceClient) SearchKeys(ctx context.Context, in *common.SearchRequest, opts ...grpc.CallOption) (*common.SearchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(common.SearchResponse)
@@ -244,6 +261,12 @@ type KeyServiceServer interface {
 	// Colegio X" aditivo: incluir tambien a quienes consumieron aforo de las
 	// keys del colegio, aunque su users.school_id apunte a otro.
 	ListUserIDsByColegio(context.Context, *ListByColegioRequest) (*ListUserIDsResponse, error)
+	// Devuelve, por cada alumno que usó alguna key del colegio, el grado /
+	// sección / exam_type de la key (vía key_usage <-> key). El gateway lo
+	// usa para enriquecer el listado "Ver estudiantes" (grado y sección
+	// viven en la key, no en el user). Trae TODAS las filas ordenadas por
+	// used_at DESC; el caller toma la más reciente por user_id.
+	ListStudentKeyInfoByColegio(context.Context, *ListByColegioRequest) (*ListStudentKeyInfoResponse, error)
 	SearchKeys(context.Context, *common.SearchRequest) (*common.SearchResponse, error)
 	// ResyncKey re-dispara el sync a HubSpot para una key ya creada. Lo
 	// invoca el endpoint admin /api/admin/keys/resync-all del gateway para
@@ -296,6 +319,9 @@ func (UnimplementedKeyServiceServer) ListByColegio(context.Context, *ListByColeg
 }
 func (UnimplementedKeyServiceServer) ListUserIDsByColegio(context.Context, *ListByColegioRequest) (*ListUserIDsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListUserIDsByColegio not implemented")
+}
+func (UnimplementedKeyServiceServer) ListStudentKeyInfoByColegio(context.Context, *ListByColegioRequest) (*ListStudentKeyInfoResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListStudentKeyInfoByColegio not implemented")
 }
 func (UnimplementedKeyServiceServer) SearchKeys(context.Context, *common.SearchRequest) (*common.SearchResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchKeys not implemented")
@@ -525,6 +551,24 @@ func _KeyService_ListUserIDsByColegio_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KeyService_ListStudentKeyInfoByColegio_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListByColegioRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KeyServiceServer).ListStudentKeyInfoByColegio(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KeyService_ListStudentKeyInfoByColegio_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KeyServiceServer).ListStudentKeyInfoByColegio(ctx, req.(*ListByColegioRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KeyService_SearchKeys_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(common.SearchRequest)
 	if err := dec(in); err != nil {
@@ -629,6 +673,10 @@ var KeyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListUserIDsByColegio",
 			Handler:    _KeyService_ListUserIDsByColegio_Handler,
+		},
+		{
+			MethodName: "ListStudentKeyInfoByColegio",
+			Handler:    _KeyService_ListStudentKeyInfoByColegio_Handler,
 		},
 		{
 			MethodName: "SearchKeys",

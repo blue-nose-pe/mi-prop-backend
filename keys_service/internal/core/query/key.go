@@ -44,6 +44,10 @@ func (h *KeyHandler) ListUserIDsByColegio(ctx context.Context, schoolID domain.S
 	return h.keys.ListUserIDsByColegio(ctx, schoolID)
 }
 
+func (h *KeyHandler) ListStudentKeyInfoByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.StudentKeyInfo, error) {
+	return h.keys.ListStudentKeyInfoByColegio(ctx, schoolID)
+}
+
 func (h *KeyHandler) Search(ctx context.Context, req search.Request) (*search.Response, error) {
 	return h.keys.Search(ctx, req)
 }

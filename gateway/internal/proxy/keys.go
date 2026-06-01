@@ -41,7 +41,39 @@ func (p *Proxy) RegisterKeys(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/attempts/by-key/{id}", p.listAttemptsByKey)
 	mux.HandleFunc("GET /api/asesores/{id}/keys", p.listKeysByAsesor)
 	mux.HandleFunc("GET /api/colegios/{id}/keys", p.listKeysByColegio)
+	mux.HandleFunc("GET /api/colegios/{id}/student-key-info", p.studentKeyInfoByColegio)
 	mux.HandleFunc("POST /api/admin/keys/resync-all", p.resyncAllKeys)
+}
+
+// studentKeyInfoByColegio — GET /api/colegios/{id}/student-key-info
+// Devuelve, por cada alumno que usó alguna key del colegio, el grado /
+// sección / herramienta de su key MÁS RECIENTE. Grado y sección viven en
+// la key, no en el registro del user, así que el front enriquece con esto
+// el listado "Ver estudiantes" (antes mostraba grado/sección = "—" fijos).
+func (p *Proxy) studentKeyInfoByColegio(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Keys.ListStudentKeyInfoByColegio(r.Context(), &keysgrpcpb.ListByColegioRequest{
+		SchoolId: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	// Items vienen ordenados por used_at DESC → el primero por user_id es el
+	// más reciente. Mapeamos exam_type_id → herramienta.
+	examTool := map[int32]string{1: "vocacional", 2: "simulacro", 3: "habitos"}
+	byUser := make(map[string]map[string]any)
+	for _, it := range resp.GetItems() {
+		uid := it.GetUserId()
+		if _, seen := byUser[uid]; seen {
+			continue // ya tenemos el más reciente
+		}
+		byUser[uid] = map[string]any{
+			"grade":   it.GetGrade(),
+			"section": it.GetSection(),
+			"tool":    examTool[it.GetExamTypeId()],
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": byUser})
 }
 
 // listAttemptsByKey — GET /api/attempts/by-key/{id}

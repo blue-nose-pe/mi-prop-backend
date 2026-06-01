@@ -28,6 +28,12 @@ service KeyService {
   // Colegio X" aditivo: incluir tambien a quienes consumieron aforo de las
   // keys del colegio, aunque su users.school_id apunte a otro.
   rpc ListUserIDsByColegio (ListByColegioRequest) returns (ListUserIDsResponse);
+  // Devuelve, por cada alumno que usó alguna key del colegio, el grado /
+  // sección / exam_type de la key (vía key_usage <-> key). El gateway lo
+  // usa para enriquecer el listado "Ver estudiantes" (grado y sección
+  // viven en la key, no en el user). Trae TODAS las filas ordenadas por
+  // used_at DESC; el caller toma la más reciente por user_id.
+  rpc ListStudentKeyInfoByColegio (ListByColegioRequest) returns (ListStudentKeyInfoResponse);
   rpc SearchKeys    (common.v1.SearchRequest) returns (common.v1.SearchResponse);
   // ResyncKey re-dispara el sync a HubSpot para una key ya creada. Lo
   // invoca el endpoint admin /api/admin/keys/resync-all del gateway para
@@ -128,6 +134,14 @@ message ListByAsesorRequest  { string asesor_user_id = 1; }
 message ListByColegioRequest { string school_id = 1; }
 message ListKeysResponse     { repeated Key items = 1; }
 message ListUserIDsResponse  { repeated string user_ids = 1; }
+message StudentKeyInfo {
+  string user_id     = 1;
+  string grade       = 2;
+  string section     = 3;
+  int32  exam_type_id = 4;
+  google.protobuf.Timestamp used_at = 5;
+}
+message ListStudentKeyInfoResponse { repeated StudentKeyInfo items = 1; }
 message KeyResponse          { Key key = 1; }
 message EmptyResponse        {}
 

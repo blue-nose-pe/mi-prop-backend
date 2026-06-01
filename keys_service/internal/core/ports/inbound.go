@@ -33,6 +33,7 @@ type KeyQueries interface {
 	// ListAll — dump completo, solo para el flujo admin resync-all.
 	ListAll(ctx context.Context) ([]domain.Key, error)
 	ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error)
+	ListStudentKeyInfoByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.StudentKeyInfo, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
 	// UserHasKeyUsage: true si (key, user) ya tiene fila en key_usage.
 	// El gateway lo usa para decidir si un user puede entrar a una key

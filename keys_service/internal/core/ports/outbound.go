@@ -26,6 +26,10 @@ type KeyRepository interface {
 	// alumnos que rindieron via keys del colegio aunque users.school_id
 	// apunte a otro lado.
 	ListUserIDsByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.UserID, error)
+	// ListStudentKeyInfoByColegio: grado/sección/exam_type por alumno que
+	// usó keys del colegio (JOIN key_usage <-> [key]). Ordenado por used_at
+	// DESC para que el caller tome el más reciente por user.
+	ListStudentKeyInfoByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.StudentKeyInfo, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
 	// IncrementUses atomico — UPDATE ... SET current_uses = current_uses + 1
 	// con WHERE que valida limite + NOT EXISTS de key_usage(key,user). Esto

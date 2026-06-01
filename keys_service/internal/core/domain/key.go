@@ -8,6 +8,18 @@ type (
 	SchoolID string // ref lógica a db_users.school.id
 )
 
+// StudentKeyInfo: grado/sección/exam_type que un alumno hereda de la key
+// con la que rindió (vía key_usage <-> key). Grado y sección NO viven en
+// el registro del user; viven en la key. El gateway lo usa para enriquecer
+// el listado "Ver estudiantes".
+type StudentKeyInfo struct {
+	UserID     UserID
+	Grade      string
+	Section    string
+	ExamTypeID int32
+	UsedAt     time.Time
+}
+
 // KeyMode discrimina cómo se distribuye el código.
 //   - school: atado a un colegio específico (los estudiantes lo usan al rendir).
 //   - lan:    masivo (no atado a colegio); admin lo da en sesiones LAN.

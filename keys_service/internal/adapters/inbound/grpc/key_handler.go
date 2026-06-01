@@ -165,6 +165,24 @@ func (h *KeyHandler) ListUserIDsByColegio(ctx context.Context, req *pb.ListByCol
 	return &pb.ListUserIDsResponse{UserIds: out}, nil
 }
 
+func (h *KeyHandler) ListStudentKeyInfoByColegio(ctx context.Context, req *pb.ListByColegioRequest) (*pb.ListStudentKeyInfoResponse, error) {
+	infos, err := h.qrys.ListStudentKeyInfoByColegio(ctx, domain.SchoolID(req.GetSchoolId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	items := make([]*pb.StudentKeyInfo, 0, len(infos))
+	for _, si := range infos {
+		items = append(items, &pb.StudentKeyInfo{
+			UserId:     string(si.UserID),
+			Grade:      si.Grade,
+			Section:    si.Section,
+			ExamTypeId: si.ExamTypeID,
+			UsedAt:     timestamppb.New(si.UsedAt),
+		})
+	}
+	return &pb.ListStudentKeyInfoResponse{Items: items}, nil
+}
+
 func (h *KeyHandler) ResyncKey(ctx context.Context, req *pb.ResyncKeyRequest) (*pb.EmptyResponse, error) {
 	err := h.cmds.Resync(ctx, ports.ResyncKeyInput{
 		ID:             domain.KeyID(req.GetId()),
