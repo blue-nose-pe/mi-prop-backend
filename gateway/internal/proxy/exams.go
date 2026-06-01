@@ -34,10 +34,15 @@
 package proxy
 
 import (
+	"context"
+	"log"
 	"net/http"
+	"time"
 
 	examsgrpcpb "exams_service/proto/gen"
 	examscommonpb "exams_service/proto/gen/common"
+	hubspotgrpcpb "hubspot_service/proto/gen"
+	usersgrpcpb "users_service/proto/gen"
 )
 
 func (p *Proxy) RegisterExams(mux *http.ServeMux) {
@@ -598,7 +603,67 @@ func (p *Proxy) finishAttempt(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+	// Sincroniza el resultado (score_<tool>, max_score_<tool>, ultima_evaluacion)
+	// al Contact de HubSpot. Antes NADIE disparaba esto → los puntajes de examen
+	// nunca viajaban a HubSpot (observacion del cliente). Fire-and-forget: no
+	// bloquea ni hace fallar la finalizacion del examen para el alumno.
+	go p.syncResultToHubspot(resp.GetAttempt())
 	writeJSON(w, http.StatusOK, map[string]any{"attempt": protoAttemptToJSON(resp.GetAttempt())})
+}
+
+// examTypeCodeByID mapea el exam_type_id al code que HubSpot espera en las
+// props score_<code>/max_score_<code> (vocacional|simulacro|habitos).
+var examTypeCodeByID = map[int32]string{1: "vocacional", 2: "simulacro", 3: "habitos"}
+
+// syncResultToHubspot resuelve el exam_type_code (via GetExam) y el DNI del
+// alumno (via GetUser) y encola el SyncExamResult en hubspot-service. Best-effort:
+// cualquier fallo se loguea y se ignora (el examen ya quedo guardado localmente).
+func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt) {
+	if a == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	exResp, err := p.cli.Exams.GetExam(ctx, &examsgrpcpb.GetExamRequest{Id: a.GetExamId()})
+	if err != nil || exResp.GetExam() == nil {
+		log.Printf("[hubspot-result] GetExam FAIL attempt=%s exam=%s err=%v", a.GetId(), a.GetExamId(), err)
+		return
+	}
+	examTypeCode := examTypeCodeByID[exResp.GetExam().GetExamTypeId()]
+	if examTypeCode == "" {
+		log.Printf("[hubspot-result] exam_type desconocido attempt=%s type=%d — skip", a.GetId(), exResp.GetExam().GetExamTypeId())
+		return
+	}
+
+	uResp, err := p.cli.Users.GetUser(ctx, &usersgrpcpb.GetUserRequest{Id: a.GetUserId()})
+	if err != nil || uResp.GetUser() == nil {
+		log.Printf("[hubspot-result] GetUser FAIL attempt=%s user=%s err=%v", a.GetId(), a.GetUserId(), err)
+		return
+	}
+	dni := uResp.GetUser().GetDocumentNumber()
+	if dni == "" {
+		log.Printf("[hubspot-result] DNI vacio attempt=%s user=%s — skip", a.GetId(), a.GetUserId())
+		return
+	}
+
+	submittedAt := ""
+	if ts := a.GetSubmittedAt(); ts != nil {
+		submittedAt = ts.AsTime().Format(time.RFC3339)
+	}
+
+	if _, err := p.cli.Hubspot.SyncExamResult(ctx, &hubspotgrpcpb.SyncExamResultRequest{
+		Dni:          dni,
+		ExamTypeCode: examTypeCode,
+		Score:        a.GetScore(),
+		MaxScore:     a.GetMaxScore(),
+		AttemptId:    a.GetId(),
+		SubmittedAt:  submittedAt,
+	}); err != nil {
+		log.Printf("[hubspot-result] SyncExamResult FAIL attempt=%s dni=%s err=%v", a.GetId(), dni, err)
+		return
+	}
+	log.Printf("[hubspot-result] enqueued attempt=%s dni=%s type=%s score=%d/%d", a.GetId(), dni, examTypeCode, a.GetScore(), a.GetMaxScore())
 }
 
 // callerOwnsAttempt resuelve el ownership del attempt en el path.

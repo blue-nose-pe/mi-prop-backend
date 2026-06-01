@@ -83,9 +83,10 @@ func handleUpsertAsesor(deps WorkerDeps) asynq.HandlerFunc {
 			"email":  p.Email,
 			"nombre": p.Nombre,
 		}
-		if p.Bio != "" {
-			props["bio"] = p.Bio
-		}
+		// NO enviamos `bio`: la propiedad NO existe en el custom object Asesor
+		// del portal UCSP → HubSpot rechaza el upsert con PROPERTY_DOESNT_EXIST
+		// (toda la tarea iba al DLQ). Si UCSP crea la prop "bio" en el portal,
+		// reactivar: if p.Bio != "" { props["bio"] = p.Bio }.
 		_, err := deps.HSClient.UpsertCustomObjectByProp(ctx, deps.CustomAsesorID, "email", p.Email, props)
 		return err
 	}
