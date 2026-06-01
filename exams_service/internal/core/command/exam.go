@@ -201,7 +201,14 @@ func (h *ExamHandler) Publish(ctx context.Context, id domain.ExamID) error {
 	if len(qs) == 0 {
 		return domain.ErrEmptyExamName // reuse — un publicar sin preguntas es inválido
 	}
-	return h.exams.SetPublished(ctx, id, true)
+	if err := h.exams.SetPublished(ctx, id, true); err != nil {
+		return err
+	}
+	// Publicar tambien REACTIVA: un examen pausado (active=false) que se
+	// publica debe quedar VIVO (active=true + published=true). Antes Publish
+	// solo seteaba published=true, asi que publicar un examen "paused" lo
+	// dejaba igual (paused) — el boton "play" no hacia nada visible.
+	return h.exams.SetActive(ctx, id, true)
 }
 
 func (h *ExamHandler) Deactivate(ctx context.Context, id domain.ExamID) error {

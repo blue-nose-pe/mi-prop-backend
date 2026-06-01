@@ -83,7 +83,13 @@ func (h *SurveyHandler) Publish(ctx context.Context, id domain.SurveyID) error {
 	if len(qs) == 0 {
 		return domain.ErrSurveyNotFound // un survey sin preguntas no se publica
 	}
-	return h.surveys.SetPublished(ctx, id, true)
+	if err := h.surveys.SetPublished(ctx, id, true); err != nil {
+		return err
+	}
+	// Publicar tambien REACTIVA (active=true): un survey pausado que se
+	// publica debe quedar vivo. Sin esto el boton "play" en un survey
+	// pausado no hacia nada (seguia paused). Mismo fix que exams.
+	return h.surveys.SetActive(ctx, id, true)
 }
 
 func (h *SurveyHandler) Deactivate(ctx context.Context, id domain.SurveyID) error {
