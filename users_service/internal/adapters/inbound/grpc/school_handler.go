@@ -58,6 +58,8 @@ func (h *SchoolHandler) CreateSchool(ctx context.Context, req *pb.CreateSchoolRe
 		Penetration:     req.GetPenetration(),
 		Email:           req.GetEmail(),
 		Phone:           req.GetPhone(),
+		Ruc:             req.GetRuc(),
+		Poblacion:       req.GetPoblacion(),
 		Active:          true,
 		HubspotRecordID: req.GetHubspotRecordId(),
 		CreatedAt:       time.Now(),
@@ -91,6 +93,8 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 		Penetration:     req.GetPenetration(),
 		Email:           req.GetEmail(),
 		Phone:           req.GetPhone(),
+		Ruc:             req.GetRuc(),
+		Poblacion:       req.GetPoblacion(),
 	}
 	if err := h.repo.Update(ctx, s); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -196,6 +200,10 @@ func schoolToProto(s *domain.School) *pb.School {
 		Penetration:     s.Penetration,
 		Email:           s.Email,
 		Phone:           s.Phone,
+		Ruc:             s.Ruc,
+		Poblacion:       s.Poblacion,
+		AsesorUserId:    s.AsesorUserID,
+		AsesorName:      s.AsesorName,
 		Active:          s.Active,
 		HubspotRecordId: s.HubspotRecordID,
 		IntId:           s.IntID,

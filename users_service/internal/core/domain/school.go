@@ -28,6 +28,15 @@ type School struct {
 	// crear, se piden al editar. "" = sin registrar.
 	Email           string
 	Phone           string
+	// Cliente (2026-06-04): RUC y poblacion estudiantil del colegio. Se
+	// piden al editar. "" = sin registrar.
+	Ruc             string
+	Poblacion       string
+	// Solo lo llena el listado (List/ListByAsesor) via JOIN con assignment:
+	// asesor vigente del colegio. "" = colegio SIN asesor. No persiste en
+	// la tabla school (es derivado).
+	AsesorUserID    string
+	AsesorName      string
 	Active          bool
 	CreatedAt       time.Time
 	UpdatedAt       *time.Time

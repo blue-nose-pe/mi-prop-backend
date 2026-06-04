@@ -133,6 +133,8 @@ type createSchoolRequest struct {
 	Penetration     string `json:"penetration"` // Alta/Media/Baja
 	Email           string `json:"email"`       // contacto del colegio, opcional al crear
 	Phone           string `json:"phone"`       // contacto del colegio, opcional al crear
+	Ruc             string `json:"ruc"`         // RUC del colegio, opcional al crear
+	Poblacion       string `json:"poblacion"`   // poblacion estudiantil, opcional al crear
 }
 
 func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
@@ -151,6 +153,8 @@ func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
 		Penetration:     in.Penetration,
 		Email:           in.Email,
 		Phone:           in.Phone,
+		Ruc:             in.Ruc,
+		Poblacion:       in.Poblacion,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -169,6 +173,8 @@ type updateSchoolRequest struct {
 	Penetration     string `json:"penetration"` // "" no toca; "-" limpia
 	Email           string `json:"email"`       // "" no toca; "-" limpia
 	Phone           string `json:"phone"`       // "" no toca; "-" limpia
+	Ruc             string `json:"ruc"`         // "" no toca; "-" limpia
+	Poblacion       string `json:"poblacion"`   // "" no toca; "-" limpia
 }
 
 func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
@@ -188,6 +194,8 @@ func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
 		Penetration:     in.Penetration,
 		Email:           in.Email,
 		Phone:           in.Phone,
+		Ruc:             in.Ruc,
+		Poblacion:       in.Poblacion,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -257,6 +265,10 @@ func protoSchoolToJSON(s *usersgrpcpb.School) map[string]any {
 		"penetration":       s.GetPenetration(),
 		"email":             s.GetEmail(),
 		"phone":             s.GetPhone(),
+		"ruc":               s.GetRuc(),
+		"poblacion":         s.GetPoblacion(),
+		"asesor_user_id":    s.GetAsesorUserId(),
+		"asesor_name":       s.GetAsesorName(),
 		"active":            s.GetActive(),
 		"hubspot_record_id": s.GetHubspotRecordId(),
 		"created_at":        optionalTimestamp(s.GetCreatedAt()),
