@@ -24,6 +24,10 @@ type School struct {
 	// Cliente: nivel de penetracion del producto en el colegio. Editable
 	// solo post-creacion. Valores: "Alta" / "Media" / "Baja" / "".
 	Penetration     string
+	// Cliente (2026-06-04): datos de contacto del colegio. Opcionales al
+	// crear, se piden al editar. "" = sin registrar.
+	Email           string
+	Phone           string
 	Active          bool
 	CreatedAt       time.Time
 	UpdatedAt       *time.Time

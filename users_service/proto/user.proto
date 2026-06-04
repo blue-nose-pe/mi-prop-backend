@@ -172,6 +172,8 @@ message CreateSchoolRequest {
   string category          = 5;  // Segmento UCSP: A1/A2/B1/B2/C/OP/OR (o legacy A+/A/B/C/D)
   string code              = 6;  // Codigo modular MINEDU (unico cuando no vacio)
   string penetration       = 7;  // Alta/Media/Baja, opcional
+  string email             = 8;  // correo de contacto del colegio, opcional al crear
+  string phone             = 9;  // telefono de contacto del colegio, opcional al crear
 }
 message UpdateSchoolRequest {
   string id                = 1;
@@ -182,6 +184,8 @@ message UpdateSchoolRequest {
   string category          = 6;  // "" = no tocar; "-" = limpiar (NULL)
   string code              = 7;  // "" = no tocar; "-" = limpiar (NULL)
   string penetration       = 8;  // "" = no tocar; "-" = limpiar (NULL)
+  string email             = 9;  // "" = no tocar; "-" = limpiar (NULL)
+  string phone             = 10; // "" = no tocar; "-" = limpiar (NULL)
 }
 
 message School {
@@ -201,6 +205,8 @@ message School {
   int32  int_id            = 10;
   string code              = 11; // Codigo modular MINEDU
   string penetration       = 12; // Alta/Media/Baja
+  string email             = 13; // correo de contacto del colegio ("" si no se cargo)
+  string phone             = 14; // telefono de contacto del colegio ("" si no se cargo)
 }
 
 // AuthService — separado de UserService porque los endpoints de auth

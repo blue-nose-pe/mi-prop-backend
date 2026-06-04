@@ -131,6 +131,8 @@ type createSchoolRequest struct {
 	Category        string `json:"category"`
 	Code            string `json:"code"`        // codigo modular MINEDU
 	Penetration     string `json:"penetration"` // Alta/Media/Baja
+	Email           string `json:"email"`       // contacto del colegio, opcional al crear
+	Phone           string `json:"phone"`       // contacto del colegio, opcional al crear
 }
 
 func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
@@ -147,6 +149,8 @@ func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
 		Category:        in.Category,
 		Code:            in.Code,
 		Penetration:     in.Penetration,
+		Email:           in.Email,
+		Phone:           in.Phone,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -163,6 +167,8 @@ type updateSchoolRequest struct {
 	Category        string `json:"category"`    // "" no toca; "-" limpia
 	Code            string `json:"code"`        // "" no toca; "-" limpia
 	Penetration     string `json:"penetration"` // "" no toca; "-" limpia
+	Email           string `json:"email"`       // "" no toca; "-" limpia
+	Phone           string `json:"phone"`       // "" no toca; "-" limpia
 }
 
 func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +186,8 @@ func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
 		Category:        in.Category,
 		Code:            in.Code,
 		Penetration:     in.Penetration,
+		Email:           in.Email,
+		Phone:           in.Phone,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -247,6 +255,8 @@ func protoSchoolToJSON(s *usersgrpcpb.School) map[string]any {
 		"category":          s.GetCategory(),
 		"code":              s.GetCode(),
 		"penetration":       s.GetPenetration(),
+		"email":             s.GetEmail(),
+		"phone":             s.GetPhone(),
 		"active":            s.GetActive(),
 		"hubspot_record_id": s.GetHubspotRecordId(),
 		"created_at":        optionalTimestamp(s.GetCreatedAt()),
