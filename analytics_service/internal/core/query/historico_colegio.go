@@ -44,6 +44,21 @@ func parsePeriodLabel(s string) (int32, int32, bool) {
 	return 0, 0, false
 }
 
+// parseYearOnly acepta "YYYY" (sin -QN) para el modo ANUAL pedido por el
+// cliente (2026-06-04): el periodo principal es anual, el quarter es un
+// desglose secundario. Devuelve (year, ok).
+func parseYearOnly(s string) (int32, bool) {
+	s = strings.TrimSpace(s)
+	if strings.Contains(strings.ToUpper(s), "-Q") {
+		return 0, false
+	}
+	var y int32
+	if n, _ := fmt.Sscanf(s, "%d", &y); n == 1 && y >= 2000 && y <= 2100 {
+		return y, true
+	}
+	return 0, false
+}
+
 // currentPeriod calcula el quarter actual en UTC.
 func currentPeriod() (int32, int32) {
 	return quarterOf(time.Now().UTC())
@@ -184,19 +199,30 @@ func (h *DashboardHandler) GetColegiosHistorico(ctx context.Context, in ports.Co
 		return nil, apperr.NewValidation("INVALID_EXAM_TYPE", fmt.Sprintf("invalid exam_type_code: %s", in.ExamTypeCode), "exam_type_code")
 	}
 
-	// Resolver el periodo objetivo + previo.
+	// Resolver el periodo objetivo + previo. Soporta 3 formas:
+	//   "" / "current" -> quarter actual (back-compat).
+	//   "YYYY-QN"       -> quarter especifico.
+	//   "YYYY"          -> ANUAL (todo el año, compara vs el año anterior).
 	var year, quarter int32
+	annual := false
 	switch strings.ToLower(strings.TrimSpace(in.Period)) {
 	case "", "current":
 		year, quarter = currentPeriod()
 	default:
-		y, q, ok := parsePeriodLabel(in.Period)
-		if !ok {
-			return nil, apperr.NewValidation("INVALID_PERIOD", fmt.Sprintf("invalid period (expected current or YYYY-QN): %s", in.Period), "period")
+		if y, q, ok := parsePeriodLabel(in.Period); ok {
+			year, quarter = y, q
+		} else if y, ok := parseYearOnly(in.Period); ok {
+			year, quarter, annual = y, 0, true
+		} else {
+			return nil, apperr.NewValidation("INVALID_PERIOD", fmt.Sprintf("invalid period (expected current, YYYY-QN o YYYY): %s", in.Period), "period")
 		}
-		year, quarter = y, q
 	}
-	prevYear, prevQuarter := previousPeriod(year, quarter)
+	var prevYear, prevQuarter int32
+	if annual {
+		prevYear, prevQuarter = year-1, 0
+	} else {
+		prevYear, prevQuarter = previousPeriod(year, quarter)
+	}
 
 	schools, err := h.users.ListSchools(ctx, true)
 	if err != nil {
@@ -251,11 +277,21 @@ func (h *DashboardHandler) GetColegiosHistorico(ctx context.Context, in ports.Co
 					continue
 				}
 				y, q := quarterOf(*a.SubmittedAt)
-				switch {
-				case y == year && q == quarter:
-					current = append(current, a)
-				case y == prevYear && q == prevQuarter:
-					previous = append(previous, a)
+				if annual {
+					// Modo anual: todo el año actual vs todo el año anterior.
+					switch y {
+					case year:
+						current = append(current, a)
+					case prevYear:
+						previous = append(previous, a)
+					}
+				} else {
+					switch {
+					case y == year && q == quarter:
+						current = append(current, a)
+					case y == prevYear && q == prevQuarter:
+						previous = append(previous, a)
+					}
 				}
 			}
 			avgCur, nCur := computeAvgScore(current)
@@ -287,8 +323,12 @@ func (h *DashboardHandler) GetColegiosHistorico(ctx context.Context, in ports.Co
 	// Ordenar alfa por nombre — mejor que un orden indeterminado.
 	sort.Slice(rows, func(i, j int) bool { return strings.ToLower(rows[i].SchoolName) < strings.ToLower(rows[j].SchoolName) })
 
+	label := periodLabel(year, quarter)
+	if annual {
+		label = fmt.Sprintf("%d (anual)", year)
+	}
 	return &domain.ColegiosHistoricoListing{
-		Period:       periodLabel(year, quarter),
+		Period:       label,
 		ExamTypeCode: in.ExamTypeCode,
 		Items:        rows,
 		GeneratedAt:  time.Now().UTC(),
