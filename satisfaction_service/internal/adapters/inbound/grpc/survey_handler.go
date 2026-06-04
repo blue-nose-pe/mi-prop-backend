@@ -30,6 +30,7 @@ func (h *SurveyHandler) CreateSurvey(ctx context.Context, req *pb.CreateSurveyRe
 		Description: req.GetDescription(),
 		TargetRole:  req.GetTargetRole(),
 		Trigger:     req.GetTriggerKind(),
+		KeyID:       req.GetKeyId(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -47,6 +48,7 @@ func (h *SurveyHandler) UpdateSurvey(ctx context.Context, req *pb.UpdateSurveyRe
 		Description: req.GetDescription(),
 		// Cliente: appliesTo (trigger_kind) editable post-creacion.
 		Trigger: req.GetTriggerKind(),
+		KeyID:   req.GetKeyId(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -182,6 +184,7 @@ func toProtoSurvey(s *domain.Survey) *pb.Survey {
 		Description: s.Description,
 		TargetRole:  s.TargetRole,
 		TriggerKind: s.Trigger,
+		KeyId:       s.KeyID,
 		Version:     s.Version,
 		Published:   s.Published,
 		Active:      s.Active,

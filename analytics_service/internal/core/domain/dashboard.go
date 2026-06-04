@@ -26,6 +26,11 @@ type AsesorDashboard struct {
 	ScheduledVisits  int32 // count(visitas) con status=scheduled (proximas)
 	PendingTests     int32 // suma cross-estudiantes de tests pendientes por rendir
 	AffectedStudents int32 // estudiantes con al menos un test pendiente
+	// Cliente (2026-06-04): "X de Y impactados". TotalAforo (Y) = suma de
+	// aforo (max_uses) de las keys del asesor. TotalImpactados (X) = suma de
+	// current_uses (estudiantes que ya usaron una key).
+	TotalAforo       int32
+	TotalImpactados  int32
 	ByExamType       map[string]ExamTypeStats // "vocacional" | "simulacro" | "habitos"
 	// Colegios asignados al asesor (assignment SCD-2 vigente). El export
 	// XLSX los renderiza en una hoja aparte "Colegios" — sin esta lista

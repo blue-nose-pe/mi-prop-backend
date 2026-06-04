@@ -41,6 +41,10 @@ message Survey {
   bool   active        = 9;
   google.protobuf.Timestamp created_at = 10;
   google.protobuf.Timestamp updated_at = 11;
+  // Cliente (2026-06-04): encuesta dirigida a una KEY especifica. "" = la
+  // encuesta aplica por trigger_kind (tipo de examen) como antes. Si key_id
+  // != "" la encuesta es solo para los estudiantes que rindieron con esa key.
+  string key_id        = 12;
 }
 
 message Question {
@@ -74,6 +78,7 @@ message CreateSurveyRequest {
   string description  = 3;
   string target_role  = 4;
   string trigger_kind = 5;
+  string key_id       = 6;  // opcional: dirige la encuesta a una key especifica
 }
 
 message UpdateSurveyRequest {
@@ -87,6 +92,9 @@ message UpdateSurveyRequest {
   // dispararse al fin del examen del estudiante porque no habia como
   // filtrar surveys por exam_type.
   string trigger_kind = 4;
+  // Cliente (2026-06-04): key_id editable. "" = no tocar; "-" = limpiar
+  // (volver a encuesta por tipo de examen).
+  string key_id       = 5;
 }
 
 message PublishSurveyRequest    { string id = 1; }

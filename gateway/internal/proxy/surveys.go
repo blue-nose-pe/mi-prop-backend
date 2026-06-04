@@ -57,6 +57,7 @@ type createSurveyRequest struct {
 	Description string `json:"description"`
 	TargetRole  string `json:"target_role"`
 	TriggerKind string `json:"trigger_kind"`
+	KeyID       string `json:"key_id"` // opcional: dirige la encuesta a una key
 }
 
 func (p *Proxy) createSurvey(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +72,7 @@ func (p *Proxy) createSurvey(w http.ResponseWriter, r *http.Request) {
 		Description: in.Description,
 		TargetRole:  in.TargetRole,
 		TriggerKind: in.TriggerKind,
+		KeyId:       in.KeyID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -99,6 +101,8 @@ type updateSurveyRequest struct {
 	// Cliente: trigger_kind editable post-creacion ("simulacro"/"vocacional"/
 	// "estilos"). "" -> no tocar.
 	TriggerKind string `json:"trigger_kind"`
+	// Cliente (2026-06-04): key_id editable. "" -> no tocar; "-" -> limpiar.
+	KeyID       string `json:"key_id"`
 }
 
 func (p *Proxy) updateSurvey(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +116,7 @@ func (p *Proxy) updateSurvey(w http.ResponseWriter, r *http.Request) {
 		Title:       in.Title,
 		Description: in.Description,
 		TriggerKind: in.TriggerKind,
+		KeyId:       in.KeyID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -404,6 +409,7 @@ func protoSurveyToJSON(s *satisfactiongrpcpb.Survey) map[string]any {
 		"description":  s.GetDescription(),
 		"target_role":  s.GetTargetRole(),
 		"trigger_kind": s.GetTriggerKind(),
+		"key_id":       s.GetKeyId(),
 		"version":      s.GetVersion(),
 		"published":    s.GetPublished(),
 		"active":       s.GetActive(),

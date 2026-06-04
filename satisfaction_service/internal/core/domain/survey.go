@@ -17,7 +17,11 @@ type Survey struct {
 	Title       string
 	Description string
 	TargetRole  string // admin | asesor | coordinador | estudiante
-	Trigger     string // post_test | on_demand | recurring
+	Trigger     string // post_test | on_demand | recurring (a.k.a. trigger_kind = exam_type)
+	// Cliente (2026-06-04): encuesta dirigida a una key especifica. "" = aplica
+	// por trigger_kind (tipo de examen). Si != "" solo aplica a los estudiantes
+	// que rindieron con esa key.
+	KeyID       string
 	Version     int32
 	Published   bool
 	Active      bool

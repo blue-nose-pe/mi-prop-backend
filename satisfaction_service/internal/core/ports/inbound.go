@@ -51,6 +51,9 @@ type CreateSurveyInput struct {
 	Description string
 	TargetRole  string
 	Trigger     string
+	// Cliente (2026-06-04): encuesta dirigida a una key especifica. "" = por
+	// trigger_kind (tipo de examen).
+	KeyID       string
 }
 
 type UpdateSurveyInput struct {
@@ -59,6 +62,8 @@ type UpdateSurveyInput struct {
 	Description string
 	// Cliente: trigger_kind editable post-creacion. "" = no tocar.
 	Trigger     string
+	// Cliente (2026-06-04): key_id editable. "" = no tocar; "-" = limpiar.
+	KeyID       string
 }
 
 type AddQuestionInput struct {

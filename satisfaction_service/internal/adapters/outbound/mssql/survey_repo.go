@@ -34,17 +34,19 @@ const surveyCols = `CONVERT(NVARCHAR(36), id),
 		published,
 		active,
 		created_at,
-		updated_at`
+		updated_at,
+		ISNULL(CONVERT(NVARCHAR(36), key_id), '')`
 
 func (r *SurveyRepo) Save(ctx context.Context, s *domain.Survey) (domain.SurveyID, error) {
 	const q = `
-		INSERT INTO survey (code, title, description, target_role, trigger_kind, version, published, active)
+		INSERT INTO survey (code, title, description, target_role, trigger_kind, version, published, active, key_id)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
-		VALUES (@p1, @p2, NULLIF(@p3, ''), @p4, @p5, @p6, @p7, @p8)`
+		VALUES (@p1, @p2, NULLIF(@p3, ''), @p4, @p5, @p6, @p7, @p8,
+		        IIF(@p9 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p9)))`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		s.Code, s.Title, s.Description, s.TargetRole, s.Trigger,
-		s.Version, s.Published, s.Active,
+		s.Version, s.Published, s.Active, s.KeyID,
 	).Scan(&id)
 	if err != nil {
 		return "", mapDuplicate(err)
@@ -59,9 +61,12 @@ func (r *SurveyRepo) Update(ctx context.Context, s *domain.Survey) error {
 		UPDATE survey
 		   SET title        = @p1,
 		       description  = NULLIF(@p2, ''),
-		       trigger_kind = NULLIF(@p3, '')
+		       trigger_kind = NULLIF(@p3, ''),
+		       key_id       = CASE WHEN @p5 = '' THEN key_id
+		                           WHEN @p5 = '-' THEN NULL
+		                           ELSE CONVERT(UNIQUEIDENTIFIER, @p5) END
 		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p4)`
-	res, err := r.db.ExecContext(ctx, q, s.Title, s.Description, s.Trigger, string(s.ID))
+	res, err := r.db.ExecContext(ctx, q, s.Title, s.Description, s.Trigger, string(s.ID), s.KeyID)
 	if err != nil {
 		return err
 	}
@@ -133,6 +138,7 @@ func scanSurvey(s rowScanner) (*domain.Survey, error) {
 		&idStr, &sv.Code, &sv.Title, &sv.Description,
 		&sv.TargetRole, &sv.Trigger, &sv.Version,
 		&sv.Published, &sv.Active, &sv.CreatedAt, &updatedAt,
+		&sv.KeyID,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrSurveyNotFound

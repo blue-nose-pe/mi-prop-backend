@@ -33,6 +33,7 @@ func (h *SurveyHandler) Create(ctx context.Context, in ports.CreateSurveyInput) 
 		Description: strings.TrimSpace(in.Description),
 		TargetRole:  in.TargetRole,
 		Trigger:     in.Trigger,
+		KeyID:       strings.TrimSpace(in.KeyID),
 		Version:     1,
 		Active:      true,
 		Published:   false,
@@ -65,6 +66,11 @@ func (h *SurveyHandler) Update(ctx context.Context, in ports.UpdateSurveyInput) 
 	// guardar el dropdown "Aplicar a".
 	if v := strings.TrimSpace(in.Trigger); v != "" {
 		s.Trigger = v
+	}
+	// Cliente (2026-06-04): key_id editable. "" = no tocar; "-" = limpiar
+	// (volver a encuesta por tipo de examen). El repo interpreta el "-".
+	if v := strings.TrimSpace(in.KeyID); v != "" {
+		s.KeyID = v
 	}
 	if err := h.surveys.Update(ctx, s); err != nil {
 		return nil, err
@@ -137,6 +143,7 @@ func (h *SurveyHandler) Clone(ctx context.Context, id domain.SurveyID) (*domain.
 		Description: orig.Description,
 		TargetRole:  orig.TargetRole,
 		Trigger:     orig.Trigger,
+		KeyID:       orig.KeyID,
 		Version:     orig.Version + 1,
 		Active:      true,
 		Published:   false,

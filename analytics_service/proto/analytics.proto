@@ -42,6 +42,12 @@ message AsesorDashboardResponse {
   int32  scheduled_visits  = 9;  // visitas con status=scheduled (proximas)
   int32  pending_tests     = 10; // suma cross-estudiantes de tests pendientes
   int32  affected_students = 11; // estudiantes con al menos un test pendiente
+  // Cliente (2026-06-04): "estudiantes impactados, X de Y". total_aforo (Y) =
+  // suma de aforo (max_uses) de las keys del asesor = universo de cupos.
+  // total_impactados (X) = suma de current_uses = estudiantes que ya usaron
+  // una key (presentaron / se registraron).
+  int32  total_aforo       = 12;
+  int32  total_impactados  = 13;
 }
 
 // ----- Colegio -----

@@ -116,7 +116,12 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 		schoolNameByID[c.ID] = c.Name
 	}
 	asesorKeys := make([]domain.AsesorKey, 0, len(keys))
+	// Cliente (2026-06-04): "X de Y impactados". Y = suma de aforo (max_uses);
+	// X = suma de current_uses (estudiantes que ya usaron una key).
+	var totalAforo, totalImpactados int32
 	for _, k := range keys {
+		totalAforo += k.MaxUses
+		totalImpactados += k.CurrentUses
 		asesorKeys = append(asesorKeys, domain.AsesorKey{
 			ID:           k.ID,
 			Code:         k.Code,
@@ -137,6 +142,8 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 		ScheduledVisits:  scheduledVisits,
 		PendingTests:     pendingTotal,
 		AffectedStudents: pendingAffected,
+		TotalAforo:       totalAforo,
+		TotalImpactados:  totalImpactados,
 		ByExamType:       materialize(stats),
 		Colegios:         asesorColegios,
 		Keys:             asesorKeys,
