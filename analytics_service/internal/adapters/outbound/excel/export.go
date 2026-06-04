@@ -150,25 +150,45 @@ func (e *Exporter) ExportColegioDashboard(ctx context.Context, schoolID domain.S
 	})
 }
 
-func (e *Exporter) ExportColegioComparativo(ctx context.Context, examTypeCode string) ([]byte, error) {
-	c, err := e.dashboards.GetColegioComparativo(ctx, examTypeCode)
+// ExportColegioComparativo: Cliente (2026-06-04) — el xlsx ahora usa
+// EXACTAMENTE la misma data que la tabla "Histórico de Colegios"
+// (GetColegiosHistorico, period-aware + normalizado), para que tabla y export
+// coincidan. Antes usaba GetColegioComparativo (otra query, otro promedio y
+// otros attempts) → no cuadraban. Las columnas y el orden (alfabético por
+// nombre) replican la tabla. En Estilos (habitos) se omite "Puntaje promedio"
+// igual que en la UI.
+func (e *Exporter) ExportColegioComparativo(ctx context.Context, examTypeCode string, period string) ([]byte, error) {
+	listing, err := e.dashboards.GetColegiosHistorico(ctx, ports.ColegiosHistoricoInput{
+		Period:       period,
+		ExamTypeCode: examTypeCode,
+	})
 	if err != nil {
 		return nil, err
 	}
-	rows := [][]any{
-		{"Colegio", "Score promedio", "Intentos"},
+	showScore := examTypeCode != "habitos"
+	header := []any{"Colegio", "Ciudad", "Segmento", "Periodo"}
+	if showScore {
+		header = append(header, "Puntaje promedio")
 	}
-	for _, it := range c.Items {
-		rows = append(rows, []any{it.SchoolName, it.AvgScore, it.Attempts})
+	header = append(header, "Attempts", "Variación")
+	rows := [][]any{header}
+	for _, it := range listing.Items {
+		variacion := "Sin previo"
+		if it.HasPrevious {
+			variacion = fmt.Sprintf("%+.1f%%", it.VariationPct)
+		}
+		row := []any{it.SchoolName, it.City, it.Category, listing.Period}
+		if showScore {
+			// Mismo redondeo que la tabla (1 decimal).
+			row = append(row, fmt.Sprintf("%.1f", it.AvgScore))
+		}
+		row = append(row, it.Attempts, variacion)
+		rows = append(rows, row)
 	}
-	// Ajustes cosméticos: columna A ancha (nombres largos como "Inst. Nacional
-	// Nuestra Señora..." se truncaban) y formato 0.00 en columna B para que
-	// 63.3333333 salga como 63.33 igual que el resto.
 	return writeMultiSheet([]xlsxSheet{{
-		Name: "Comparativo",
-		Rows: rows,
-		ColWidths: map[string]float64{"A": 40, "B": 16, "C": 12},
-		ColNumFmt: map[string]string{"B": "0.00"},
+		Name:      "Histórico",
+		Rows:      rows,
+		ColWidths: map[string]float64{"A": 40, "B": 18, "C": 12, "D": 14, "E": 16, "F": 12, "G": 12},
 	}})
 }
 

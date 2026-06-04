@@ -284,11 +284,11 @@ func (h *AnalyticsHandler) ExportColegioXLSX(ctx context.Context, req *pb.Export
 }
 
 func (h *AnalyticsHandler) ExportComparativoXLSX(ctx context.Context, req *pb.ExportComparativoXLSXRequest) (*pb.ExportXLSXResponse, error) {
-	bs, err := h.exporter.ExportColegioComparativo(ctx, req.GetExamTypeCode())
+	bs, err := h.exporter.ExportColegioComparativo(ctx, req.GetExamTypeCode(), req.GetPeriod())
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}
-	return &pb.ExportXLSXResponse{Content: bs, Filename: "comparativo-" + req.GetExamTypeCode() + ".xlsx"}, nil
+	return &pb.ExportXLSXResponse{Content: bs, Filename: "historico-colegios-" + req.GetExamTypeCode() + ".xlsx"}, nil
 }
 
 func (h *AnalyticsHandler) ExportReporteEstudianteXLSX(ctx context.Context, req *pb.ExportReporteEstudianteXLSXRequest) (*pb.ExportXLSXResponse, error) {

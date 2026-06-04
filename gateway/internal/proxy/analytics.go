@@ -585,13 +585,13 @@ func (p *Proxy) exportComparativoXLSX(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Cliente (2026-06-04): exam_type_code vacio = "Todos los tipos" (igual
+	// que la tabla del historico). Ya no es obligatorio. period alinea el xlsx
+	// con el periodo seleccionado en la tabla.
 	examType := r.URL.Query().Get("exam_type_code")
-	if examType == "" {
-		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "exam_type_code query param is required"})
-		return
-	}
 	resp, err := p.cli.Analytics.ExportComparativoXLSX(r.Context(), &analyticsgrpcpb.ExportComparativoXLSXRequest{
 		ExamTypeCode: examType,
+		Period:       r.URL.Query().Get("period"),
 	})
 	if err != nil {
 		writeGRPCError(w, err)

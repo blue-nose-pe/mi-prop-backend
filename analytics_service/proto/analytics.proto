@@ -246,7 +246,13 @@ message ReporteEstudianteResponse {
 // ----- Exports -----
 message ExportAsesorXLSXRequest      { string asesor_id = 1; }
 message ExportColegioXLSXRequest     { string school_id = 1; }
-message ExportComparativoXLSXRequest { string exam_type_code = 1; }
+message ExportComparativoXLSXRequest {
+  string exam_type_code = 1;
+  // Cliente (2026-06-04): el export debe COINCIDIR con la tabla del historico,
+  // que es period-aware. Sin period, el xlsx usaba otra query (otro promedio
+  // y otros attempts) y no cuadraba. "" / "current" / "YYYY" / "YYYY-QN".
+  string period         = 2;
+}
 message ExportReporteEstudianteXLSXRequest {
   string user_id    = 1;
   string attempt_id = 2; // opcional; vacio = ultimo attempt submitted del user

@@ -54,7 +54,9 @@ type ExportCommands interface {
 	// Lo persiste el caller (típicamente: lo manda como response gRPC).
 	ExportAsesorDashboard(ctx context.Context, asesorID domain.UserID) ([]byte, error)
 	ExportColegioDashboard(ctx context.Context, schoolID domain.SchoolID) ([]byte, error)
-	ExportColegioComparativo(ctx context.Context, examTypeCode string) ([]byte, error)
+	// Cliente (2026-06-04): period para que el xlsx coincida con la tabla del
+	// historico (misma query period-aware).
+	ExportColegioComparativo(ctx context.Context, examTypeCode string, period string) ([]byte, error)
 	// Reporte por estudiante (Tour Vocacional UCSP). Genera un workbook
 	// con tabs: Resumen, Areas de Interes (RIASEC), Top Areas, Secciones.
 	// Si attemptID == "", usa el ultimo attempt submitted del user.
