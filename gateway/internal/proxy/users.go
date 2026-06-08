@@ -81,6 +81,9 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/asesores/{id}/colegios", p.listColegiosByAsesor)
 	mux.HandleFunc("POST /api/asesores/students", p.createStudentByAsesor)
 	mux.HandleFunc("GET /api/colegios/{id}/students", p.listStudentsByColegio)
+
+	// Cliente (doc observaciones): historico de grados del alumno por DNI.
+	mux.HandleFunc("GET /api/students/grade-history", p.studentGradeHistory)
 }
 
 // Atajo: GET /api/students = GET /api/permission-groups/1/users
