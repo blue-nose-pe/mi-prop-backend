@@ -12,6 +12,10 @@ type SurveyRepository interface {
 	Update(ctx context.Context, s *domain.Survey) error
 	FindByID(ctx context.Context, id domain.SurveyID) (*domain.Survey, error)
 	FindByCodeVersion(ctx context.Context, code string, version int32) (*domain.Survey, error)
+	// FindActivePublished devuelve la encuesta publicada+activa aplicable: si
+	// keyID != "" y existe una atada a esa key, esa tiene prioridad; si no,
+	// cae a la generica por trigger_kind (sin key). ErrSurveyNotFound si no hay.
+	FindActivePublished(ctx context.Context, triggerKind, keyID string) (*domain.Survey, error)
 	SetPublished(ctx context.Context, id domain.SurveyID, published bool) error
 	SetActive(ctx context.Context, id domain.SurveyID, active bool) error
 	Search(ctx context.Context, req search.Request) (*search.Response, error)

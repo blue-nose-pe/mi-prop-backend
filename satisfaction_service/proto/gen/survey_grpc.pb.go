@@ -20,19 +20,20 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SurveyService_CreateSurvey_FullMethodName     = "/satisfaction.v1.SurveyService/CreateSurvey"
-	SurveyService_UpdateSurvey_FullMethodName     = "/satisfaction.v1.SurveyService/UpdateSurvey"
-	SurveyService_PublishSurvey_FullMethodName    = "/satisfaction.v1.SurveyService/PublishSurvey"
-	SurveyService_DeactivateSurvey_FullMethodName = "/satisfaction.v1.SurveyService/DeactivateSurvey"
-	SurveyService_ReactivateSurvey_FullMethodName = "/satisfaction.v1.SurveyService/ReactivateSurvey"
-	SurveyService_CloneSurvey_FullMethodName      = "/satisfaction.v1.SurveyService/CloneSurvey"
-	SurveyService_GetSurvey_FullMethodName        = "/satisfaction.v1.SurveyService/GetSurvey"
-	SurveyService_GetByCode_FullMethodName        = "/satisfaction.v1.SurveyService/GetByCode"
-	SurveyService_ListQuestions_FullMethodName    = "/satisfaction.v1.SurveyService/ListQuestions"
-	SurveyService_AddQuestion_FullMethodName      = "/satisfaction.v1.SurveyService/AddQuestion"
-	SurveyService_UpdateQuestion_FullMethodName   = "/satisfaction.v1.SurveyService/UpdateQuestion"
-	SurveyService_RemoveQuestion_FullMethodName   = "/satisfaction.v1.SurveyService/RemoveQuestion"
-	SurveyService_Search_FullMethodName           = "/satisfaction.v1.SurveyService/Search"
+	SurveyService_CreateSurvey_FullMethodName       = "/satisfaction.v1.SurveyService/CreateSurvey"
+	SurveyService_UpdateSurvey_FullMethodName       = "/satisfaction.v1.SurveyService/UpdateSurvey"
+	SurveyService_PublishSurvey_FullMethodName      = "/satisfaction.v1.SurveyService/PublishSurvey"
+	SurveyService_DeactivateSurvey_FullMethodName   = "/satisfaction.v1.SurveyService/DeactivateSurvey"
+	SurveyService_ReactivateSurvey_FullMethodName   = "/satisfaction.v1.SurveyService/ReactivateSurvey"
+	SurveyService_CloneSurvey_FullMethodName        = "/satisfaction.v1.SurveyService/CloneSurvey"
+	SurveyService_GetSurvey_FullMethodName          = "/satisfaction.v1.SurveyService/GetSurvey"
+	SurveyService_GetByCode_FullMethodName          = "/satisfaction.v1.SurveyService/GetByCode"
+	SurveyService_GetActivePublished_FullMethodName = "/satisfaction.v1.SurveyService/GetActivePublished"
+	SurveyService_ListQuestions_FullMethodName      = "/satisfaction.v1.SurveyService/ListQuestions"
+	SurveyService_AddQuestion_FullMethodName        = "/satisfaction.v1.SurveyService/AddQuestion"
+	SurveyService_UpdateQuestion_FullMethodName     = "/satisfaction.v1.SurveyService/UpdateQuestion"
+	SurveyService_RemoveQuestion_FullMethodName     = "/satisfaction.v1.SurveyService/RemoveQuestion"
+	SurveyService_Search_FullMethodName             = "/satisfaction.v1.SurveyService/Search"
 )
 
 // SurveyServiceClient is the client API for SurveyService service.
@@ -47,6 +48,12 @@ type SurveyServiceClient interface {
 	CloneSurvey(ctx context.Context, in *CloneSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
 	GetSurvey(ctx context.Context, in *GetSurveyRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
 	GetByCode(ctx context.Context, in *GetByCodeRequest, opts ...grpc.CallOption) (*SurveyResponse, error)
+	// Cliente (doc observaciones): "No se muestra el test de satisfaccion". El
+	// alumno que rinde el examen es ANONIMO (acceso por key+OTP, sin JWT). Este
+	// RPC devuelve la encuesta PUBLICADA+ACTIVA que aplica a un tipo de examen
+	// (trigger_kind) o a una key puntual, JUNTO con sus preguntas, en una sola
+	// llamada que el gateway expone via /api/public/ (sin auth).
+	GetActivePublished(ctx context.Context, in *GetActivePublishedRequest, opts ...grpc.CallOption) (*GetActivePublishedResponse, error)
 	ListQuestions(ctx context.Context, in *ListQuestionsRequest, opts ...grpc.CallOption) (*ListQuestionsResponse, error)
 	AddQuestion(ctx context.Context, in *AddQuestionRequest, opts ...grpc.CallOption) (*QuestionResponse, error)
 	UpdateQuestion(ctx context.Context, in *UpdateQuestionRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
@@ -142,6 +149,16 @@ func (c *surveyServiceClient) GetByCode(ctx context.Context, in *GetByCodeReques
 	return out, nil
 }
 
+func (c *surveyServiceClient) GetActivePublished(ctx context.Context, in *GetActivePublishedRequest, opts ...grpc.CallOption) (*GetActivePublishedResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetActivePublishedResponse)
+	err := c.cc.Invoke(ctx, SurveyService_GetActivePublished_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *surveyServiceClient) ListQuestions(ctx context.Context, in *ListQuestionsRequest, opts ...grpc.CallOption) (*ListQuestionsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListQuestionsResponse)
@@ -204,6 +221,12 @@ type SurveyServiceServer interface {
 	CloneSurvey(context.Context, *CloneSurveyRequest) (*SurveyResponse, error)
 	GetSurvey(context.Context, *GetSurveyRequest) (*SurveyResponse, error)
 	GetByCode(context.Context, *GetByCodeRequest) (*SurveyResponse, error)
+	// Cliente (doc observaciones): "No se muestra el test de satisfaccion". El
+	// alumno que rinde el examen es ANONIMO (acceso por key+OTP, sin JWT). Este
+	// RPC devuelve la encuesta PUBLICADA+ACTIVA que aplica a un tipo de examen
+	// (trigger_kind) o a una key puntual, JUNTO con sus preguntas, en una sola
+	// llamada que el gateway expone via /api/public/ (sin auth).
+	GetActivePublished(context.Context, *GetActivePublishedRequest) (*GetActivePublishedResponse, error)
 	ListQuestions(context.Context, *ListQuestionsRequest) (*ListQuestionsResponse, error)
 	AddQuestion(context.Context, *AddQuestionRequest) (*QuestionResponse, error)
 	UpdateQuestion(context.Context, *UpdateQuestionRequest) (*EmptyResponse, error)
@@ -242,6 +265,9 @@ func (UnimplementedSurveyServiceServer) GetSurvey(context.Context, *GetSurveyReq
 }
 func (UnimplementedSurveyServiceServer) GetByCode(context.Context, *GetByCodeRequest) (*SurveyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetByCode not implemented")
+}
+func (UnimplementedSurveyServiceServer) GetActivePublished(context.Context, *GetActivePublishedRequest) (*GetActivePublishedResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetActivePublished not implemented")
 }
 func (UnimplementedSurveyServiceServer) ListQuestions(context.Context, *ListQuestionsRequest) (*ListQuestionsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListQuestions not implemented")
@@ -423,6 +449,24 @@ func _SurveyService_GetByCode_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SurveyService_GetActivePublished_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetActivePublishedRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SurveyServiceServer).GetActivePublished(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SurveyService_GetActivePublished_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SurveyServiceServer).GetActivePublished(ctx, req.(*GetActivePublishedRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _SurveyService_ListQuestions_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListQuestionsRequest)
 	if err := dec(in); err != nil {
@@ -551,6 +595,10 @@ var SurveyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetByCode",
 			Handler:    _SurveyService_GetByCode_Handler,
+		},
+		{
+			MethodName: "GetActivePublished",
+			Handler:    _SurveyService_GetActivePublished_Handler,
 		},
 		{
 			MethodName: "ListQuestions",

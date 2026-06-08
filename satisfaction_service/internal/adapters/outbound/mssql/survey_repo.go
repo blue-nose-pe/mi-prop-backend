@@ -90,6 +90,23 @@ func (r *SurveyRepo) FindByCodeVersion(ctx context.Context, code string, version
 	return scanSurvey(row)
 }
 
+// FindActivePublished: encuesta publicada+activa aplicable. Prioriza la que
+// esta atada a keyID; si no hay, cae a la generica por trigger_kind (key NULL).
+// Comparamos la key como string (CONVERT a NVARCHAR) para no convertir @p2 a
+// UNIQUEIDENTIFIER cuando viene "" (evita error de conversion).
+func (r *SurveyRepo) FindActivePublished(ctx context.Context, triggerKind, keyID string) (*domain.Survey, error) {
+	const q = `SELECT TOP 1 ` + surveyCols + `
+		FROM survey
+		WHERE published = 1 AND active = 1
+		  AND (
+		        (key_id IS NOT NULL AND @p2 <> '' AND CONVERT(NVARCHAR(36), key_id) = @p2)
+		     OR (key_id IS NULL AND trigger_kind = @p1)
+		  )
+		ORDER BY CASE WHEN key_id IS NOT NULL THEN 0 ELSE 1 END, version DESC`
+	row := r.db.QueryRowContext(ctx, q, triggerKind, keyID)
+	return scanSurvey(row)
+}
+
 func (r *SurveyRepo) SetPublished(ctx context.Context, id domain.SurveyID, published bool) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE survey SET published = @p1 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p2)`,

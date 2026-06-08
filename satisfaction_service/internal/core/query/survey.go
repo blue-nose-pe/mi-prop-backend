@@ -28,6 +28,18 @@ func (h *SurveyHandler) GetByCode(ctx context.Context, code string, version int3
 	return h.surveys.FindByCodeVersion(ctx, code, version)
 }
 
+func (h *SurveyHandler) GetActivePublished(ctx context.Context, triggerKind, keyID string) (*domain.Survey, []domain.Question, error) {
+	s, err := h.surveys.FindActivePublished(ctx, triggerKind, keyID)
+	if err != nil {
+		return nil, nil, err
+	}
+	qs, err := h.questions.ListBySurvey(ctx, s.ID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s, qs, nil
+}
+
 func (h *SurveyHandler) ListQuestions(ctx context.Context, surveyID domain.SurveyID) ([]domain.Question, error) {
 	return h.questions.ListBySurvey(ctx, surveyID)
 }

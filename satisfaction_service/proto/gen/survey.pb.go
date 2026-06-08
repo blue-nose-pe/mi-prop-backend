@@ -845,6 +845,112 @@ func (x *GetByCodeRequest) GetVersion() int32 {
 	return 0
 }
 
+type GetActivePublishedRequest struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	TriggerKind string `protobuf:"bytes,1,opt,name=trigger_kind,json=triggerKind,proto3" json:"trigger_kind,omitempty"` // simulacro|vocacional|estilos
+	KeyId       string `protobuf:"bytes,2,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`                   // opcional: si hay encuesta atada a ESTA key, prioridad
+}
+
+func (x *GetActivePublishedRequest) Reset() {
+	*x = GetActivePublishedRequest{}
+	mi := &file_survey_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetActivePublishedRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetActivePublishedRequest) ProtoMessage() {}
+
+func (x *GetActivePublishedRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_survey_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetActivePublishedRequest.ProtoReflect.Descriptor instead.
+func (*GetActivePublishedRequest) Descriptor() ([]byte, []int) {
+	return file_survey_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *GetActivePublishedRequest) GetTriggerKind() string {
+	if x != nil {
+		return x.TriggerKind
+	}
+	return ""
+}
+
+func (x *GetActivePublishedRequest) GetKeyId() string {
+	if x != nil {
+		return x.KeyId
+	}
+	return ""
+}
+
+type GetActivePublishedResponse struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	Survey    *Survey     `protobuf:"bytes,1,opt,name=survey,proto3" json:"survey,omitempty"` // null si no hay encuesta aplicable
+	Questions []*Question `protobuf:"bytes,2,rep,name=questions,proto3" json:"questions,omitempty"`
+}
+
+func (x *GetActivePublishedResponse) Reset() {
+	*x = GetActivePublishedResponse{}
+	mi := &file_survey_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GetActivePublishedResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GetActivePublishedResponse) ProtoMessage() {}
+
+func (x *GetActivePublishedResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_survey_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GetActivePublishedResponse.ProtoReflect.Descriptor instead.
+func (*GetActivePublishedResponse) Descriptor() ([]byte, []int) {
+	return file_survey_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *GetActivePublishedResponse) GetSurvey() *Survey {
+	if x != nil {
+		return x.Survey
+	}
+	return nil
+}
+
+func (x *GetActivePublishedResponse) GetQuestions() []*Question {
+	if x != nil {
+		return x.Questions
+	}
+	return nil
+}
+
 type ListQuestionsRequest struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -855,7 +961,7 @@ type ListQuestionsRequest struct {
 
 func (x *ListQuestionsRequest) Reset() {
 	*x = ListQuestionsRequest{}
-	mi := &file_survey_proto_msgTypes[12]
+	mi := &file_survey_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -867,7 +973,7 @@ func (x *ListQuestionsRequest) String() string {
 func (*ListQuestionsRequest) ProtoMessage() {}
 
 func (x *ListQuestionsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[12]
+	mi := &file_survey_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -880,7 +986,7 @@ func (x *ListQuestionsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQuestionsRequest.ProtoReflect.Descriptor instead.
 func (*ListQuestionsRequest) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{12}
+	return file_survey_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *ListQuestionsRequest) GetSurveyId() string {
@@ -900,7 +1006,7 @@ type ListQuestionsResponse struct {
 
 func (x *ListQuestionsResponse) Reset() {
 	*x = ListQuestionsResponse{}
-	mi := &file_survey_proto_msgTypes[13]
+	mi := &file_survey_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -912,7 +1018,7 @@ func (x *ListQuestionsResponse) String() string {
 func (*ListQuestionsResponse) ProtoMessage() {}
 
 func (x *ListQuestionsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[13]
+	mi := &file_survey_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -925,7 +1031,7 @@ func (x *ListQuestionsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ListQuestionsResponse.ProtoReflect.Descriptor instead.
 func (*ListQuestionsResponse) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{13}
+	return file_survey_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *ListQuestionsResponse) GetItems() []*Question {
@@ -950,7 +1056,7 @@ type AddQuestionRequest struct {
 
 func (x *AddQuestionRequest) Reset() {
 	*x = AddQuestionRequest{}
-	mi := &file_survey_proto_msgTypes[14]
+	mi := &file_survey_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -962,7 +1068,7 @@ func (x *AddQuestionRequest) String() string {
 func (*AddQuestionRequest) ProtoMessage() {}
 
 func (x *AddQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[14]
+	mi := &file_survey_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -975,7 +1081,7 @@ func (x *AddQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AddQuestionRequest.ProtoReflect.Descriptor instead.
 func (*AddQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{14}
+	return file_survey_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *AddQuestionRequest) GetSurveyId() string {
@@ -1034,7 +1140,7 @@ type UpdateQuestionRequest struct {
 
 func (x *UpdateQuestionRequest) Reset() {
 	*x = UpdateQuestionRequest{}
-	mi := &file_survey_proto_msgTypes[15]
+	mi := &file_survey_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1046,7 +1152,7 @@ func (x *UpdateQuestionRequest) String() string {
 func (*UpdateQuestionRequest) ProtoMessage() {}
 
 func (x *UpdateQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[15]
+	mi := &file_survey_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1059,7 +1165,7 @@ func (x *UpdateQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UpdateQuestionRequest.ProtoReflect.Descriptor instead.
 func (*UpdateQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{15}
+	return file_survey_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *UpdateQuestionRequest) GetId() string {
@@ -1107,7 +1213,7 @@ type RemoveQuestionRequest struct {
 
 func (x *RemoveQuestionRequest) Reset() {
 	*x = RemoveQuestionRequest{}
-	mi := &file_survey_proto_msgTypes[16]
+	mi := &file_survey_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1119,7 +1225,7 @@ func (x *RemoveQuestionRequest) String() string {
 func (*RemoveQuestionRequest) ProtoMessage() {}
 
 func (x *RemoveQuestionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[16]
+	mi := &file_survey_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1132,7 +1238,7 @@ func (x *RemoveQuestionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RemoveQuestionRequest.ProtoReflect.Descriptor instead.
 func (*RemoveQuestionRequest) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{16}
+	return file_survey_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *RemoveQuestionRequest) GetId() string {
@@ -1152,7 +1258,7 @@ type QuestionResponse struct {
 
 func (x *QuestionResponse) Reset() {
 	*x = QuestionResponse{}
-	mi := &file_survey_proto_msgTypes[17]
+	mi := &file_survey_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1164,7 +1270,7 @@ func (x *QuestionResponse) String() string {
 func (*QuestionResponse) ProtoMessage() {}
 
 func (x *QuestionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[17]
+	mi := &file_survey_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1177,7 +1283,7 @@ func (x *QuestionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionResponse.ProtoReflect.Descriptor instead.
 func (*QuestionResponse) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{17}
+	return file_survey_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *QuestionResponse) GetQuestion() *Question {
@@ -1197,7 +1303,7 @@ type SurveyResponse struct {
 
 func (x *SurveyResponse) Reset() {
 	*x = SurveyResponse{}
-	mi := &file_survey_proto_msgTypes[18]
+	mi := &file_survey_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1209,7 +1315,7 @@ func (x *SurveyResponse) String() string {
 func (*SurveyResponse) ProtoMessage() {}
 
 func (x *SurveyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[18]
+	mi := &file_survey_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1222,7 +1328,7 @@ func (x *SurveyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SurveyResponse.ProtoReflect.Descriptor instead.
 func (*SurveyResponse) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{18}
+	return file_survey_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SurveyResponse) GetSurvey() *Survey {
@@ -1240,7 +1346,7 @@ type EmptyResponse struct {
 
 func (x *EmptyResponse) Reset() {
 	*x = EmptyResponse{}
-	mi := &file_survey_proto_msgTypes[19]
+	mi := &file_survey_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1252,7 +1358,7 @@ func (x *EmptyResponse) String() string {
 func (*EmptyResponse) ProtoMessage() {}
 
 func (x *EmptyResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[19]
+	mi := &file_survey_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1265,7 +1371,7 @@ func (x *EmptyResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use EmptyResponse.ProtoReflect.Descriptor instead.
 func (*EmptyResponse) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{19}
+	return file_survey_proto_rawDescGZIP(), []int{21}
 }
 
 type SubmitResponseRequest struct {
@@ -1281,7 +1387,7 @@ type SubmitResponseRequest struct {
 
 func (x *SubmitResponseRequest) Reset() {
 	*x = SubmitResponseRequest{}
-	mi := &file_survey_proto_msgTypes[20]
+	mi := &file_survey_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1293,7 +1399,7 @@ func (x *SubmitResponseRequest) String() string {
 func (*SubmitResponseRequest) ProtoMessage() {}
 
 func (x *SubmitResponseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[20]
+	mi := &file_survey_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1306,7 +1412,7 @@ func (x *SubmitResponseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SubmitResponseRequest.ProtoReflect.Descriptor instead.
 func (*SubmitResponseRequest) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{20}
+	return file_survey_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *SubmitResponseRequest) GetSurveyId() string {
@@ -1347,7 +1453,7 @@ type GetResponseRequest struct {
 
 func (x *GetResponseRequest) Reset() {
 	*x = GetResponseRequest{}
-	mi := &file_survey_proto_msgTypes[21]
+	mi := &file_survey_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1359,7 +1465,7 @@ func (x *GetResponseRequest) String() string {
 func (*GetResponseRequest) ProtoMessage() {}
 
 func (x *GetResponseRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[21]
+	mi := &file_survey_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1372,7 +1478,7 @@ func (x *GetResponseRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetResponseRequest.ProtoReflect.Descriptor instead.
 func (*GetResponseRequest) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{21}
+	return file_survey_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *GetResponseRequest) GetId() string {
@@ -1392,7 +1498,7 @@ type ResponseObjectResponse struct {
 
 func (x *ResponseObjectResponse) Reset() {
 	*x = ResponseObjectResponse{}
-	mi := &file_survey_proto_msgTypes[22]
+	mi := &file_survey_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1404,7 +1510,7 @@ func (x *ResponseObjectResponse) String() string {
 func (*ResponseObjectResponse) ProtoMessage() {}
 
 func (x *ResponseObjectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[22]
+	mi := &file_survey_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1417,7 +1523,7 @@ func (x *ResponseObjectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResponseObjectResponse.ProtoReflect.Descriptor instead.
 func (*ResponseObjectResponse) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{22}
+	return file_survey_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ResponseObjectResponse) GetResponse() *Response {
@@ -1437,7 +1543,7 @@ type GetMetricsRequest struct {
 
 func (x *GetMetricsRequest) Reset() {
 	*x = GetMetricsRequest{}
-	mi := &file_survey_proto_msgTypes[23]
+	mi := &file_survey_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1449,7 +1555,7 @@ func (x *GetMetricsRequest) String() string {
 func (*GetMetricsRequest) ProtoMessage() {}
 
 func (x *GetMetricsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[23]
+	mi := &file_survey_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1462,7 +1568,7 @@ func (x *GetMetricsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetricsRequest.ProtoReflect.Descriptor instead.
 func (*GetMetricsRequest) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{23}
+	return file_survey_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *GetMetricsRequest) GetSurveyId() string {
@@ -1489,7 +1595,7 @@ type QuestionMetrics struct {
 
 func (x *QuestionMetrics) Reset() {
 	*x = QuestionMetrics{}
-	mi := &file_survey_proto_msgTypes[24]
+	mi := &file_survey_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1501,7 +1607,7 @@ func (x *QuestionMetrics) String() string {
 func (*QuestionMetrics) ProtoMessage() {}
 
 func (x *QuestionMetrics) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[24]
+	mi := &file_survey_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1514,7 +1620,7 @@ func (x *QuestionMetrics) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuestionMetrics.ProtoReflect.Descriptor instead.
 func (*QuestionMetrics) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{24}
+	return file_survey_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *QuestionMetrics) GetQuestionId() string {
@@ -1585,7 +1691,7 @@ type MetricsResponse struct {
 
 func (x *MetricsResponse) Reset() {
 	*x = MetricsResponse{}
-	mi := &file_survey_proto_msgTypes[25]
+	mi := &file_survey_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1597,7 +1703,7 @@ func (x *MetricsResponse) String() string {
 func (*MetricsResponse) ProtoMessage() {}
 
 func (x *MetricsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_survey_proto_msgTypes[25]
+	mi := &file_survey_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1610,7 +1716,7 @@ func (x *MetricsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MetricsResponse.ProtoReflect.Descriptor instead.
 func (*MetricsResponse) Descriptor() ([]byte, []int) {
-	return file_survey_proto_rawDescGZIP(), []int{25}
+	return file_survey_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *MetricsResponse) GetSurveyId() string {
@@ -1737,7 +1843,21 @@ var file_survey_proto_rawDesc = []byte{
 	0x64, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x12, 0x0a, 0x04, 0x63, 0x6f, 0x64,
 	0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x04, 0x63, 0x6f, 0x64, 0x65, 0x12, 0x18, 0x0a,
 	0x07, 0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x18, 0x02, 0x20, 0x01, 0x28, 0x05, 0x52, 0x07,
-	0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x22, 0x33, 0x0a, 0x14, 0x4c, 0x69, 0x73, 0x74, 0x51,
+	0x76, 0x65, 0x72, 0x73, 0x69, 0x6f, 0x6e, 0x22, 0x55, 0x0a, 0x19, 0x47, 0x65, 0x74, 0x41, 0x63,
+	0x74, 0x69, 0x76, 0x65, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x65, 0x64, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x12, 0x21, 0x0a, 0x0c, 0x74, 0x72, 0x69, 0x67, 0x67, 0x65, 0x72, 0x5f,
+	0x6b, 0x69, 0x6e, 0x64, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0b, 0x74, 0x72, 0x69, 0x67,
+	0x67, 0x65, 0x72, 0x4b, 0x69, 0x6e, 0x64, 0x12, 0x15, 0x0a, 0x06, 0x6b, 0x65, 0x79, 0x5f, 0x69,
+	0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x05, 0x6b, 0x65, 0x79, 0x49, 0x64, 0x22, 0x86,
+	0x01, 0x0a, 0x1a, 0x47, 0x65, 0x74, 0x41, 0x63, 0x74, 0x69, 0x76, 0x65, 0x50, 0x75, 0x62, 0x6c,
+	0x69, 0x73, 0x68, 0x65, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x2f, 0x0a,
+	0x06, 0x73, 0x75, 0x72, 0x76, 0x65, 0x79, 0x18, 0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x17, 0x2e,
+	0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e,
+	0x53, 0x75, 0x72, 0x76, 0x65, 0x79, 0x52, 0x06, 0x73, 0x75, 0x72, 0x76, 0x65, 0x79, 0x12, 0x37,
+	0x0a, 0x09, 0x71, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x18, 0x02, 0x20, 0x03, 0x28,
+	0x0b, 0x32, 0x19, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e,
+	0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x09, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x22, 0x33, 0x0a, 0x14, 0x4c, 0x69, 0x73, 0x74, 0x51,
 	0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12,
 	0x1b, 0x0a, 0x09, 0x73, 0x75, 0x72, 0x76, 0x65, 0x79, 0x5f, 0x69, 0x64, 0x18, 0x01, 0x20, 0x01,
 	0x28, 0x09, 0x52, 0x08, 0x73, 0x75, 0x72, 0x76, 0x65, 0x79, 0x49, 0x64, 0x22, 0x48, 0x0a, 0x15,
@@ -1832,7 +1952,7 @@ var file_survey_proto_rawDesc = []byte{
 	0x18, 0x03, 0x20, 0x03, 0x28, 0x0b, 0x32, 0x20, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61,
 	0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f,
 	0x6e, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x73, 0x52, 0x0b, 0x70, 0x65, 0x72, 0x51, 0x75, 0x65,
-	0x73, 0x74, 0x69, 0x6f, 0x6e, 0x32, 0xf3, 0x08, 0x0a, 0x0d, 0x53, 0x75, 0x72, 0x76, 0x65, 0x79,
+	0x73, 0x74, 0x69, 0x6f, 0x6e, 0x32, 0xe2, 0x09, 0x0a, 0x0d, 0x53, 0x75, 0x72, 0x76, 0x65, 0x79,
 	0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x55, 0x0a, 0x0c, 0x43, 0x72, 0x65, 0x61, 0x74,
 	0x65, 0x53, 0x75, 0x72, 0x76, 0x65, 0x79, 0x12, 0x24, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66,
 	0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65,
@@ -1877,55 +1997,62 @@ var file_survey_proto_rawDesc = []byte{
 	0x47, 0x65, 0x74, 0x42, 0x79, 0x43, 0x6f, 0x64, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
 	0x1a, 0x1f, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e,
 	0x76, 0x31, 0x2e, 0x53, 0x75, 0x72, 0x76, 0x65, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x12, 0x5e, 0x0a, 0x0d, 0x4c, 0x69, 0x73, 0x74, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f,
-	0x6e, 0x73, 0x12, 0x25, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f,
-	0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f,
-	0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x26, 0x2e, 0x73, 0x61, 0x74, 0x69,
-	0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74,
-	0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
-	0x65, 0x12, 0x55, 0x0a, 0x0b, 0x41, 0x64, 0x64, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e,
-	0x12, 0x23, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e,
-	0x76, 0x31, 0x2e, 0x41, 0x64, 0x64, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65,
-	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x21, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63,
-	0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x58, 0x0a, 0x0e, 0x55, 0x70, 0x64, 0x61,
-	0x74, 0x65, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x26, 0x2e, 0x73, 0x61, 0x74,
-	0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64,
-	0x61, 0x74, 0x65, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65,
-	0x73, 0x74, 0x1a, 0x1e, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f,
-	0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
-	0x73, 0x65, 0x12, 0x58, 0x0a, 0x0e, 0x52, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x51, 0x75, 0x65, 0x73,
-	0x74, 0x69, 0x6f, 0x6e, 0x12, 0x26, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74,
-	0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x51, 0x75, 0x65,
-	0x73, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1e, 0x2e, 0x73,
-	0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x45,
-	0x6d, 0x70, 0x74, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3d, 0x0a, 0x06,
-	0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x12, 0x18, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e,
-	0x76, 0x31, 0x2e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
-	0x1a, 0x19, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x61,
-	0x72, 0x63, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0x9d, 0x02, 0x0a, 0x0f,
-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12,
-	0x59, 0x0a, 0x06, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x12, 0x26, 0x2e, 0x73, 0x61, 0x74, 0x69,
-	0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x75, 0x62, 0x6d,
-	0x69, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
-	0x74, 0x1a, 0x27, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e,
-	0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x4f, 0x62, 0x6a, 0x65,
-	0x63, 0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5b, 0x0a, 0x0b, 0x47, 0x65,
-	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x23, 0x2e, 0x73, 0x61, 0x74, 0x69,
-	0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x27,
-	0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31,
-	0x2e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x4f, 0x62, 0x6a, 0x65, 0x63, 0x74, 0x52,
-	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x52, 0x0a, 0x0a, 0x47, 0x65, 0x74, 0x4d, 0x65,
-	0x74, 0x72, 0x69, 0x63, 0x73, 0x12, 0x22, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63,
-	0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69,
-	0x63, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e, 0x73, 0x61, 0x74, 0x69,
-	0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x65, 0x74, 0x72,
-	0x69, 0x63, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x2f, 0x5a, 0x2d, 0x73,
-	0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x73, 0x65, 0x72, 0x76,
-	0x69, 0x63, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x65, 0x6e, 0x3b, 0x73, 0x61,
-	0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x70, 0x62, 0x62, 0x06, 0x70, 0x72,
-	0x6f, 0x74, 0x6f, 0x33,
+	0x65, 0x12, 0x6d, 0x0a, 0x12, 0x47, 0x65, 0x74, 0x41, 0x63, 0x74, 0x69, 0x76, 0x65, 0x50, 0x75,
+	0x62, 0x6c, 0x69, 0x73, 0x68, 0x65, 0x64, 0x12, 0x2a, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66,
+	0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x41, 0x63, 0x74,
+	0x69, 0x76, 0x65, 0x50, 0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x65, 0x64, 0x52, 0x65, 0x71, 0x75,
+	0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69,
+	0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x41, 0x63, 0x74, 0x69, 0x76, 0x65, 0x50,
+	0x75, 0x62, 0x6c, 0x69, 0x73, 0x68, 0x65, 0x64, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x5e, 0x0a, 0x0d, 0x4c, 0x69, 0x73, 0x74, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e,
+	0x73, 0x12, 0x25, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e,
+	0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e,
+	0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x26, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73,
+	0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x51,
+	0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65,
+	0x12, 0x55, 0x0a, 0x0b, 0x41, 0x64, 0x64, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x12,
+	0x23, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76,
+	0x31, 0x2e, 0x41, 0x64, 0x64, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71,
+	0x75, 0x65, 0x73, 0x74, 0x1a, 0x21, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74,
+	0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x58, 0x0a, 0x0e, 0x55, 0x70, 0x64, 0x61, 0x74,
+	0x65, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x26, 0x2e, 0x73, 0x61, 0x74, 0x69,
+	0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61,
+	0x74, 0x65, 0x51, 0x75, 0x65, 0x73, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
+	0x74, 0x1a, 0x1e, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e,
+	0x2e, 0x76, 0x31, 0x2e, 0x45, 0x6d, 0x70, 0x74, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+	0x65, 0x12, 0x58, 0x0a, 0x0e, 0x52, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x51, 0x75, 0x65, 0x73, 0x74,
+	0x69, 0x6f, 0x6e, 0x12, 0x26, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69,
+	0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x6d, 0x6f, 0x76, 0x65, 0x51, 0x75, 0x65, 0x73,
+	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x1e, 0x2e, 0x73, 0x61,
+	0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x45, 0x6d,
+	0x70, 0x74, 0x79, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x3d, 0x0a, 0x06, 0x53,
+	0x65, 0x61, 0x72, 0x63, 0x68, 0x12, 0x18, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e, 0x76,
+	0x31, 0x2e, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
+	0x19, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x65, 0x61, 0x72,
+	0x63, 0x68, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x32, 0x9d, 0x02, 0x0a, 0x0f, 0x52,
+	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x59,
+	0x0a, 0x06, 0x53, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x12, 0x26, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73,
+	0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x53, 0x75, 0x62, 0x6d, 0x69,
+	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+	0x1a, 0x27, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e,
+	0x76, 0x31, 0x2e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x4f, 0x62, 0x6a, 0x65, 0x63,
+	0x74, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x5b, 0x0a, 0x0b, 0x47, 0x65, 0x74,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x23, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73,
+	0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x27, 0x2e,
+	0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e,
+	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x4f, 0x62, 0x6a, 0x65, 0x63, 0x74, 0x52, 0x65,
+	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x12, 0x52, 0x0a, 0x0a, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74,
+	0x72, 0x69, 0x63, 0x73, 0x12, 0x22, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74,
+	0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4d, 0x65, 0x74, 0x72, 0x69, 0x63,
+	0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x20, 0x2e, 0x73, 0x61, 0x74, 0x69, 0x73,
+	0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x2e, 0x76, 0x31, 0x2e, 0x4d, 0x65, 0x74, 0x72, 0x69,
+	0x63, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x42, 0x2f, 0x5a, 0x2d, 0x73, 0x61,
+	0x74, 0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x5f, 0x73, 0x65, 0x72, 0x76, 0x69,
+	0x63, 0x65, 0x2f, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2f, 0x67, 0x65, 0x6e, 0x3b, 0x73, 0x61, 0x74,
+	0x69, 0x73, 0x66, 0x61, 0x63, 0x74, 0x69, 0x6f, 0x6e, 0x70, 0x62, 0x62, 0x06, 0x70, 0x72, 0x6f,
+	0x74, 0x6f, 0x33,
 }
 
 var (
@@ -1940,87 +2067,93 @@ func file_survey_proto_rawDescGZIP() []byte {
 	return file_survey_proto_rawDescData
 }
 
-var file_survey_proto_msgTypes = make([]protoimpl.MessageInfo, 27)
+var file_survey_proto_msgTypes = make([]protoimpl.MessageInfo, 29)
 var file_survey_proto_goTypes = []any{
-	(*Survey)(nil),                  // 0: satisfaction.v1.Survey
-	(*Question)(nil),                // 1: satisfaction.v1.Question
-	(*Response)(nil),                // 2: satisfaction.v1.Response
-	(*Answer)(nil),                  // 3: satisfaction.v1.Answer
-	(*CreateSurveyRequest)(nil),     // 4: satisfaction.v1.CreateSurveyRequest
-	(*UpdateSurveyRequest)(nil),     // 5: satisfaction.v1.UpdateSurveyRequest
-	(*PublishSurveyRequest)(nil),    // 6: satisfaction.v1.PublishSurveyRequest
-	(*DeactivateSurveyRequest)(nil), // 7: satisfaction.v1.DeactivateSurveyRequest
-	(*ReactivateSurveyRequest)(nil), // 8: satisfaction.v1.ReactivateSurveyRequest
-	(*CloneSurveyRequest)(nil),      // 9: satisfaction.v1.CloneSurveyRequest
-	(*GetSurveyRequest)(nil),        // 10: satisfaction.v1.GetSurveyRequest
-	(*GetByCodeRequest)(nil),        // 11: satisfaction.v1.GetByCodeRequest
-	(*ListQuestionsRequest)(nil),    // 12: satisfaction.v1.ListQuestionsRequest
-	(*ListQuestionsResponse)(nil),   // 13: satisfaction.v1.ListQuestionsResponse
-	(*AddQuestionRequest)(nil),      // 14: satisfaction.v1.AddQuestionRequest
-	(*UpdateQuestionRequest)(nil),   // 15: satisfaction.v1.UpdateQuestionRequest
-	(*RemoveQuestionRequest)(nil),   // 16: satisfaction.v1.RemoveQuestionRequest
-	(*QuestionResponse)(nil),        // 17: satisfaction.v1.QuestionResponse
-	(*SurveyResponse)(nil),          // 18: satisfaction.v1.SurveyResponse
-	(*EmptyResponse)(nil),           // 19: satisfaction.v1.EmptyResponse
-	(*SubmitResponseRequest)(nil),   // 20: satisfaction.v1.SubmitResponseRequest
-	(*GetResponseRequest)(nil),      // 21: satisfaction.v1.GetResponseRequest
-	(*ResponseObjectResponse)(nil),  // 22: satisfaction.v1.ResponseObjectResponse
-	(*GetMetricsRequest)(nil),       // 23: satisfaction.v1.GetMetricsRequest
-	(*QuestionMetrics)(nil),         // 24: satisfaction.v1.QuestionMetrics
-	(*MetricsResponse)(nil),         // 25: satisfaction.v1.MetricsResponse
-	nil,                             // 26: satisfaction.v1.QuestionMetrics.DistributionEntry
-	(*timestamppb.Timestamp)(nil),   // 27: google.protobuf.Timestamp
-	(*common.SearchRequest)(nil),    // 28: common.v1.SearchRequest
-	(*common.SearchResponse)(nil),   // 29: common.v1.SearchResponse
+	(*Survey)(nil),                     // 0: satisfaction.v1.Survey
+	(*Question)(nil),                   // 1: satisfaction.v1.Question
+	(*Response)(nil),                   // 2: satisfaction.v1.Response
+	(*Answer)(nil),                     // 3: satisfaction.v1.Answer
+	(*CreateSurveyRequest)(nil),        // 4: satisfaction.v1.CreateSurveyRequest
+	(*UpdateSurveyRequest)(nil),        // 5: satisfaction.v1.UpdateSurveyRequest
+	(*PublishSurveyRequest)(nil),       // 6: satisfaction.v1.PublishSurveyRequest
+	(*DeactivateSurveyRequest)(nil),    // 7: satisfaction.v1.DeactivateSurveyRequest
+	(*ReactivateSurveyRequest)(nil),    // 8: satisfaction.v1.ReactivateSurveyRequest
+	(*CloneSurveyRequest)(nil),         // 9: satisfaction.v1.CloneSurveyRequest
+	(*GetSurveyRequest)(nil),           // 10: satisfaction.v1.GetSurveyRequest
+	(*GetByCodeRequest)(nil),           // 11: satisfaction.v1.GetByCodeRequest
+	(*GetActivePublishedRequest)(nil),  // 12: satisfaction.v1.GetActivePublishedRequest
+	(*GetActivePublishedResponse)(nil), // 13: satisfaction.v1.GetActivePublishedResponse
+	(*ListQuestionsRequest)(nil),       // 14: satisfaction.v1.ListQuestionsRequest
+	(*ListQuestionsResponse)(nil),      // 15: satisfaction.v1.ListQuestionsResponse
+	(*AddQuestionRequest)(nil),         // 16: satisfaction.v1.AddQuestionRequest
+	(*UpdateQuestionRequest)(nil),      // 17: satisfaction.v1.UpdateQuestionRequest
+	(*RemoveQuestionRequest)(nil),      // 18: satisfaction.v1.RemoveQuestionRequest
+	(*QuestionResponse)(nil),           // 19: satisfaction.v1.QuestionResponse
+	(*SurveyResponse)(nil),             // 20: satisfaction.v1.SurveyResponse
+	(*EmptyResponse)(nil),              // 21: satisfaction.v1.EmptyResponse
+	(*SubmitResponseRequest)(nil),      // 22: satisfaction.v1.SubmitResponseRequest
+	(*GetResponseRequest)(nil),         // 23: satisfaction.v1.GetResponseRequest
+	(*ResponseObjectResponse)(nil),     // 24: satisfaction.v1.ResponseObjectResponse
+	(*GetMetricsRequest)(nil),          // 25: satisfaction.v1.GetMetricsRequest
+	(*QuestionMetrics)(nil),            // 26: satisfaction.v1.QuestionMetrics
+	(*MetricsResponse)(nil),            // 27: satisfaction.v1.MetricsResponse
+	nil,                                // 28: satisfaction.v1.QuestionMetrics.DistributionEntry
+	(*timestamppb.Timestamp)(nil),      // 29: google.protobuf.Timestamp
+	(*common.SearchRequest)(nil),       // 30: common.v1.SearchRequest
+	(*common.SearchResponse)(nil),      // 31: common.v1.SearchResponse
 }
 var file_survey_proto_depIdxs = []int32{
-	27, // 0: satisfaction.v1.Survey.created_at:type_name -> google.protobuf.Timestamp
-	27, // 1: satisfaction.v1.Survey.updated_at:type_name -> google.protobuf.Timestamp
-	27, // 2: satisfaction.v1.Response.submitted_at:type_name -> google.protobuf.Timestamp
-	1,  // 3: satisfaction.v1.ListQuestionsResponse.items:type_name -> satisfaction.v1.Question
-	1,  // 4: satisfaction.v1.QuestionResponse.question:type_name -> satisfaction.v1.Question
-	0,  // 5: satisfaction.v1.SurveyResponse.survey:type_name -> satisfaction.v1.Survey
-	3,  // 6: satisfaction.v1.SubmitResponseRequest.answers:type_name -> satisfaction.v1.Answer
-	2,  // 7: satisfaction.v1.ResponseObjectResponse.response:type_name -> satisfaction.v1.Response
-	26, // 8: satisfaction.v1.QuestionMetrics.distribution:type_name -> satisfaction.v1.QuestionMetrics.DistributionEntry
-	24, // 9: satisfaction.v1.MetricsResponse.per_question:type_name -> satisfaction.v1.QuestionMetrics
-	4,  // 10: satisfaction.v1.SurveyService.CreateSurvey:input_type -> satisfaction.v1.CreateSurveyRequest
-	5,  // 11: satisfaction.v1.SurveyService.UpdateSurvey:input_type -> satisfaction.v1.UpdateSurveyRequest
-	6,  // 12: satisfaction.v1.SurveyService.PublishSurvey:input_type -> satisfaction.v1.PublishSurveyRequest
-	7,  // 13: satisfaction.v1.SurveyService.DeactivateSurvey:input_type -> satisfaction.v1.DeactivateSurveyRequest
-	8,  // 14: satisfaction.v1.SurveyService.ReactivateSurvey:input_type -> satisfaction.v1.ReactivateSurveyRequest
-	9,  // 15: satisfaction.v1.SurveyService.CloneSurvey:input_type -> satisfaction.v1.CloneSurveyRequest
-	10, // 16: satisfaction.v1.SurveyService.GetSurvey:input_type -> satisfaction.v1.GetSurveyRequest
-	11, // 17: satisfaction.v1.SurveyService.GetByCode:input_type -> satisfaction.v1.GetByCodeRequest
-	12, // 18: satisfaction.v1.SurveyService.ListQuestions:input_type -> satisfaction.v1.ListQuestionsRequest
-	14, // 19: satisfaction.v1.SurveyService.AddQuestion:input_type -> satisfaction.v1.AddQuestionRequest
-	15, // 20: satisfaction.v1.SurveyService.UpdateQuestion:input_type -> satisfaction.v1.UpdateQuestionRequest
-	16, // 21: satisfaction.v1.SurveyService.RemoveQuestion:input_type -> satisfaction.v1.RemoveQuestionRequest
-	28, // 22: satisfaction.v1.SurveyService.Search:input_type -> common.v1.SearchRequest
-	20, // 23: satisfaction.v1.ResponseService.Submit:input_type -> satisfaction.v1.SubmitResponseRequest
-	21, // 24: satisfaction.v1.ResponseService.GetResponse:input_type -> satisfaction.v1.GetResponseRequest
-	23, // 25: satisfaction.v1.ResponseService.GetMetrics:input_type -> satisfaction.v1.GetMetricsRequest
-	18, // 26: satisfaction.v1.SurveyService.CreateSurvey:output_type -> satisfaction.v1.SurveyResponse
-	18, // 27: satisfaction.v1.SurveyService.UpdateSurvey:output_type -> satisfaction.v1.SurveyResponse
-	19, // 28: satisfaction.v1.SurveyService.PublishSurvey:output_type -> satisfaction.v1.EmptyResponse
-	19, // 29: satisfaction.v1.SurveyService.DeactivateSurvey:output_type -> satisfaction.v1.EmptyResponse
-	18, // 30: satisfaction.v1.SurveyService.ReactivateSurvey:output_type -> satisfaction.v1.SurveyResponse
-	18, // 31: satisfaction.v1.SurveyService.CloneSurvey:output_type -> satisfaction.v1.SurveyResponse
-	18, // 32: satisfaction.v1.SurveyService.GetSurvey:output_type -> satisfaction.v1.SurveyResponse
-	18, // 33: satisfaction.v1.SurveyService.GetByCode:output_type -> satisfaction.v1.SurveyResponse
-	13, // 34: satisfaction.v1.SurveyService.ListQuestions:output_type -> satisfaction.v1.ListQuestionsResponse
-	17, // 35: satisfaction.v1.SurveyService.AddQuestion:output_type -> satisfaction.v1.QuestionResponse
-	19, // 36: satisfaction.v1.SurveyService.UpdateQuestion:output_type -> satisfaction.v1.EmptyResponse
-	19, // 37: satisfaction.v1.SurveyService.RemoveQuestion:output_type -> satisfaction.v1.EmptyResponse
-	29, // 38: satisfaction.v1.SurveyService.Search:output_type -> common.v1.SearchResponse
-	22, // 39: satisfaction.v1.ResponseService.Submit:output_type -> satisfaction.v1.ResponseObjectResponse
-	22, // 40: satisfaction.v1.ResponseService.GetResponse:output_type -> satisfaction.v1.ResponseObjectResponse
-	25, // 41: satisfaction.v1.ResponseService.GetMetrics:output_type -> satisfaction.v1.MetricsResponse
-	26, // [26:42] is the sub-list for method output_type
-	10, // [10:26] is the sub-list for method input_type
-	10, // [10:10] is the sub-list for extension type_name
-	10, // [10:10] is the sub-list for extension extendee
-	0,  // [0:10] is the sub-list for field type_name
+	29, // 0: satisfaction.v1.Survey.created_at:type_name -> google.protobuf.Timestamp
+	29, // 1: satisfaction.v1.Survey.updated_at:type_name -> google.protobuf.Timestamp
+	29, // 2: satisfaction.v1.Response.submitted_at:type_name -> google.protobuf.Timestamp
+	0,  // 3: satisfaction.v1.GetActivePublishedResponse.survey:type_name -> satisfaction.v1.Survey
+	1,  // 4: satisfaction.v1.GetActivePublishedResponse.questions:type_name -> satisfaction.v1.Question
+	1,  // 5: satisfaction.v1.ListQuestionsResponse.items:type_name -> satisfaction.v1.Question
+	1,  // 6: satisfaction.v1.QuestionResponse.question:type_name -> satisfaction.v1.Question
+	0,  // 7: satisfaction.v1.SurveyResponse.survey:type_name -> satisfaction.v1.Survey
+	3,  // 8: satisfaction.v1.SubmitResponseRequest.answers:type_name -> satisfaction.v1.Answer
+	2,  // 9: satisfaction.v1.ResponseObjectResponse.response:type_name -> satisfaction.v1.Response
+	28, // 10: satisfaction.v1.QuestionMetrics.distribution:type_name -> satisfaction.v1.QuestionMetrics.DistributionEntry
+	26, // 11: satisfaction.v1.MetricsResponse.per_question:type_name -> satisfaction.v1.QuestionMetrics
+	4,  // 12: satisfaction.v1.SurveyService.CreateSurvey:input_type -> satisfaction.v1.CreateSurveyRequest
+	5,  // 13: satisfaction.v1.SurveyService.UpdateSurvey:input_type -> satisfaction.v1.UpdateSurveyRequest
+	6,  // 14: satisfaction.v1.SurveyService.PublishSurvey:input_type -> satisfaction.v1.PublishSurveyRequest
+	7,  // 15: satisfaction.v1.SurveyService.DeactivateSurvey:input_type -> satisfaction.v1.DeactivateSurveyRequest
+	8,  // 16: satisfaction.v1.SurveyService.ReactivateSurvey:input_type -> satisfaction.v1.ReactivateSurveyRequest
+	9,  // 17: satisfaction.v1.SurveyService.CloneSurvey:input_type -> satisfaction.v1.CloneSurveyRequest
+	10, // 18: satisfaction.v1.SurveyService.GetSurvey:input_type -> satisfaction.v1.GetSurveyRequest
+	11, // 19: satisfaction.v1.SurveyService.GetByCode:input_type -> satisfaction.v1.GetByCodeRequest
+	12, // 20: satisfaction.v1.SurveyService.GetActivePublished:input_type -> satisfaction.v1.GetActivePublishedRequest
+	14, // 21: satisfaction.v1.SurveyService.ListQuestions:input_type -> satisfaction.v1.ListQuestionsRequest
+	16, // 22: satisfaction.v1.SurveyService.AddQuestion:input_type -> satisfaction.v1.AddQuestionRequest
+	17, // 23: satisfaction.v1.SurveyService.UpdateQuestion:input_type -> satisfaction.v1.UpdateQuestionRequest
+	18, // 24: satisfaction.v1.SurveyService.RemoveQuestion:input_type -> satisfaction.v1.RemoveQuestionRequest
+	30, // 25: satisfaction.v1.SurveyService.Search:input_type -> common.v1.SearchRequest
+	22, // 26: satisfaction.v1.ResponseService.Submit:input_type -> satisfaction.v1.SubmitResponseRequest
+	23, // 27: satisfaction.v1.ResponseService.GetResponse:input_type -> satisfaction.v1.GetResponseRequest
+	25, // 28: satisfaction.v1.ResponseService.GetMetrics:input_type -> satisfaction.v1.GetMetricsRequest
+	20, // 29: satisfaction.v1.SurveyService.CreateSurvey:output_type -> satisfaction.v1.SurveyResponse
+	20, // 30: satisfaction.v1.SurveyService.UpdateSurvey:output_type -> satisfaction.v1.SurveyResponse
+	21, // 31: satisfaction.v1.SurveyService.PublishSurvey:output_type -> satisfaction.v1.EmptyResponse
+	21, // 32: satisfaction.v1.SurveyService.DeactivateSurvey:output_type -> satisfaction.v1.EmptyResponse
+	20, // 33: satisfaction.v1.SurveyService.ReactivateSurvey:output_type -> satisfaction.v1.SurveyResponse
+	20, // 34: satisfaction.v1.SurveyService.CloneSurvey:output_type -> satisfaction.v1.SurveyResponse
+	20, // 35: satisfaction.v1.SurveyService.GetSurvey:output_type -> satisfaction.v1.SurveyResponse
+	20, // 36: satisfaction.v1.SurveyService.GetByCode:output_type -> satisfaction.v1.SurveyResponse
+	13, // 37: satisfaction.v1.SurveyService.GetActivePublished:output_type -> satisfaction.v1.GetActivePublishedResponse
+	15, // 38: satisfaction.v1.SurveyService.ListQuestions:output_type -> satisfaction.v1.ListQuestionsResponse
+	19, // 39: satisfaction.v1.SurveyService.AddQuestion:output_type -> satisfaction.v1.QuestionResponse
+	21, // 40: satisfaction.v1.SurveyService.UpdateQuestion:output_type -> satisfaction.v1.EmptyResponse
+	21, // 41: satisfaction.v1.SurveyService.RemoveQuestion:output_type -> satisfaction.v1.EmptyResponse
+	31, // 42: satisfaction.v1.SurveyService.Search:output_type -> common.v1.SearchResponse
+	24, // 43: satisfaction.v1.ResponseService.Submit:output_type -> satisfaction.v1.ResponseObjectResponse
+	24, // 44: satisfaction.v1.ResponseService.GetResponse:output_type -> satisfaction.v1.ResponseObjectResponse
+	27, // 45: satisfaction.v1.ResponseService.GetMetrics:output_type -> satisfaction.v1.MetricsResponse
+	29, // [29:46] is the sub-list for method output_type
+	12, // [12:29] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_survey_proto_init() }
@@ -2034,7 +2167,7 @@ func file_survey_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_survey_proto_rawDesc,
 			NumEnums:      0,
-			NumMessages:   27,
+			NumMessages:   29,
 			NumExtensions: 0,
 			NumServices:   2,
 		},

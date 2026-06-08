@@ -32,6 +32,9 @@ type School struct {
 	// piden al editar. "" = sin registrar.
 	Ruc             string
 	Poblacion       string
+	// Cliente (doc observaciones): persona/contacto a cargo del colegio
+	// (campo de la vista original v1). Texto libre. "" = sin registrar.
+	PersonalACargo  string
 	// Solo lo llena el listado (List/ListByAsesor) via JOIN con assignment:
 	// asesor vigente del colegio. "" = colegio SIN asesor. No persiste en
 	// la tabla school (es derivado).

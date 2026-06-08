@@ -60,6 +60,7 @@ func (h *SchoolHandler) CreateSchool(ctx context.Context, req *pb.CreateSchoolRe
 		Phone:           req.GetPhone(),
 		Ruc:             req.GetRuc(),
 		Poblacion:       req.GetPoblacion(),
+		PersonalACargo:  req.GetPersonalACargo(),
 		Active:          true,
 		HubspotRecordID: req.GetHubspotRecordId(),
 		CreatedAt:       time.Now(),
@@ -95,6 +96,7 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 		Phone:           req.GetPhone(),
 		Ruc:             req.GetRuc(),
 		Poblacion:       req.GetPoblacion(),
+		PersonalACargo:  req.GetPersonalACargo(),
 	}
 	if err := h.repo.Update(ctx, s); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -202,6 +204,7 @@ func schoolToProto(s *domain.School) *pb.School {
 		Phone:           s.Phone,
 		Ruc:             s.Ruc,
 		Poblacion:       s.Poblacion,
+		PersonalACargo:  s.PersonalACargo,
 		AsesorUserId:    s.AsesorUserID,
 		AsesorName:      s.AsesorName,
 		Active:          s.Active,

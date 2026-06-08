@@ -111,6 +111,21 @@ func (h *SurveyHandler) GetByCode(ctx context.Context, req *pb.GetByCodeRequest)
 	return &pb.SurveyResponse{Survey: toProtoSurvey(s)}, nil
 }
 
+func (h *SurveyHandler) GetActivePublished(ctx context.Context, req *pb.GetActivePublishedRequest) (*pb.GetActivePublishedResponse, error) {
+	s, qs, err := h.qrys.GetActivePublished(ctx, req.GetTriggerKind(), req.GetKeyId())
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	out := &pb.GetActivePublishedResponse{
+		Survey:    toProtoSurvey(s),
+		Questions: make([]*pb.Question, 0, len(qs)),
+	}
+	for i := range qs {
+		out.Questions = append(out.Questions, toProtoQuestion(&qs[i]))
+	}
+	return out, nil
+}
+
 func (h *SurveyHandler) ListQuestions(ctx context.Context, req *pb.ListQuestionsRequest) (*pb.ListQuestionsResponse, error) {
 	items, err := h.qrys.ListQuestions(ctx, domain.SurveyID(req.GetSurveyId()))
 	if err != nil {

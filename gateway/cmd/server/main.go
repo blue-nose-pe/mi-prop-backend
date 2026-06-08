@@ -76,6 +76,10 @@ func main() {
 		// no abre superficie real.
 		"/api/keys/by-code/",
 		"/api/careers",
+		// Cliente (doc observaciones): el alumno anonimo (acceso por key+OTP,
+		// sin JWT) ve la encuesta de satisfaccion al terminar el examen y la
+		// envia. Rutas publicas dedicadas que solo tocan encuestas PUBLICADAS.
+		"/api/public/",
 		"/health",
 	}
 

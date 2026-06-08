@@ -135,6 +135,7 @@ type createSchoolRequest struct {
 	Phone           string `json:"phone"`       // contacto del colegio, opcional al crear
 	Ruc             string `json:"ruc"`         // RUC del colegio, opcional al crear
 	Poblacion       string `json:"poblacion"`   // poblacion estudiantil, opcional al crear
+	PersonalACargo  string `json:"personal_a_cargo"` // persona/contacto a cargo, opcional
 }
 
 func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +156,7 @@ func (p *Proxy) createSchool(w http.ResponseWriter, r *http.Request) {
 		Phone:           in.Phone,
 		Ruc:             in.Ruc,
 		Poblacion:       in.Poblacion,
+		PersonalACargo:  in.PersonalACargo,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -175,6 +177,7 @@ type updateSchoolRequest struct {
 	Phone           string `json:"phone"`       // "" no toca; "-" limpia
 	Ruc             string `json:"ruc"`         // "" no toca; "-" limpia
 	Poblacion       string `json:"poblacion"`   // "" no toca; "-" limpia
+	PersonalACargo  string `json:"personal_a_cargo"` // "" no toca; "-" limpia
 }
 
 func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
@@ -196,6 +199,7 @@ func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
 		Phone:           in.Phone,
 		Ruc:             in.Ruc,
 		Poblacion:       in.Poblacion,
+		PersonalACargo:  in.PersonalACargo,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -267,6 +271,7 @@ func protoSchoolToJSON(s *usersgrpcpb.School) map[string]any {
 		"phone":             s.GetPhone(),
 		"ruc":               s.GetRuc(),
 		"poblacion":         s.GetPoblacion(),
+		"personal_a_cargo":  s.GetPersonalACargo(),
 		"asesor_user_id":    s.GetAsesorUserId(),
 		"asesor_name":       s.GetAsesorName(),
 		"active":            s.GetActive(),

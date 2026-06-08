@@ -16,6 +16,12 @@ service SurveyService {
   rpc CloneSurvey       (CloneSurveyRequest)       returns (SurveyResponse);
   rpc GetSurvey         (GetSurveyRequest)         returns (SurveyResponse);
   rpc GetByCode         (GetByCodeRequest)         returns (SurveyResponse);
+  // Cliente (doc observaciones): "No se muestra el test de satisfaccion". El
+  // alumno que rinde el examen es ANONIMO (acceso por key+OTP, sin JWT). Este
+  // RPC devuelve la encuesta PUBLICADA+ACTIVA que aplica a un tipo de examen
+  // (trigger_kind) o a una key puntual, JUNTO con sus preguntas, en una sola
+  // llamada que el gateway expone via /api/public/ (sin auth).
+  rpc GetActivePublished (GetActivePublishedRequest) returns (GetActivePublishedResponse);
   rpc ListQuestions     (ListQuestionsRequest)     returns (ListQuestionsResponse);
   rpc AddQuestion       (AddQuestionRequest)       returns (QuestionResponse);
   rpc UpdateQuestion    (UpdateQuestionRequest)    returns (EmptyResponse);
@@ -103,6 +109,14 @@ message ReactivateSurveyRequest { string id = 1; }
 message CloneSurveyRequest      { string id = 1; }
 message GetSurveyRequest        { string id = 1; }
 message GetByCodeRequest        { string code = 1; int32 version = 2; }
+message GetActivePublishedRequest {
+  string trigger_kind = 1; // simulacro|vocacional|estilos
+  string key_id       = 2; // opcional: si hay encuesta atada a ESTA key, prioridad
+}
+message GetActivePublishedResponse {
+  Survey survey = 1;             // null si no hay encuesta aplicable
+  repeated Question questions = 2;
+}
 message ListQuestionsRequest    { string survey_id = 1; }
 message ListQuestionsResponse   { repeated Question items = 1; }
 

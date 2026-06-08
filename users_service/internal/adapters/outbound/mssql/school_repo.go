@@ -32,7 +32,8 @@ func (r *SchoolRepo) FindByID(ctx context.Context, id domain.SchoolID) (*domain.
 	                  active, created_at, updated_at,
 	                  ISNULL(hubspot_record_id, ''),
 	                  ISNULL(email, ''), ISNULL(phone, ''),
-	                  ISNULL(ruc, ''), ISNULL(poblacion, '')
+	                  ISNULL(ruc, ''), ISNULL(poblacion, ''),
+	                  ISNULL(personal_a_cargo, '')
 	             FROM school WHERE id = CONVERT(UNIQUEIDENTIFIER, @p1)`
 
 	var (
@@ -43,7 +44,7 @@ func (r *SchoolRepo) FindByID(ctx context.Context, id domain.SchoolID) (*domain.
 		hubspotID string
 	)
 	err := r.db.QueryRowContext(ctx, q, string(id)).
-		Scan(&idStr, &s.IntID, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion)
+		Scan(&idStr, &s.IntID, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.PersonalACargo)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrSchoolNotFound
 	}
@@ -92,6 +93,7 @@ func (r *SchoolRepo) List(ctx context.Context, in ports.ListSchoolsInput) ([]dom
 	             ISNULL(hubspot_record_id, ''),
 	             ISNULL(email, ''), ISNULL(phone, ''),
 	             ISNULL(ruc, ''), ISNULL(poblacion, ''),
+	             ISNULL(personal_a_cargo, ''),
 	             ISNULL((SELECT TOP 1 CONVERT(NVARCHAR(36), a.source_user_id)
 	                       FROM assignment a
 	                      WHERE a.target_user_id = school.user_id
@@ -122,7 +124,7 @@ func (r *SchoolRepo) List(ctx context.Context, in ports.ListSchoolsInput) ([]dom
 			updatedAt sql.NullTime
 			hubspotID string
 		)
-		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.AsesorUserID, &s.AsesorName); err != nil {
+		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.PersonalACargo, &s.AsesorUserID, &s.AsesorName); err != nil {
 			return nil, 0, err
 		}
 		s.ID = domain.SchoolID(idStr)
@@ -141,17 +143,18 @@ func (r *SchoolRepo) List(ctx context.Context, in ports.ListSchoolsInput) ([]dom
 // DEFAULT NEWID() y lo recuperamos con OUTPUT INSERTED.id.
 func (r *SchoolRepo) Create(ctx context.Context, s *domain.School) (domain.SchoolID, error) {
 	const q = `
-		INSERT INTO school (user_id, name, city, category, code, penetration, active, hubspot_record_id, email, phone, ruc, poblacion)
+		INSERT INTO school (user_id, name, city, category, code, penetration, active, hubspot_record_id, email, phone, ruc, poblacion, personal_a_cargo)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (CONVERT(UNIQUEIDENTIFIER, @p1), @p2,
 		        NULLIF(@p3, ''), NULLIF(@p4, ''),
 		        NULLIF(@p5, ''), NULLIF(@p6, ''),
 		        @p7, NULLIF(@p8, ''),
 		        NULLIF(@p9, ''), NULLIF(@p10, ''),
-		        NULLIF(@p11, ''), NULLIF(@p12, ''))`
+		        NULLIF(@p11, ''), NULLIF(@p12, ''),
+		        NULLIF(@p13, ''))`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
-		string(s.UserID), s.Name, s.City, s.Category, s.Code, s.Penetration, s.Active, s.HubspotRecordID, s.Email, s.Phone, s.Ruc, s.Poblacion,
+		string(s.UserID), s.Name, s.City, s.Category, s.Code, s.Penetration, s.Active, s.HubspotRecordID, s.Email, s.Phone, s.Ruc, s.Poblacion, s.PersonalACargo,
 	).Scan(&id)
 	if err != nil {
 		return "", err
@@ -193,10 +196,13 @@ func (r *SchoolRepo) Update(ctx context.Context, s *domain.School) error {
 		                                ELSE @p11 END,
 		       poblacion         = CASE WHEN @p12 = '' THEN poblacion
 		                                WHEN @p12 = '-' THEN NULL
-		                                ELSE @p12 END
+		                                ELSE @p12 END,
+		       personal_a_cargo  = CASE WHEN @p13 = '' THEN personal_a_cargo
+		                                WHEN @p13 = '-' THEN NULL
+		                                ELSE @p13 END
 		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p8)`
 	res, err := r.db.ExecContext(ctx, q,
-		s.Name, string(s.UserID), s.HubspotRecordID, s.City, s.Category, s.Code, s.Penetration, string(s.ID), s.Email, s.Phone, s.Ruc, s.Poblacion)
+		s.Name, string(s.UserID), s.HubspotRecordID, s.City, s.Category, s.Code, s.Penetration, string(s.ID), s.Email, s.Phone, s.Ruc, s.Poblacion, s.PersonalACargo)
 	if err != nil {
 		return err
 	}
@@ -219,7 +225,8 @@ func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) (
 		       s.active, s.created_at, s.updated_at,
 		       ISNULL(s.hubspot_record_id, ''),
 		       ISNULL(s.email, ''), ISNULL(s.phone, ''),
-		       ISNULL(s.ruc, ''), ISNULL(s.poblacion, '')
+		       ISNULL(s.ruc, ''), ISNULL(s.poblacion, ''),
+		       ISNULL(s.personal_a_cargo, '')
 		  FROM school s
 		  JOIN assignment a ON a.target_user_id = s.user_id
 		 WHERE a.source_user_id = CONVERT(UNIQUEIDENTIFIER, @p1)
@@ -240,7 +247,7 @@ func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) (
 			updatedAt sql.NullTime
 			hubspotID string
 		)
-		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion); err != nil {
+		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.PersonalACargo); err != nil {
 			return nil, err
 		}
 		// Estos colegios son, por definicion del JOIN, los del asesor que

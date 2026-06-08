@@ -72,8 +72,15 @@ func main() {
 
 	verifier := jwtmw.NewVerifier([]byte(cfg.JWTSecret), cfg.JWTIssuer)
 	jwtSkip := func(fullMethod string) bool {
+		// Flujo PUBLICO post-examen: el alumno es anonimo (acceso por key+OTP,
+		// sin JWT). El gateway expone GetActivePublished (leer encuesta) y
+		// Submit (enviar respuesta) via /api/public/ sin auth, asi que aqui
+		// tambien deben saltarse el JWT. Ambos solo tocan data de encuestas
+		// PUBLICADAS — superficie minima.
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
-			strings.HasPrefix(fullMethod, "/grpc.reflection.")
+			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||
+			fullMethod == "/satisfaction.v1.SurveyService/GetActivePublished" ||
+			fullMethod == "/satisfaction.v1.ResponseService/Submit"
 	}
 
 	s := grpc.NewServer(

@@ -21,6 +21,9 @@ import (
 	"net/http"
 	"strconv"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	satisfactiongrpcpb "satisfaction_service/proto/gen"
 	satisfactioncommonpb "satisfaction_service/proto/gen/common"
 )
@@ -47,6 +50,44 @@ func (p *Proxy) RegisterSurveys(mux *http.ServeMux) {
 	// Survey responses
 	mux.HandleFunc("POST /api/survey-responses", p.submitSurveyResponse)
 	mux.HandleFunc("GET /api/survey-responses/{id}", p.getSurveyResponse)
+
+	// ---- PUBLICO (sin JWT) — flujo post-examen del alumno anonimo ----
+	// Cliente (doc observaciones): "No se muestra el test de satisfaccion".
+	// El alumno que rinde el simulacro NO tiene JWT; estas rutas estan en la
+	// skip-list del gateway (/api/public/) y solo exponen encuestas PUBLICADAS.
+	mux.HandleFunc("GET /api/public/surveys/active", p.getPublicActiveSurvey)
+	mux.HandleFunc("POST /api/public/survey-responses", p.submitSurveyResponse)
+}
+
+// getPublicActiveSurvey devuelve la encuesta publicada+activa que aplica a un
+// tipo de examen (query `exam_type`) y, opcionalmente, a una key (`key_id`),
+// junto con sus preguntas. Sin auth. Si no hay encuesta aplicable, responde
+// 200 con survey=null (el front simplemente no muestra el prompt).
+func (p *Proxy) getPublicActiveSurvey(w http.ResponseWriter, r *http.Request) {
+	examType := r.URL.Query().Get("exam_type")
+	keyID := r.URL.Query().Get("key_id")
+	resp, err := p.cli.Surveys.GetActivePublished(r.Context(), &satisfactiongrpcpb.GetActivePublishedRequest{
+		TriggerKind: examType,
+		KeyId:       keyID,
+	})
+	if err != nil {
+		// NotFound (no hay encuesta aplicable) no es un error para el cliente:
+		// devolvemos survey=null y que el front decida no renderizar.
+		if status.Code(err) == codes.NotFound {
+			writeJSON(w, http.StatusOK, map[string]any{"survey": nil, "questions": []any{}})
+			return
+		}
+		writeGRPCError(w, err)
+		return
+	}
+	questions := make([]map[string]any, 0, len(resp.GetQuestions()))
+	for _, q := range resp.GetQuestions() {
+		questions = append(questions, protoSurveyQuestionToJSON(q))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"survey":    protoSurveyToJSON(resp.GetSurvey()),
+		"questions": questions,
+	})
 }
 
 // ====================== SURVEYS ======================

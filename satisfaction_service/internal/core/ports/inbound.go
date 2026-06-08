@@ -28,6 +28,10 @@ type SurveyCommands interface {
 type SurveyQueries interface {
 	Get(ctx context.Context, id domain.SurveyID) (*domain.Survey, error)
 	GetByCode(ctx context.Context, code string, version int32) (*domain.Survey, error)
+	// GetActivePublished resuelve la encuesta aplicable (por key o por
+	// trigger_kind) y devuelve sus preguntas en una sola operacion. Lo usa el
+	// flujo publico post-examen (alumno anonimo).
+	GetActivePublished(ctx context.Context, triggerKind, keyID string) (*domain.Survey, []domain.Question, error)
 	ListQuestions(ctx context.Context, surveyID domain.SurveyID) ([]domain.Question, error)
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
 }
