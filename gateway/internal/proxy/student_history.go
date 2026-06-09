@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	analyticsgrpcpb "analytics_service/proto/gen"
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	userscommonpb "users_service/proto/gen/common"
@@ -79,12 +80,20 @@ func (p *Proxy) studentGradeHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type histItem struct {
-		Year        int    `json:"year"`
-		Grade       string `json:"grade"`
-		ExamType    string `json:"exam_type"`
-		KeyCode     string `json:"key_code"`
-		Score       int32  `json:"score"`
-		MaxScore    int32  `json:"max_score"`
+		Year     int    `json:"year"`
+		Grade    string `json:"grade"`
+		ExamType string `json:"exam_type"`
+		KeyCode  string `json:"key_code"`
+		// Score/MaxScore solo tienen sentido en SIMULACRO (es la unica prueba
+		// medible por puntaje). Para vocacional/estilos el front no los muestra.
+		Score    int32 `json:"score"`
+		MaxScore int32 `json:"max_score"`
+		// IsScored marca si la prueba se mide por puntaje (solo simulacro).
+		IsScored bool `json:"is_scored"`
+		// Highlight: para vocacional/estilos, el area/inclinacion principal del
+		// alumno (p. ej. "CÁLCULO") en vez de un puntaje. "" si no aplica/no se
+		// pudo calcular.
+		Highlight   string `json:"highlight"`
 		SubmittedAt string `json:"submitted_at"`
 	}
 
@@ -111,6 +120,7 @@ func (p *Proxy) studentGradeHistory(w http.ResponseWriter, r *http.Request) {
 			}
 			year := a.GetSubmittedAt().AsTime().Year()
 			grade, code, examType := "—", "—", "—"
+			var examTypeID int32
 			if key != nil {
 				if key.GetGrade() != "" {
 					grade = key.GetGrade()
@@ -118,9 +128,28 @@ func (p *Proxy) studentGradeHistory(w http.ResponseWriter, r *http.Request) {
 				if key.GetCode() != "" {
 					code = key.GetCode()
 				}
-				examType = examTypeName(key.GetExamTypeId())
+				examTypeID = key.GetExamTypeId()
+				examType = examTypeName(examTypeID)
 				if key.GetValidFrom() != nil {
 					year = key.GetValidFrom().AsTime().Year()
+				}
+			}
+			// Solo el simulacro (exam_type 2) se mide por puntaje. Para
+			// vocacional (1) y estilos (3) traemos la INCLINACION del alumno (su
+			// area principal) en vez de un numero, via el reporte del attempt.
+			isScored := examTypeID == 2
+			highlight := ""
+			if examTypeID == 1 || examTypeID == 3 {
+				if rep, rerr := p.cli.Analytics.GetReporteEstudiante(r.Context(), &analyticsgrpcpb.GetReporteEstudianteRequest{
+					UserId:    uid,
+					AttemptId: a.GetId(),
+				}); rerr == nil {
+					if top := rep.GetAreasInteres().GetTop(); len(top) > 0 {
+						highlight = top[0].GetAreaLabel()
+						if highlight == "" {
+							highlight = top[0].GetLabel()
+						}
+					}
 				}
 			}
 			items = append(items, histItem{
@@ -130,6 +159,8 @@ func (p *Proxy) studentGradeHistory(w http.ResponseWriter, r *http.Request) {
 				KeyCode:     code,
 				Score:       a.GetScore(),
 				MaxScore:    a.GetMaxScore(),
+				IsScored:    isScored,
+				Highlight:   highlight,
 				SubmittedAt: a.GetSubmittedAt().AsTime().Format(time.RFC3339),
 			})
 		}
