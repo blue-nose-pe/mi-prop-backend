@@ -643,10 +643,23 @@ func examTypeStatsToJSON(stats map[string]*analyticsgrpcpb.ExamTypeStats) map[st
 			out[k] = nil
 			continue
 		}
+		// areas: inclinaciones agregadas (solo vocacional/estilos) para la
+		// barra roja->verde del detalle por colegio.
+		areas := make([]map[string]any, 0, len(v.GetAreas()))
+		for _, a := range v.GetAreas() {
+			areas = append(areas, map[string]any{
+				"code":       a.GetCode(),
+				"label":      a.GetLabel(),
+				"points":     a.GetPoints(),
+				"max_points": a.GetMaxPoints(),
+				"ratio":      a.GetRatio(),
+			})
+		}
 		out[k] = map[string]any{
 			"attempts":      v.GetAttempts(),
 			"avg_score":     v.GetAvgScore(),
 			"avg_max_score": v.GetAvgMaxScore(),
+			"areas":         areas,
 		}
 	}
 	return out

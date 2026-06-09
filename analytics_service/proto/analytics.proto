@@ -26,6 +26,19 @@ message ExamTypeStats {
   int32  attempts       = 1;
   double avg_score      = 2;
   double avg_max_score  = 3;
+  // Solo vocacional/estilos: inclinaciones agregadas del colegio (no
+  // promediables por puntaje). El front las pinta como barra roja->verde.
+  repeated ColegioAreaStat areas = 4;
+}
+
+// ColegioAreaStat — una aptitud (RIASEC) o estilo/canal agregado a nivel
+// colegio. ratio = points/max_points (0..1).
+message ColegioAreaStat {
+  string code       = 1;
+  string label      = 2;
+  int32  points     = 3;
+  int32  max_points = 4;
+  double ratio      = 5;
 }
 
 // ----- Asesor -----

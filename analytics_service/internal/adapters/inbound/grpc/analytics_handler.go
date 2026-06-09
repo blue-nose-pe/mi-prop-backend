@@ -307,10 +307,21 @@ func (h *AnalyticsHandler) ExportReporteEstudianteXLSX(ctx context.Context, req 
 func toExamTypeStats(m map[string]domain.ExamTypeStats) map[string]*pb.ExamTypeStats {
 	out := make(map[string]*pb.ExamTypeStats, len(m))
 	for k, v := range m {
+		areas := make([]*pb.ColegioAreaStat, 0, len(v.Areas))
+		for _, a := range v.Areas {
+			areas = append(areas, &pb.ColegioAreaStat{
+				Code:      a.Code,
+				Label:     a.Label,
+				Points:    a.Points,
+				MaxPoints: a.MaxPoints,
+				Ratio:     a.Ratio,
+			})
+		}
 		out[k] = &pb.ExamTypeStats{
 			Attempts:    v.Attempts,
 			AvgScore:    v.AvgScore,
 			AvgMaxScore: v.AvgMaxScore,
+			Areas:       areas,
 		}
 	}
 	return out

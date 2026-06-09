@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"analytics_service/internal/core/domain"
@@ -181,6 +182,11 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 	}
 
 	stats := map[string]*domain.ExamTypeStats{}
+	// Buckets de inclinaciones por exam_type_code (solo vocacional/estilos):
+	// examTypeCode -> categoria -> {points, maxPoints} agregado sobre TODOS
+	// los attempts del colegio de ese tipo. Marketing usa esto como barra
+	// roja->verde por aptitud/estilo (vocacional/estilos no son promediables).
+	areaBuckets := map[string]map[string]*areaAgg{}
 	for _, a := range atts {
 		if a.SubmittedAt == nil {
 			continue
@@ -195,8 +201,39 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 			s.AvgScore += float64(*a.Score)
 			s.AvgMaxScore += float64(*a.MaxScore)
 		}
+		// Vocacional/estilos: acumulamos las inclinaciones por categoria
+		// (RIASEC / canales / estilos) leyendo las enriched answers del
+		// attempt. Mismo bucketing que buildAreasInteres pero agregado.
+		if ex.ExamTypeCode == "vocacional" || ex.ExamTypeCode == "habitos" {
+			if answers, aerr := h.exams.ListEnrichedAnswers(ctx, a.ID); aerr == nil {
+				bm := areaBuckets[ex.ExamTypeCode]
+				if bm == nil {
+					bm = map[string]*areaAgg{}
+					areaBuckets[ex.ExamTypeCode] = bm
+				}
+				for _, ans := range answers {
+					cat := strings.ToUpper(strings.TrimSpace(ans.QuestionCategory))
+					if cat == "" {
+						continue
+					}
+					ag := bm[cat]
+					if ag == nil {
+						ag = &areaAgg{}
+						bm[cat] = ag
+					}
+					ag.points += ans.OptionSortOrder
+					ag.maxPoints += 3 // escala 0..3 (Nada/Poco/Bastante/Mucho)
+				}
+			}
+		}
 	}
 	finalize(stats)
+	// Adjuntamos las inclinaciones agregadas a su exam_type.
+	for code, bm := range areaBuckets {
+		if s := stats[code]; s != nil {
+			s.Areas = buildColegioAreas(bm)
+		}
+	}
 
 	studentRows := make([]domain.ColegioStudent, 0, len(students))
 	for _, s := range students {
@@ -377,6 +414,42 @@ func (h *DashboardHandler) GetHistoricoEstudiante(ctx context.Context, userID do
 }
 
 // ----- helpers -----
+
+// areaAgg acumula puntos por categoria (aptitud/estilo) a nivel colegio.
+type areaAgg struct {
+	points    int32
+	maxPoints int32
+}
+
+// buildColegioAreas convierte los buckets agregados del colegio en una lista
+// ordenada de menor a mayor inclinacion (para la barra roja->verde de
+// marketing). Reusa riasecAreaLabel (vocacional R..C); para canales/estilos el
+// code ya es legible (AUDITIVO/ACTIVO/...).
+func buildColegioAreas(bm map[string]*areaAgg) []domain.ColegioAreaStat {
+	out := make([]domain.ColegioAreaStat, 0, len(bm))
+	for code, ag := range bm {
+		ratio := 0.0
+		if ag.maxPoints > 0 {
+			ratio = float64(ag.points) / float64(ag.maxPoints)
+		}
+		out = append(out, domain.ColegioAreaStat{
+			Code:      code,
+			Label:     labelOr(riasecAreaLabel, code, code),
+			Points:    ag.points,
+			MaxPoints: ag.maxPoints,
+			Ratio:     ratio,
+		})
+	}
+	// De menor a mayor (el cliente pidio la barra "de menor a mayor"); desempate
+	// alfabetico para estabilidad.
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Ratio != out[j].Ratio {
+			return out[i].Ratio < out[j].Ratio
+		}
+		return out[i].Code < out[j].Code
+	})
+	return out
+}
 
 func fullName(u *ports.UpstreamUser) string {
 	if u == nil {

@@ -67,9 +67,25 @@ type AsesorKey struct {
 }
 
 type ExamTypeStats struct {
-	Attempts     int32
-	AvgScore     float64
-	AvgMaxScore  float64
+	Attempts    int32
+	AvgScore    float64
+	AvgMaxScore float64
+	// Areas — SOLO vocacional/estilos. Inclinaciones agregadas del colegio
+	// (areas RIASEC en vocacional; canales/estilos en habitos). Vocacional y
+	// estilos NO son promediables por puntaje: marketing necesita ver "en que
+	// se inclina el colegio". Ratio = sum(points)/sum(maxPoints) sobre todos
+	// los attempts del colegio de ese tipo (0..1). El front lo pinta como una
+	// barra roja->verde de menor a mayor. Vacio en simulacro.
+	Areas []ColegioAreaStat
+}
+
+// ColegioAreaStat — una aptitud/estilo agregada a nivel colegio.
+type ColegioAreaStat struct {
+	Code      string  // "R".."C" (vocacional) | "AUDITIVO"/"ACTIVO"/... (estilos)
+	Label     string  // etiqueta legible
+	Points    int32   // suma de sort_order sobre todos los attempts del colegio
+	MaxPoints int32   // suma del maximo posible (3 por pregunta)
+	Ratio     float64 // Points/MaxPoints, 0..1
 }
 
 // ColegioDashboard — vista agregada para un colegio.
