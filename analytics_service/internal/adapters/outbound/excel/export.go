@@ -234,7 +234,16 @@ func (e *Exporter) ExportReporteEstudiante(ctx context.Context, in ports.Reporte
 
 	sheets := []xlsxSheet{{Name: "Resumen", Rows: resumen}}
 
-	if r.ExamTypeCode == "vocacional" {
+	// Cliente (doc observaciones): cada tipo de examen exporta SOLO las hojas
+	// que le aplican.
+	//   - vocacional: Resumen + Áreas RIASEC + Top Áreas + Secciones.
+	//   - habitos:    Resumen + Puntajes por módulo + Secciones.
+	//   - simulacro:  Resumen unicamente (es un puntaje; no lleva "Puntajes por
+	//                 módulo" ni las "Secciones" psicométricas —Personalidad/
+	//                 Apoyo familiar/Proyecto de vida— que solo aplican a las
+	//                 evaluaciones psicométricas).
+	switch r.ExamTypeCode {
+	case "vocacional":
 		// Vocacional: RIASEC completo + top con carreras sugeridas.
 		areas := [][]any{
 			{"Código", "Área", "Puntos", "Puntos máximos", "Porcentaje"},
@@ -276,10 +285,14 @@ func (e *Exporter) ExportReporteEstudiante(ctx context.Context, in ports.Reporte
 		sheets = append(sheets,
 			xlsxSheet{Name: "Áreas de Interés", Rows: areas},
 			xlsxSheet{Name: "Top Áreas", Rows: top},
+			xlsxSheet{Name: "Secciones", Rows: secciones},
 		)
-	} else {
-		// Simulacro / habitos / otros: los "Code" agrupan módulos del examen
-		// (COM, MAT, BIO, etc.). Se lista en una sola hoja "Puntajes por módulo".
+	case "simulacro":
+		// Solo Resumen. El simulacro es un puntaje; no lleva "Puntajes por
+		// módulo" ni "Secciones" psicométricas (no aplican).
+	default:
+		// habitos / otros: los "Code" agrupan módulos del examen (COM, MAT,
+		// BIO, etc.). Se lista en una sola hoja "Puntajes por módulo" + Secciones.
 		mod := [][]any{
 			{"Módulo", "Puntos", "Puntos máximos", "Porcentaje"},
 		}
@@ -309,10 +322,11 @@ func (e *Exporter) ExportReporteEstudiante(ctx context.Context, in ports.Reporte
 			}
 			mod = append(mod, []any{"—", "", "", reason})
 		}
-		sheets = append(sheets, xlsxSheet{Name: "Puntajes por módulo", Rows: mod})
+		sheets = append(sheets,
+			xlsxSheet{Name: "Puntajes por módulo", Rows: mod},
+			xlsxSheet{Name: "Secciones", Rows: secciones},
+		)
 	}
-
-	sheets = append(sheets, xlsxSheet{Name: "Secciones", Rows: secciones})
 
 	return writeMultiSheet(sheets)
 }
