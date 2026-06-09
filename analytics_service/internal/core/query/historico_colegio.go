@@ -304,6 +304,16 @@ func (h *DashboardHandler) GetColegiosHistorico(ctx context.Context, in ports.Co
 				// Sin attempts validos en el quarter anterior dejamos
 				// HasPrevious=false y el front no muestra variacion.
 			}
+			// Vocacional/estilos NO son promediables: en vez del puntaje el
+			// cliente pide el "top de elegibles" (el area/estilo mas inclinado
+			// del colegio en el periodo). Solo lo calculamos cuando se filtra
+			// por voca/estilos para no pagar las enriched answers en simulacro.
+			if (in.ExamTypeCode == "vocacional" || in.ExamTypeCode == "habitos") && len(current) > 0 {
+				if code, label := h.topColegioArea(ctx, current); code != "" {
+					row.TopAreaCode = code
+					row.TopAreaLabel = label
+				}
+			}
 			rows[idx] = row
 		}()
 	}

@@ -257,6 +257,8 @@ func (h *AnalyticsHandler) GetColegiosHistorico(ctx context.Context, req *pb.Get
 			Attempts:     r.Attempts,
 			VariationPct: r.VariationPct,
 			HasPrevious:  r.HasPrevious,
+			TopAreaCode:  r.TopAreaCode,
+			TopAreaLabel: r.TopAreaLabel,
 		})
 	}
 	return &pb.ColegiosHistoricoResponse{

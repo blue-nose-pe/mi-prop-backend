@@ -451,6 +451,39 @@ func buildColegioAreas(bm map[string]*areaAgg) []domain.ColegioAreaStat {
 	return out
 }
 
+// topColegioArea agrega las inclinaciones de los attempts dados (vocacional/
+// estilos) y devuelve el area/estilo MAS elegido del colegio (mayor ratio) como
+// (code, label). "" si no hay respuestas categorizadas. Lo usa el historico de
+// colegio para la columna "Top elegibles".
+func (h *DashboardHandler) topColegioArea(ctx context.Context, atts []ports.UpstreamAttempt) (string, string) {
+	bm := map[string]*areaAgg{}
+	for _, a := range atts {
+		answers, err := h.exams.ListEnrichedAnswers(ctx, a.ID)
+		if err != nil {
+			continue
+		}
+		for _, ans := range answers {
+			cat := strings.ToUpper(strings.TrimSpace(ans.QuestionCategory))
+			if cat == "" {
+				continue
+			}
+			ag := bm[cat]
+			if ag == nil {
+				ag = &areaAgg{}
+				bm[cat] = ag
+			}
+			ag.points += ans.OptionSortOrder
+			ag.maxPoints += 3
+		}
+	}
+	areas := buildColegioAreas(bm) // ascendente por ratio
+	if len(areas) == 0 {
+		return "", ""
+	}
+	top := areas[len(areas)-1] // el de mayor inclinacion
+	return top.Code, top.Label
+}
+
 func fullName(u *ports.UpstreamUser) string {
 	if u == nil {
 		return ""

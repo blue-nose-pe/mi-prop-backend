@@ -229,4 +229,9 @@ type ColegiosHistoricoRow struct {
 	Attempts     int32
 	VariationPct float64 // vs periodo anterior; ignorar si HasPrevious=false
 	HasPrevious  bool
+	// TopArea — SOLO vocacional/estilos. La inclinacion/area MAS elegida del
+	// colegio en el periodo (vocacional/estilos no son promediables por
+	// puntaje; el cliente pide ver "el top de elegibles"). Vacio en simulacro.
+	TopAreaCode  string
+	TopAreaLabel string
 }

@@ -510,14 +510,16 @@ func (p *Proxy) getColegiosHistorico(w http.ResponseWriter, r *http.Request) {
 	items := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		items = append(items, map[string]any{
-			"school_id":     it.GetSchoolId(),
-			"school_name":   it.GetSchoolName(),
-			"city":          it.GetCity(),
-			"category":      it.GetCategory(),
-			"avg_score":     it.GetAvgScore(),
-			"attempts":      it.GetAttempts(),
-			"variation_pct": it.GetVariationPct(),
-			"has_previous":  it.GetHasPrevious(),
+			"school_id":      it.GetSchoolId(),
+			"school_name":    it.GetSchoolName(),
+			"city":           it.GetCity(),
+			"category":       it.GetCategory(),
+			"avg_score":      it.GetAvgScore(),
+			"attempts":       it.GetAttempts(),
+			"variation_pct":  it.GetVariationPct(),
+			"has_previous":   it.GetHasPrevious(),
+			"top_area_code":  it.GetTopAreaCode(),
+			"top_area_label": it.GetTopAreaLabel(),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

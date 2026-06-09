@@ -156,6 +156,10 @@ message ColegiosHistoricoRow {
   int32  attempts       = 6;
   double variation_pct  = 7;
   bool   has_previous   = 8;
+  // Solo vocacional/estilos: el area/inclinacion mas elegida del colegio en
+  // el periodo (no promediable por puntaje).
+  string top_area_code  = 9;
+  string top_area_label = 10;
 }
 message ColegiosHistoricoResponse {
   string period         = 1;  // resuelto (no "" ni "current")
