@@ -128,9 +128,13 @@ type TestResult struct {
 	ExamTypeCode string
 	ExamID       ExamID
 	ExamName     string
-	Score        int32
-	MaxScore     int32
-	SubmittedAt  time.Time
+	// AttemptID — necesario para que el front (dashboard del estudiante) pueda
+	// renderizar el result-card por intento: simulacro carga sus answers y
+	// vocacional/estilos su reporte por attempt_id.
+	AttemptID   AttemptID
+	Score       int32
+	MaxScore    int32
+	SubmittedAt time.Time
 }
 
 // ColegioComparativo — agrega métricas de varios colegios para benchmark.

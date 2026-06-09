@@ -83,6 +83,7 @@ message TestResult {
   int32  score          = 4;
   int32  max_score      = 5;
   google.protobuf.Timestamp submitted_at = 6;
+  string attempt_id     = 7;
 }
 message EstudianteDashboardResponse {
   string user_id      = 1;

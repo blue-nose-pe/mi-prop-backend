@@ -284,6 +284,7 @@ func (h *DashboardHandler) GetEstudianteDashboard(ctx context.Context, userID do
 			ExamTypeCode: ex.ExamTypeCode,
 			ExamID:       a.ExamID,
 			ExamName:     ex.Name,
+			AttemptID:    a.ID,
 		}
 		if a.Score != nil {
 			tr.Score = *a.Score
@@ -394,6 +395,7 @@ func (h *DashboardHandler) GetHistoricoEstudiante(ctx context.Context, userID do
 			ExamTypeCode: ex.ExamTypeCode,
 			ExamID:       a.ExamID,
 			ExamName:     ex.Name,
+			AttemptID:    a.ID,
 		}
 		if a.Score != nil {
 			tr.Score = *a.Score

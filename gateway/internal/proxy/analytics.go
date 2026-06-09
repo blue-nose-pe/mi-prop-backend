@@ -677,6 +677,7 @@ func testResultsToJSON(items []*analyticsgrpcpb.TestResult) []map[string]any {
 			"score":          t.GetScore(),
 			"max_score":      t.GetMaxScore(),
 			"submitted_at":   optionalTimestamp(t.GetSubmittedAt()),
+			"attempt_id":     t.GetAttemptId(),
 		})
 	}
 	return out

@@ -339,6 +339,7 @@ func toTestResults(items []domain.TestResult) []*pb.TestResult {
 			Score:        it.Score,
 			MaxScore:     it.MaxScore,
 			SubmittedAt:  timestamppb.New(it.SubmittedAt),
+			AttemptId:    string(it.AttemptID),
 		})
 	}
 	return out
