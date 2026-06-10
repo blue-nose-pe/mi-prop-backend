@@ -287,7 +287,11 @@ func (p *Proxy) getComparativo(w http.ResponseWriter, r *http.Request) {
 
 func (p *Proxy) getEstudianteHistorico(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("id")
-	if !enforceUserScope(r, userID) {
+	// Self / superadmin (enforceUserScope) O un admin/asesor con permiso de
+	// lectura de attempts. Esto habilita la búsqueda por DNI en el histórico:
+	// el cliente (César) pidió ver TODAS las pruebas de un alumno por su DNI,
+	// no solo las propias. Mismo criterio que GET /api/users/{id}/attempts.
+	if !enforceUserScope(r, userID) && !hasPermission(r, "db_exams.exam_attempt.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
 			Status: "error", Code: "FORBIDDEN", Message: "no access to this user's historial",
 		})

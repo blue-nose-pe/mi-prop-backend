@@ -29,10 +29,12 @@ func (h *ExamQuestionHandler) Add(ctx context.Context, in ports.AddExamQuestionI
 		return err
 	}
 	return h.examQuestions.Add(ctx, &domain.ExamQuestion{
-		ExamID:     in.ExamID,
-		QuestionID: in.QuestionID,
-		Points:     in.Points,
-		SortOrder:  in.SortOrder,
+		ExamID:          in.ExamID,
+		QuestionID:      in.QuestionID,
+		Points:          in.Points,
+		SortOrder:       in.SortOrder,
+		PointsIncorrect: in.PointsIncorrect,
+		PointsBlank:     in.PointsBlank,
 	})
 }
 
