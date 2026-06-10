@@ -90,21 +90,54 @@ func (r *SurveyRepo) FindByCodeVersion(ctx context.Context, code string, version
 	return scanSurvey(row)
 }
 
-// FindActivePublished: encuesta publicada+activa aplicable. Prioriza la que
-// esta atada a keyID; si no hay, cae a la generica por trigger_kind (key NULL).
+// FindActivePublished: encuesta publicada+activa aplicable para una key.
+//
+// Modelo key -> survey (tabla survey_key, migration 007): una key usa como
+// mucho UNA encuesta; una encuesta sirve a MUCHAS keys.
+//   1) Si la key tiene una encuesta asignada (survey_key) -> esa (prioridad).
+//   2) Si no, cae a la GENERAL por trigger_kind: una encuesta publicada de ese
+//      tipo que NO este asignada a ninguna key (equivalente al viejo key_id
+//      NULL). Asi una encuesta key-especifica nunca actua de general.
+//
 // Comparamos la key como string (CONVERT a NVARCHAR) para no convertir @p2 a
 // UNIQUEIDENTIFIER cuando viene "" (evita error de conversion).
 func (r *SurveyRepo) FindActivePublished(ctx context.Context, triggerKind, keyID string) (*domain.Survey, error) {
 	const q = `SELECT TOP 1 ` + surveyCols + `
-		FROM survey
-		WHERE published = 1 AND active = 1
+		FROM survey s
+		WHERE s.published = 1 AND s.active = 1
 		  AND (
-		        (key_id IS NOT NULL AND @p2 <> '' AND CONVERT(NVARCHAR(36), key_id) = @p2)
-		     OR (key_id IS NULL AND trigger_kind = @p1)
+		        s.id = (SELECT TOP 1 sk.survey_id FROM survey_key sk
+		                 WHERE @p2 <> '' AND CONVERT(NVARCHAR(36), sk.key_id) = @p2)
+		     OR (
+		          NOT EXISTS (SELECT 1 FROM survey_key sk
+		                       WHERE @p2 <> '' AND CONVERT(NVARCHAR(36), sk.key_id) = @p2)
+		          AND s.trigger_kind = @p1
+		          AND NOT EXISTS (SELECT 1 FROM survey_key sk2 WHERE sk2.survey_id = s.id)
+		        )
 		  )
-		ORDER BY CASE WHEN key_id IS NOT NULL THEN 0 ELSE 1 END, version DESC`
+		ORDER BY
+		  CASE WHEN s.id = (SELECT TOP 1 sk.survey_id FROM survey_key sk
+		                     WHERE @p2 <> '' AND CONVERT(NVARCHAR(36), sk.key_id) = @p2)
+		       THEN 0 ELSE 1 END,
+		  s.version DESC`
 	row := r.db.QueryRowContext(ctx, q, triggerKind, keyID)
 	return scanSurvey(row)
+}
+
+// AssignKeyToSurvey: upsert (key_id -> survey_id) en survey_key. key_id es PK,
+// asi que re-asignar una key a otra encuesta la MUEVE (cambia su survey_id);
+// pero asignar la MISMA encuesta a varias keys crea filas distintas (la
+// encuesta sirve a muchas keys). keyID viene como string uuid.
+func (r *SurveyRepo) AssignKeyToSurvey(ctx context.Context, surveyID domain.SurveyID, keyID string) error {
+	const q = `
+		MERGE dbo.survey_key AS tgt
+		USING (SELECT CONVERT(UNIQUEIDENTIFIER, @p1) AS key_id,
+		              CONVERT(UNIQUEIDENTIFIER, @p2) AS survey_id) AS src
+		   ON tgt.key_id = src.key_id
+		 WHEN MATCHED THEN UPDATE SET survey_id = src.survey_id
+		 WHEN NOT MATCHED THEN INSERT (key_id, survey_id) VALUES (src.key_id, src.survey_id);`
+	_, err := r.db.ExecContext(ctx, q, keyID, string(surveyID))
+	return err
 }
 
 func (r *SurveyRepo) SetPublished(ctx context.Context, id domain.SurveyID, published bool) error {

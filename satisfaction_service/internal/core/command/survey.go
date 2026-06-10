@@ -77,13 +77,18 @@ func (h *SurveyHandler) Update(ctx context.Context, in ports.UpdateSurveyInput) 
 	if v := strings.TrimSpace(in.Trigger); v != "" {
 		s.Trigger = v
 	}
-	// Cliente (2026-06-04): key_id editable. "" = no tocar; "-" = limpiar
-	// (volver a encuesta por tipo de examen). El repo interpreta el "-".
-	if v := strings.TrimSpace(in.KeyID); v != "" {
-		s.KeyID = v
-	}
 	if err := h.surveys.Update(ctx, s); err != nil {
 		return nil, err
+	}
+	// key_id ata ESTA encuesta a una key via la tabla survey_key (modelo
+	// key -> survey, migration 007): muchas keys pueden compartir la misma
+	// encuesta. Un uuid ata; "" = no tocar; "-" (limpiar legacy del modelo
+	// survey.key_id viejo) ya no aplica -> no-op. NO tocamos s.KeyID (columna
+	// legacy deprecada).
+	if v := strings.TrimSpace(in.KeyID); v != "" && v != "-" {
+		if err := h.surveys.AssignKeyToSurvey(ctx, s.ID, v); err != nil {
+			return nil, err
+		}
 	}
 	return s, nil
 }

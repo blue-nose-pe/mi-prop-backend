@@ -16,6 +16,10 @@ type SurveyRepository interface {
 	// keyID != "" y existe una atada a esa key, esa tiene prioridad; si no,
 	// cae a la generica por trigger_kind (sin key). ErrSurveyNotFound si no hay.
 	FindActivePublished(ctx context.Context, triggerKind, keyID string) (*domain.Survey, error)
+	// AssignKeyToSurvey ata una key a esta encuesta (tabla survey_key). Una key
+	// usa como mucho una encuesta (upsert por key_id); una encuesta puede servir
+	// a muchas keys. Reemplaza el survey.key_id de valor unico.
+	AssignKeyToSurvey(ctx context.Context, surveyID domain.SurveyID, keyID string) error
 	SetPublished(ctx context.Context, id domain.SurveyID, published bool) error
 	SetActive(ctx context.Context, id domain.SurveyID, active bool) error
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
