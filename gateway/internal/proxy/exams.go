@@ -415,19 +415,23 @@ func (p *Proxy) listExamQuestions(w http.ResponseWriter, r *http.Request) {
 	out := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
 		out = append(out, map[string]any{
-			"exam_id":     it.GetExamId(),
-			"question_id": it.GetQuestionId(),
-			"points":      it.GetPoints(),
-			"sort_order":  it.GetSortOrder(),
+			"exam_id":          it.GetExamId(),
+			"question_id":      it.GetQuestionId(),
+			"points":           it.GetPoints(),
+			"sort_order":       it.GetSortOrder(),
+			"points_incorrect": it.GetPointsIncorrect(),
+			"points_blank":     it.GetPointsBlank(),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 type addExamQuestionRequest struct {
-	QuestionID string `json:"question_id"`
-	Points     int32  `json:"points"`
-	SortOrder  int32  `json:"sort_order"`
+	QuestionID      string `json:"question_id"`
+	Points          int32  `json:"points"`
+	SortOrder       int32  `json:"sort_order"`
+	PointsIncorrect int32  `json:"points_incorrect"`
+	PointsBlank     int32  `json:"points_blank"`
 }
 
 func (p *Proxy) addExamQuestion(w http.ResponseWriter, r *http.Request) {
@@ -437,10 +441,12 @@ func (p *Proxy) addExamQuestion(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if _, err := p.cli.ExamQs.AddQuestion(r.Context(), &examsgrpcpb.AddExamQuestionRequest{
-		ExamId:     r.PathValue("id"),
-		QuestionId: in.QuestionID,
-		Points:     in.Points,
-		SortOrder:  in.SortOrder,
+		ExamId:          r.PathValue("id"),
+		QuestionId:      in.QuestionID,
+		Points:          in.Points,
+		SortOrder:       in.SortOrder,
+		PointsIncorrect: in.PointsIncorrect,
+		PointsBlank:     in.PointsBlank,
 	}); err != nil {
 		writeGRPCError(w, err)
 		return

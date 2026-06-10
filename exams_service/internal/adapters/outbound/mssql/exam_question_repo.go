@@ -30,11 +30,11 @@ func (r *ExamQuestionRepo) Add(ctx context.Context, eq *domain.ExamQuestion) err
 		return err
 	}
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO exam_question (exam_id, question_id, points, sort_order)
+		INSERT INTO exam_question (exam_id, question_id, points, sort_order, points_incorrect, points_blank)
 		VALUES (CONVERT(UNIQUEIDENTIFIER, @p1),
 		        CONVERT(UNIQUEIDENTIFIER, @p2),
-		        @p3, @p4)`,
-		string(eq.ExamID), string(eq.QuestionID), eq.Points, eq.SortOrder)
+		        @p3, @p4, @p5, @p6)`,
+		string(eq.ExamID), string(eq.QuestionID), eq.Points, eq.SortOrder, eq.PointsIncorrect, eq.PointsBlank)
 	return err
 }
 
@@ -73,7 +73,7 @@ func (r *ExamQuestionRepo) List(ctx context.Context, examID domain.ExamID) ([]do
 	const q = `
 		SELECT CONVERT(NVARCHAR(36), exam_id),
 		       CONVERT(NVARCHAR(36), question_id),
-		       points, sort_order
+		       points, sort_order, points_incorrect, points_blank
 		  FROM exam_question
 		 WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)
 		 ORDER BY sort_order ASC`
@@ -90,7 +90,7 @@ func (r *ExamQuestionRepo) List(ctx context.Context, examID domain.ExamID) ([]do
 			examIDStr  string
 			questionID string
 		)
-		if err := rows.Scan(&examIDStr, &questionID, &eq.Points, &eq.SortOrder); err != nil {
+		if err := rows.Scan(&examIDStr, &questionID, &eq.Points, &eq.SortOrder, &eq.PointsIncorrect, &eq.PointsBlank); err != nil {
 			return nil, err
 		}
 		eq.ExamID = domain.ExamID(examIDStr)
@@ -104,8 +104,8 @@ func (r *ExamQuestionRepo) List(ctx context.Context, examID domain.ExamID) ([]do
 // distintos exámenes; usado al clonar para versionar).
 func (r *ExamQuestionRepo) CloneInto(ctx context.Context, src, dst domain.ExamID) error {
 	const q = `
-		INSERT INTO exam_question (exam_id, question_id, points, sort_order)
-		SELECT CONVERT(UNIQUEIDENTIFIER, @p2), question_id, points, sort_order
+		INSERT INTO exam_question (exam_id, question_id, points, sort_order, points_incorrect, points_blank)
+		SELECT CONVERT(UNIQUEIDENTIFIER, @p2), question_id, points, sort_order, points_incorrect, points_blank
 		  FROM exam_question
 		 WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)`
 	_, err := r.db.ExecContext(ctx, q, string(src), string(dst))

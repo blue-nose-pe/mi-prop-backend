@@ -112,8 +112,13 @@ type QuestionOption struct {
 type ExamQuestion struct {
 	ExamID     ExamID
 	QuestionID QuestionID
-	Points     int32
-	SortOrder  int32
+	Points     int32 // puntaje por respuesta CORRECTA
+	// PointsIncorrect/PointsBlank — scoring fiel a prod (migration 015). En el
+	// simulacro UCSP: incorrecta 0, EN BLANCO +1. v2 no tiene módulos: cada
+	// pregunta lleva su trío heredado del módulo de origen al importar.
+	PointsIncorrect int32
+	PointsBlank     int32
+	SortOrder       int32
 }
 
 // ExamAttempt — sesión de un user contra un exam.

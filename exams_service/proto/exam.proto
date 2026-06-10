@@ -107,10 +107,12 @@ message QuestionOption {
 }
 
 message ExamQuestion {
-  string exam_id     = 1;
-  string question_id = 2;
-  int32  points      = 3;
-  int32  sort_order  = 4;
+  string exam_id          = 1;
+  string question_id      = 2;
+  int32  points           = 3;
+  int32  sort_order       = 4;
+  int32  points_incorrect = 5;
+  int32  points_blank     = 6;
 }
 
 message Attempt {
@@ -177,10 +179,12 @@ message OptionResponse      { QuestionOption option = 1; }
 
 // ----- ExamQuestion requests -----
 message AddExamQuestionRequest {
-  string exam_id     = 1;
-  string question_id = 2;
-  int32  points      = 3;
-  int32  sort_order  = 4;
+  string exam_id          = 1;
+  string question_id      = 2;
+  int32  points           = 3;
+  int32  sort_order       = 4;
+  int32  points_incorrect = 5;
+  int32  points_blank     = 6;
 }
 message RemoveExamQuestionRequest { string exam_id = 1; string question_id = 2; }
 message ReorderRequest            { string exam_id = 1; repeated string question_ids = 2; }

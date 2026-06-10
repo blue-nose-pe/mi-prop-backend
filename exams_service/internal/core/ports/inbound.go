@@ -108,10 +108,12 @@ type ExamQuestionQueries interface {
 }
 
 type AddExamQuestionInput struct {
-	ExamID     domain.ExamID
-	QuestionID domain.QuestionID
-	Points     int32
-	SortOrder  int32
+	ExamID          domain.ExamID
+	QuestionID      domain.QuestionID
+	Points          int32 // por correcta
+	PointsIncorrect int32
+	PointsBlank     int32
+	SortOrder       int32
 }
 
 // =============== ATTEMPT ===============

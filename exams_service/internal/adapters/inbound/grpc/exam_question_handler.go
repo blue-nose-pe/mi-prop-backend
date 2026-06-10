@@ -22,10 +22,12 @@ func NewExamQuestionHandler(cmds ports.ExamQuestionCommands, qrys ports.ExamQues
 
 func (h *ExamQuestionHandler) AddQuestion(ctx context.Context, req *pb.AddExamQuestionRequest) (*pb.EmptyResponse, error) {
 	err := h.cmds.Add(ctx, ports.AddExamQuestionInput{
-		ExamID:     domain.ExamID(req.GetExamId()),
-		QuestionID: domain.QuestionID(req.GetQuestionId()),
-		Points:     req.GetPoints(),
-		SortOrder:  req.GetSortOrder(),
+		ExamID:          domain.ExamID(req.GetExamId()),
+		QuestionID:      domain.QuestionID(req.GetQuestionId()),
+		Points:          req.GetPoints(),
+		SortOrder:       req.GetSortOrder(),
+		PointsIncorrect: req.GetPointsIncorrect(),
+		PointsBlank:     req.GetPointsBlank(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -60,10 +62,12 @@ func (h *ExamQuestionHandler) ListByExam(ctx context.Context, req *pb.ListByExam
 	out := &pb.ListByExamResponse{Items: make([]*pb.ExamQuestion, 0, len(items))}
 	for _, eq := range items {
 		out.Items = append(out.Items, &pb.ExamQuestion{
-			ExamId:     string(eq.ExamID),
-			QuestionId: string(eq.QuestionID),
-			Points:     eq.Points,
-			SortOrder:  eq.SortOrder,
+			ExamId:          string(eq.ExamID),
+			QuestionId:      string(eq.QuestionID),
+			Points:          eq.Points,
+			SortOrder:       eq.SortOrder,
+			PointsIncorrect: eq.PointsIncorrect,
+			PointsBlank:     eq.PointsBlank,
 		})
 	}
 	return out, nil

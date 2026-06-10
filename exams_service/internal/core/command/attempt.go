@@ -203,10 +203,9 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 		return nil, err
 	}
 
-	pointsByQuestion := make(map[domain.QuestionID]int32, len(eqs))
+	// maxScore = mejor caso (todas correctas) = Σ points por correcta.
 	maxScore := int32(0)
 	for _, eq := range eqs {
-		pointsByQuestion[eq.QuestionID] = eq.Points
 		maxScore += eq.Points
 	}
 
@@ -226,26 +225,40 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 			answersByQuestion[a.QuestionID] = append(answersByQuestion[a.QuestionID], a)
 		}
 
-		// Cargar el kind de cada question una sola vez (cache en mapa).
-		// Por question_id resolvemos via repo.questions.FindByID.
-		for qid, ansRows := range answersByQuestion {
+		// Scoring fiel a prod (migration 015): iteramos TODAS las preguntas del
+		// exam (no solo las respondidas) porque el EN BLANCO también puntúa
+		// (UCSP: blanco +1). Por pregunta: correcta → Points, incorrecta →
+		// PointsIncorrect, en blanco → PointsBlank.
+		for _, eq := range eqs {
+			qid := eq.QuestionID
 			q, err := h.questions.FindByID(ctx, qid)
 			if err != nil {
 				return nil, err
+			}
+			// SCALE/OpenText no tienen scoring académico (Likert / corrección
+			// manual); tampoco aplica "en blanco".
+			if q.Kind == domain.QuestionKindScale || q.Kind == domain.QuestionKindOpenText {
+				continue
+			}
+			ansRows := answersByQuestion[qid]
+			markedAny := false
+			for _, a := range ansRows {
+				if a.OptionID != "" {
+					markedAny = true
+					break
+				}
+			}
+			if !markedAny {
+				score += eq.PointsBlank // EN BLANCO
+				continue
 			}
 			opts, err := h.options.ListByQuestion(ctx, qid)
 			if err != nil {
 				return nil, err
 			}
-			pts := pointsByQuestion[qid]
+			correct := false
 			switch q.Kind {
-			case domain.QuestionKindScale, domain.QuestionKindOpenText:
-				// No tienen scoring automatico — escala Likert es para
-				// reporting psicometrico; open text se corrige a mano.
-				continue
 			case domain.QuestionKindMultipleChoice:
-				// Full points si el alumno marco EXACTAMENTE las opciones
-				// correctas (set-match exacto).
 				correctSet := make(map[domain.OptionID]struct{})
 				for _, o := range opts {
 					if o.IsCorrect {
@@ -259,30 +272,28 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 					}
 				}
 				if len(correctSet) > 0 && len(correctSet) == len(markedSet) {
-					ok := true
+					correct = true
 					for id := range correctSet {
 						if _, present := markedSet[id]; !present {
-							ok = false
+							correct = false
 							break
 						}
 					}
-					if ok {
-						score += pts
-					}
 				}
 			default:
-				// SINGLE_CHOICE / TRUE_FALSE / kind vacio (back-compat) →
-				// 1 fila esperada; cuenta el primer option_id marcado.
-				if len(ansRows) == 0 {
-					continue
-				}
+				// SINGLE_CHOICE / TRUE_FALSE / kind vacío → 1ra opción marcada.
 				marked := ansRows[0].OptionID
 				for _, o := range opts {
 					if o.ID == marked && o.IsCorrect {
-						score += pts
+						correct = true
 						break
 					}
 				}
+			}
+			if correct {
+				score += eq.Points
+			} else {
+				score += eq.PointsIncorrect
 			}
 		}
 	}
