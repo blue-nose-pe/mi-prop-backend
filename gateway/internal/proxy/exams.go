@@ -731,8 +731,11 @@ func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {
 // para que el front compute correctas/incorrectas + render por modulo
 // sin volver a tocar el banco de preguntas.
 func (p *Proxy) listAttemptAnswers(w http.ResponseWriter, r *http.Request) {
-	// Bug 1 fix: solo dueño del attempt (o superadmin) ve las respuestas.
-	if !p.callerOwnsAttempt(r) {
+	// Dueño del attempt / superadmin, O un admin/asesor con permiso de lectura
+	// de attempts. Esto último es necesario para que el result-card del admin
+	// muestre las correctas/incorrectas/en-blanco REALES (de las respuestas),
+	// no inferidas de score/5 — que con el blanco=+1 quedaban infladas.
+	if !p.callerOwnsAttempt(r) && !hasPermission(r, "db_exams.exam_attempt.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
 			Status: "error", Code: "FORBIDDEN", Message: "attempt belongs to another user",
 		})
