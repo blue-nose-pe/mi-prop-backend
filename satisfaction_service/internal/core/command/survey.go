@@ -51,7 +51,17 @@ func (h *SurveyHandler) Update(ctx context.Context, in ports.UpdateSurveyInput) 
 	if err != nil {
 		return nil, err
 	}
-	if s.Published {
+	// El bloqueo "published no editable" protege el CONTENIDO (titulo,
+	// descripcion, trigger, preguntas) para no mutar la version que los
+	// alumnos estan respondiendo. PERO key_id es TARGETING (a que key se
+	// dirige la encuesta), no contenido: debe poder cambiarse aun publicada.
+	// El flujo "elegir encuesta al crear la key" ata una encuesta PUBLICADA
+	// a la nueva key; sin esta excepcion el PATCH daba 403 SURVEY_LOCKED y la
+	// encuesta nunca quedaba atada (el front lo hace fire-and-forget).
+	editsContent := strings.TrimSpace(in.Title) != "" ||
+		in.Description != "" ||
+		strings.TrimSpace(in.Trigger) != ""
+	if s.Published && editsContent {
 		return nil, domain.ErrCannotEditPublished
 	}
 	if v := strings.TrimSpace(in.Title); v != "" {
