@@ -16,6 +16,8 @@
 package proxy
 
 import (
+	examsgrpcpb "exams_service/proto/gen"
+	keysgrpcpb "keys_service/proto/gen"
 	"net/http"
 	"sync"
 	"time"
@@ -304,9 +306,39 @@ func (p *Proxy) getEstudianteHistorico(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+	items := testResultsToJSON(resp.GetItems())
+	// Enriquecer cada item con el CODIGO de la key usada (cliente: el portal
+	// del alumno mostraba "KEY —"). El historico de analytics no transporta
+	// key_id, asi que lo resolvemos aqui igual que grade-history: attempts
+	// del user (exams) -> key_id -> GetKey (keys, con cache). Best-effort:
+	// si algo falla, el item queda sin key_code y el card muestra el guion.
+	if attemptsResp, aerr := p.cli.Attempts.ListByUser(r.Context(), &examsgrpcpb.ListAttemptsByUserRequest{UserId: userID}); aerr == nil {
+		keyIDByAttempt := map[string]string{}
+		for _, a := range attemptsResp.GetItems() {
+			keyIDByAttempt[a.GetId()] = a.GetKeyId()
+		}
+		keyCodeCache := map[string]string{}
+		for _, it := range items {
+			attemptID, _ := it["attempt_id"].(string)
+			keyID := keyIDByAttempt[attemptID]
+			if keyID == "" {
+				continue
+			}
+			code, ok := keyCodeCache[keyID]
+			if !ok {
+				if kr, kerr := p.cli.Keys.GetKey(r.Context(), &keysgrpcpb.GetKeyRequest{Id: keyID}); kerr == nil {
+					code = kr.GetKey().GetCode()
+				}
+				keyCodeCache[keyID] = code
+			}
+			if code != "" {
+				it["key_code"] = code
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":      resp.GetUserId(),
-		"items":        testResultsToJSON(resp.GetItems()),
+		"items":        items,
 		"generated_at": optionalTimestamp(resp.GetGeneratedAt()),
 	})
 }
