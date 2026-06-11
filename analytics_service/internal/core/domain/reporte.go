@@ -57,11 +57,16 @@ type AreaInteresMatch struct {
 	MaxPoints       int32
 }
 
-// ReportSection es el sobre genérico para secciones que aún no tienen
-// rúbrica implementada. Cuando UCSP entregue la rúbrica de cada una
-// (personalidad, apoyo familiar, proyecto de vida) se reemplaza este
-// stub por un tipo concreto.
+// ReportSection es el sobre de una sección del reporte. Para Personalidad
+// (carácter Le Senne), Apoyo Familiar (banda) y Proyecto de Vida
+// (sub-dimensiones) lleva el resultado textual (ResultLabel/ResultDetail)
+// y las barras por dimensión (Items). Available=false + Reason cuando la
+// sección no se pudo computar (sin respuestas de ese módulo).
 type ReportSection struct {
-	Available bool
-	Reason    string
+	Available    bool
+	Reason       string
+	ResultCode   string         // ej "SANGUINEO", banda familiar...
+	ResultLabel  string         // título legible del resultado
+	ResultDetail string         // descripción larga (HTML del modelo de prod)
+	Items        []CategoryStat // barras por dimensión (puntos x/max)
 }

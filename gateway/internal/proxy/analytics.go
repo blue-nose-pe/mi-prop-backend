@@ -461,9 +461,22 @@ func (p *Proxy) getReporteEstudiante(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	section := func(s *analyticsgrpcpb.ReportSection) map[string]any {
+		items := make([]map[string]any, 0, len(s.GetItems()))
+		for _, it := range s.GetItems() {
+			items = append(items, map[string]any{
+				"code":       it.GetCode(),
+				"label":      it.GetLabel(),
+				"points":     it.GetPoints(),
+				"max_points": it.GetMaxPoints(),
+			})
+		}
 		return map[string]any{
-			"available": s.GetAvailable(),
-			"reason":    s.GetReason(),
+			"available":     s.GetAvailable(),
+			"reason":        s.GetReason(),
+			"result_code":   s.GetResultCode(),
+			"result_label":  s.GetResultLabel(),
+			"result_detail": s.GetResultDetail(),
+			"items":         items,
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

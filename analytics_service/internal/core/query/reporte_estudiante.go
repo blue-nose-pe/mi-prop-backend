@@ -172,28 +172,20 @@ func (h *DashboardHandler) GetReporteEstudiante(ctx context.Context, in ports.Re
 	exam := examRes.exam
 	answers := ansResVal.answers
 
+	areas, personalidad, apoyo, proyecto := buildVocacional(answers)
 	rep := &domain.ReporteEstudiante{
-		UserID:       in.UserID,
-		StudentName:  fullName(user),
-		AttemptID:    attempt.ID,
-		ExamID:       attempt.ExamID,
-		ExamName:     exam.Name,
-		ExamTypeCode: exam.ExamTypeCode,
-		SubmittedAt:  attempt.SubmittedAt,
-		AreasInteres: buildAreasInteres(answers),
-		Personalidad: domain.ReportSection{
-			Available: false,
-			Reason:    "Pendiente: requiere el cuestionario y rúbrica de personalidad (modelo de 4 temperamentos) que aportará UCSP.",
-		},
-		ApoyoFamiliar: domain.ReportSection{
-			Available: false,
-			Reason:    "Pendiente: requiere un cuestionario de relaciones familiares y la rúbrica 0..5 que aportará UCSP.",
-		},
-		ProyectoDeVida: domain.ReportSection{
-			Available: false,
-			Reason:    "Pendiente: requiere el cuestionario de Proyecto de Vida (autoconocimiento, información, preparación, presupuesto, vocación) y su rúbrica.",
-		},
-		GeneratedAt: time.Now().UTC(),
+		UserID:         in.UserID,
+		StudentName:    fullName(user),
+		AttemptID:      attempt.ID,
+		ExamID:         attempt.ExamID,
+		ExamName:       exam.Name,
+		ExamTypeCode:   exam.ExamTypeCode,
+		SubmittedAt:    attempt.SubmittedAt,
+		AreasInteres:   areas,
+		Personalidad:   personalidad,
+		ApoyoFamiliar:  apoyo,
+		ProyectoDeVida: proyecto,
+		GeneratedAt:    time.Now().UTC(),
 	}
 	if attempt.Score != nil {
 		rep.Score = *attempt.Score
@@ -296,6 +288,168 @@ func buildAreasInteres(answers []ports.UpstreamEnrichedAnswer) domain.AreasInter
 		Available: true,
 		Scores:    stats,
 		Top:       top,
+	}
+}
+
+// buildVocacional arma las 4 secciones del reporte TIV. Detecta el encoding
+// fiel "M{n}:{dim}" (modelo de prod); si las categorías son RIASEC legacy
+// (R/I/A/S/E/C) cae al cálculo anterior y deja las otras 3 como pendientes.
+func buildVocacional(answers []ports.UpstreamEnrichedAnswer) (domain.AreasInteresSection, domain.ReportSection, domain.ReportSection, domain.ReportSection) {
+	isTIV := false
+	for _, a := range answers {
+		c := strings.ToUpper(strings.TrimSpace(a.QuestionCategory))
+		if strings.HasPrefix(c, "M") && strings.Contains(c, ":") {
+			isTIV = true
+			break
+		}
+	}
+	if !isTIV {
+		return buildAreasInteres(answers),
+			pendiente("Pendiente: requiere el cuestionario y rúbrica de personalidad."),
+			pendiente("Pendiente: requiere el cuestionario de apoyo familiar."),
+			pendiente("Pendiente: requiere el cuestionario de Proyecto de Vida.")
+	}
+
+	// Agregar puntos + máximo por dimensión (el módulo define el peso máximo).
+	type bucket struct{ points, max int32 }
+	dims := map[string]*bucket{}
+	for _, a := range answers {
+		c := strings.ToUpper(strings.TrimSpace(a.QuestionCategory))
+		mod, dim, ok := splitCat(c)
+		if !ok {
+			continue
+		}
+		b := dims[dim]
+		if b == nil {
+			b = &bucket{}
+			dims[dim] = b
+		}
+		b.points += a.OptionSortOrder
+		b.max += vocMaxWeight[mod]
+	}
+	get := func(d string) (int32, int32, bool) {
+		if b := dims[d]; b != nil {
+			return b.points, b.max, true
+		}
+		return 0, 0, false
+	}
+	return buildInteresTIV(get), buildPersonalidadTIV(get), buildApoyoTIV(get), buildProyectoTIV(get)
+}
+
+func splitCat(c string) (mod, dim string, ok bool) {
+	i := strings.IndexByte(c, ':')
+	if i <= 0 || i >= len(c)-1 {
+		return "", "", false
+	}
+	return c[:i], c[i+1:], true
+}
+
+func pendiente(reason string) domain.ReportSection {
+	return domain.ReportSection{Available: false, Reason: reason}
+}
+
+// ratioHigh: true si el puntaje supera el 50% del máximo (umbral binario de
+// los ejes de Le Senne: EMOTIVO/ACTIVO/SECUNDARIO).
+func ratioHigh(p, m int32) bool { return m > 0 && float64(p) > float64(m)/2.0 }
+
+// buildInteresTIV: áreas de interés (módulo 3) + top 3 con carreras.
+func buildInteresTIV(get func(string) (int32, int32, bool)) domain.AreasInteresSection {
+	scores := map[string]domain.CategoryStat{}
+	type rk struct {
+		code         string
+		points, max  int32
+	}
+	var ranks []rk
+	for _, d := range vocInteresDims {
+		p, m, ok := get(d)
+		if !ok {
+			continue
+		}
+		scores[d] = domain.CategoryStat{Code: d, Label: vocDimLabel[d], Points: p, MaxPoints: m}
+		ranks = append(ranks, rk{d, p, m})
+	}
+	if len(ranks) == 0 {
+		return domain.AreasInteresSection{Available: false, Reason: "Sin respuestas del módulo de intereses."}
+	}
+	sort.Slice(ranks, func(i, j int) bool {
+		if ranks[i].points != ranks[j].points {
+			return ranks[i].points > ranks[j].points
+		}
+		return ranks[i].code < ranks[j].code
+	})
+	top := make([]domain.AreaInteresMatch, 0, topAreasN)
+	for i := 0; i < len(ranks) && i < topAreasN; i++ {
+		r := ranks[i]
+		info := vocInteres[r.code]
+		top = append(top, domain.AreaInteresMatch{
+			Code:            r.code,
+			Label:           vocDimLabel[r.code],
+			AreaLabel:       strings.ToUpper(vocDimLabel[r.code]),
+			Characteristics: info.characteristics,
+			Careers:         info.careers,
+			Points:          r.points,
+			MaxPoints:       r.max,
+		})
+	}
+	return domain.AreasInteresSection{Available: true, Scores: scores, Top: top}
+}
+
+// buildPersonalidadTIV: carácter Le Senne (módulo 1).
+func buildPersonalidadTIV(get func(string) (int32, int32, bool)) domain.ReportSection {
+	ep, em, eok := get("EMOTIVIDAD")
+	ap, am, aok := get("ACTIVIDAD")
+	rp, rm, rok := get("RESONANCIA")
+	if !eok && !aok && !rok {
+		return pendiente("Sin respuestas del módulo de personalidad.")
+	}
+	ch := leSenne(ratioHigh(ep, em), ratioHigh(ap, am), ratioHigh(rp, rm))
+	return domain.ReportSection{
+		Available:    true,
+		ResultCode:   ch.code,
+		ResultLabel:  ch.label,
+		ResultDetail: ch.detail,
+		Items: []domain.CategoryStat{
+			{Code: "EMOTIVIDAD", Label: vocDimLabel["EMOTIVIDAD"], Points: ep, MaxPoints: em},
+			{Code: "ACTIVIDAD", Label: vocDimLabel["ACTIVIDAD"], Points: ap, MaxPoints: am},
+			{Code: "RESONANCIA", Label: vocDimLabel["RESONANCIA"], Points: rp, MaxPoints: rm},
+		},
+	}
+}
+
+// buildApoyoTIV: banda de apoyo familiar (módulo 2).
+func buildApoyoTIV(get func(string) (int32, int32, bool)) domain.ReportSection {
+	p, m, ok := get("FAMILIAR")
+	if !ok {
+		return pendiente("Sin respuestas del módulo de apoyo familiar.")
+	}
+	code, label, detail := familiaBand(p, m)
+	return domain.ReportSection{
+		Available:    true,
+		ResultCode:   code,
+		ResultLabel:  label,
+		ResultDetail: detail,
+		Items:        []domain.CategoryStat{{Code: "FAMILIAR", Label: vocDimLabel["FAMILIAR"], Points: p, MaxPoints: m}},
+	}
+}
+
+// buildProyectoTIV: 5 sub-dimensiones del proyecto de vida (módulo 4).
+func buildProyectoTIV(get func(string) (int32, int32, bool)) domain.ReportSection {
+	items := []domain.CategoryStat{}
+	for _, d := range vocProyectoDims {
+		p, m, ok := get(d)
+		if !ok {
+			continue
+		}
+		items = append(items, domain.CategoryStat{Code: d, Label: vocDimLabel[d], Points: p, MaxPoints: m})
+	}
+	if len(items) == 0 {
+		return pendiente("Sin respuestas del módulo de proyecto de vida.")
+	}
+	return domain.ReportSection{
+		Available:    true,
+		ResultLabel:  "Tu Proyecto de Vida",
+		ResultDetail: "Tu nivel de avance en cada aspecto de tu proyecto de vida. Mientras más alto, más definido lo tienes.",
+		Items:        items,
 	}
 }
 

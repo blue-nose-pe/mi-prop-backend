@@ -199,11 +199,18 @@ message AreasInteresSection {
   repeated AreaInteresMatch top     = 4;
 }
 
-// ReportSection es el sobre para secciones con rubrica pendiente
-// (personalidad, apoyo familiar, proyecto de vida).
+// ReportSection: sobre de una seccion del reporte vocacional. Ademas de
+// los modulos de interes (AreasInteresSection), las secciones Personalidad
+// (caracter Le Senne), Apoyo Familiar (banda) y Proyecto de Vida (sub-
+// dimensiones) usan este tipo: result_label/result_detail llevan el
+// resultado textual y items[] las barras por dimension.
 message ReportSection {
   bool   available = 1;
   string reason    = 2;
+  string result_code   = 3; // ej "SANGUINEO", "FELICIDADES", banda...
+  string result_label  = 4; // titulo legible del resultado
+  string result_detail = 5; // descripcion larga (puede traer HTML del modelo)
+  repeated CategoryStat items = 6; // barras por dimension (puntos x/max)
 }
 
 // ----- Pendientes del asesor -----

@@ -196,16 +196,36 @@ func (h *AnalyticsHandler) GetReporteEstudiante(ctx context.Context, req *pb.Get
 		ExamTypeCode: r.ExamTypeCode,
 		Score:        r.Score,
 		MaxScore:     r.MaxScore,
-		AreasInteres: toAreasInteres(r.AreasInteres),
-		Personalidad: &pb.ReportSection{Available: r.Personalidad.Available, Reason: r.Personalidad.Reason},
-		ApoyoFamiliar: &pb.ReportSection{Available: r.ApoyoFamiliar.Available, Reason: r.ApoyoFamiliar.Reason},
-		ProyectoDeVida: &pb.ReportSection{Available: r.ProyectoDeVida.Available, Reason: r.ProyectoDeVida.Reason},
-		GeneratedAt:  timestamppb.New(r.GeneratedAt),
+		AreasInteres:   toAreasInteres(r.AreasInteres),
+		Personalidad:   toReportSection(r.Personalidad),
+		ApoyoFamiliar:  toReportSection(r.ApoyoFamiliar),
+		ProyectoDeVida: toReportSection(r.ProyectoDeVida),
+		GeneratedAt:    timestamppb.New(r.GeneratedAt),
 	}
 	if r.SubmittedAt != nil {
 		out.SubmittedAt = timestamppb.New(*r.SubmittedAt)
 	}
 	return out, nil
+}
+
+func toReportSection(s domain.ReportSection) *pb.ReportSection {
+	items := make([]*pb.CategoryStat, 0, len(s.Items))
+	for _, it := range s.Items {
+		items = append(items, &pb.CategoryStat{
+			Code:      it.Code,
+			Label:     it.Label,
+			Points:    it.Points,
+			MaxPoints: it.MaxPoints,
+		})
+	}
+	return &pb.ReportSection{
+		Available:    s.Available,
+		Reason:       s.Reason,
+		ResultCode:   s.ResultCode,
+		ResultLabel:  s.ResultLabel,
+		ResultDetail: s.ResultDetail,
+		Items:        items,
+	}
 }
 
 func toAreasInteres(s domain.AreasInteresSection) *pb.AreasInteresSection {
