@@ -172,7 +172,7 @@ func (h *DashboardHandler) GetReporteEstudiante(ctx context.Context, in ports.Re
 	exam := examRes.exam
 	answers := ansResVal.answers
 
-	areas, personalidad, apoyo, proyecto := buildVocacional(answers)
+	areas, personalidad, apoyo, proyecto := buildVocacional(exam.ExamTypeCode, answers)
 	rep := &domain.ReporteEstudiante{
 		UserID:         in.UserID,
 		StudentName:    fullName(user),
@@ -198,9 +198,9 @@ func (h *DashboardHandler) GetReporteEstudiante(ctx context.Context, in ports.Re
 
 // buildAreasInteres acumula sort_order por categoria y arma el top N.
 //
-// El "max points" por categoria es N preguntas de esa categoria * peso
-// maximo (asumimos 3 = "Mucho", consistente con los seeds del demo).
-func buildAreasInteres(answers []ports.UpstreamEnrichedAnswer) domain.AreasInteresSection {
+// El "max points" por categoria es N preguntas de esa categoria * maxWeight
+// (3 = "Mucho" en la escala demo/legacy; 1 en EDA prod, que es binaria).
+func buildAreasInteres(answers []ports.UpstreamEnrichedAnswer, maxWeight int32) domain.AreasInteresSection {
 	if len(answers) == 0 {
 		return domain.AreasInteresSection{
 			Available: false,
@@ -228,11 +228,10 @@ func buildAreasInteres(answers []ports.UpstreamEnrichedAnswer) domain.AreasInter
 			buckets[cat] = b
 		}
 		b.points += a.OptionSortOrder
-		// Asumimos escala 0..3 (Nada/Poco/Bastante/Mucho). Si en el futuro
-		// alguna pregunta tiene mas opciones, esto subestima maxPoints; el
-		// porcentaje saldria > 100. Es preferible esa pequena imprecision
-		// a hacer una query extra por opciones.
-		b.maxPoints += 3
+		// maxWeight = peso de la opcion mas alta de la escala. Si alguna
+		// pregunta tuviera mas opciones, esto subestima maxPoints; es
+		// preferible esa imprecision a una query extra por opciones.
+		b.maxPoints += maxWeight
 		b.questions++
 	}
 
@@ -294,7 +293,9 @@ func buildAreasInteres(answers []ports.UpstreamEnrichedAnswer) domain.AreasInter
 // buildVocacional arma las 4 secciones del reporte TIV. Detecta el encoding
 // fiel "M{n}:{dim}" (modelo de prod); si las categorías son RIASEC legacy
 // (R/I/A/S/E/C) cae al cálculo anterior y deja las otras 3 como pendientes.
-func buildVocacional(answers []ports.UpstreamEnrichedAnswer) (domain.AreasInteresSection, domain.ReportSection, domain.ReportSection, domain.ReportSection) {
+// Para "habitos" (Estilos/EDA, escala binaria 0/1 de prod) el max por
+// pregunta es 1, no 3 — sin esto los denominadores salen x/15 en vez de x/5.
+func buildVocacional(examTypeCode string, answers []ports.UpstreamEnrichedAnswer) (domain.AreasInteresSection, domain.ReportSection, domain.ReportSection, domain.ReportSection) {
 	isTIV := false
 	for _, a := range answers {
 		c := strings.ToUpper(strings.TrimSpace(a.QuestionCategory))
@@ -304,7 +305,11 @@ func buildVocacional(answers []ports.UpstreamEnrichedAnswer) (domain.AreasIntere
 		}
 	}
 	if !isTIV {
-		return buildAreasInteres(answers),
+		maxWeight := int32(3) // escala demo/legacy Nada..Mucho
+		if examTypeCode == "habitos" {
+			maxWeight = 1 // EDA prod: el alumno marca si se identifica (0/1)
+		}
+		return buildAreasInteres(answers, maxWeight),
 			pendiente("Pendiente: requiere el cuestionario y rúbrica de personalidad."),
 			pendiente("Pendiente: requiere el cuestionario de apoyo familiar."),
 			pendiente("Pendiente: requiere el cuestionario de Proyecto de Vida.")
