@@ -204,6 +204,11 @@ message AreasInteresSection {
 // (caracter Le Senne), Apoyo Familiar (banda) y Proyecto de Vida (sub-
 // dimensiones) usan este tipo: result_label/result_detail llevan el
 // resultado textual y items[] las barras por dimension.
+message ReportBlock {
+  string title = 1; // ej "Potencialidades", "Perfil Académico"
+  string text  = 2;
+}
+
 message ReportSection {
   bool   available = 1;
   string reason    = 2;
@@ -211,6 +216,9 @@ message ReportSection {
   string result_label  = 4; // titulo legible del resultado
   string result_detail = 5; // descripcion larga (puede traer HTML del modelo)
   repeated CategoryStat items = 6; // barras por dimension (puntos x/max)
+  // Bloques de texto del modelo (carácter Le Senne: Potencialidades /
+  // Oportunidades de Mejora / Perfil Académico / Recomendaciones).
+  repeated ReportBlock blocks = 7;
 }
 
 // ----- Pendientes del asesor -----

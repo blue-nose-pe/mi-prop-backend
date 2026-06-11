@@ -470,6 +470,13 @@ func (p *Proxy) getReporteEstudiante(w http.ResponseWriter, r *http.Request) {
 				"max_points": it.GetMaxPoints(),
 			})
 		}
+		blocks := make([]map[string]any, 0, len(s.GetBlocks()))
+		for _, b := range s.GetBlocks() {
+			blocks = append(blocks, map[string]any{
+				"title": b.GetTitle(),
+				"text":  b.GetText(),
+			})
+		}
 		return map[string]any{
 			"available":     s.GetAvailable(),
 			"reason":        s.GetReason(),
@@ -477,6 +484,7 @@ func (p *Proxy) getReporteEstudiante(w http.ResponseWriter, r *http.Request) {
 			"result_label":  s.GetResultLabel(),
 			"result_detail": s.GetResultDetail(),
 			"items":         items,
+			"blocks":        blocks,
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

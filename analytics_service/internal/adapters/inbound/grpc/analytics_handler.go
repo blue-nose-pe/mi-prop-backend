@@ -218,6 +218,10 @@ func toReportSection(s domain.ReportSection) *pb.ReportSection {
 			MaxPoints: it.MaxPoints,
 		})
 	}
+	blocks := make([]*pb.ReportBlock, 0, len(s.Blocks))
+	for _, b := range s.Blocks {
+		blocks = append(blocks, &pb.ReportBlock{Title: b.Title, Text: b.Text})
+	}
 	return &pb.ReportSection{
 		Available:    s.Available,
 		Reason:       s.Reason,
@@ -225,6 +229,7 @@ func toReportSection(s domain.ReportSection) *pb.ReportSection {
 		ResultLabel:  s.ResultLabel,
 		ResultDetail: s.ResultDetail,
 		Items:        items,
+		Blocks:       blocks,
 	}
 }
 

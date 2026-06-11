@@ -110,15 +110,21 @@ func familiaBand(points, max int32) (code, label, detail string) {
 	if max > 0 {
 		pct = float64(points) / float64(max)
 	}
+	textOr := func(code, fallback string) string {
+		if t := familiaText[code]; t != "" {
+			return t
+		}
+		return fallback
+	}
 	switch {
 	case pct >= 0.8:
 		return "FELICIDADES", "¡Felicidades! Vas por buen camino",
-			"Tu entorno familiar muestra una comunicación y un acompañamiento saludables respecto a tus intereses vocacionales."
+			textOr("FELICIDADES", "Tu entorno familiar muestra una comunicación y un acompañamiento saludables respecto a tus intereses vocacionales.")
 	case pct >= 0.5:
 		return "ALERTA", "¡Vaya! Parece que algo no anda bien",
-			"Hay aspectos de la comunicación familiar sobre tu vocación que conviene reforzar y conversar con más apertura."
+			textOr("ALERTA", "Hay aspectos de la comunicación familiar sobre tu vocación que conviene reforzar y conversar con más apertura.")
 	default:
 		return "PELIGRO", "¡Peligro! Hay aspectos que trabajar",
-			"La comunicación familiar respecto a tus intereses vocacionales necesita atención. Busca espacios de diálogo y apoyo."
+			textOr("PELIGRO", "La comunicación familiar respecto a tus intereses vocacionales necesita atención. Busca espacios de diálogo y apoyo.")
 	}
 }

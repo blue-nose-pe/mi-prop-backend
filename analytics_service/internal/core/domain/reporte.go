@@ -69,4 +69,12 @@ type ReportSection struct {
 	ResultLabel  string         // título legible del resultado
 	ResultDetail string         // descripción larga (HTML del modelo de prod)
 	Items        []CategoryStat // barras por dimensión (puntos x/max)
+	Blocks       []ReportBlock  // bloques de texto (4 columnas del carácter)
+}
+
+// ReportBlock: bloque de texto con título (Potencialidades / Oportunidades de
+// Mejora / Perfil Académico / Recomendaciones del carácter Le Senne).
+type ReportBlock struct {
+	Title string
+	Text  string
 }

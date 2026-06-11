@@ -408,6 +408,15 @@ func buildPersonalidadTIV(get func(string) (int32, int32, bool)) domain.ReportSe
 		return pendiente("Sin respuestas del módulo de personalidad.")
 	}
 	ch := leSenne(ratioHigh(ep, em), ratioHigh(ap, am), ratioHigh(rp, rm))
+	var blocks []domain.ReportBlock
+	if b, ok := leSenneDetail[ch.code]; ok {
+		blocks = []domain.ReportBlock{
+			{Title: "Potencialidades", Text: b.Potencialidades},
+			{Title: "Oportunidades de Mejora", Text: b.Oportunidades},
+			{Title: "Perfil Académico", Text: b.PerfilAcademico},
+			{Title: "Recomendaciones", Text: b.Recomendaciones},
+		}
+	}
 	return domain.ReportSection{
 		Available:    true,
 		ResultCode:   ch.code,
@@ -418,6 +427,7 @@ func buildPersonalidadTIV(get func(string) (int32, int32, bool)) domain.ReportSe
 			{Code: "ACTIVIDAD", Label: vocDimLabel["ACTIVIDAD"], Points: ap, MaxPoints: am},
 			{Code: "RESONANCIA", Label: vocDimLabel["RESONANCIA"], Points: rp, MaxPoints: rm},
 		},
+		Blocks: blocks,
 	}
 }
 
