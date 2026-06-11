@@ -37,6 +37,11 @@ type CreateExamInput struct {
 	StartAt         time.Time
 	EndAt           time.Time
 	MaxParticipants int32
+	// Reglas de puntaje por defecto del examen (correcta/incorrecta/blanco).
+	// El command normaliza correcta<=0 a 1 para no crear examenes sin puntaje.
+	DefaultPoints          float64
+	DefaultPointsIncorrect float64
+	DefaultPointsBlank     float64
 }
 
 type UpdateExamInput struct {
@@ -46,6 +51,10 @@ type UpdateExamInput struct {
 	StartAt         time.Time
 	EndAt           time.Time
 	MaxParticipants int32
+	// nil = no tocar (PATCH parcial); 0 explicito es valido (p.ej. blanco=0).
+	DefaultPoints          *float64
+	DefaultPointsIncorrect *float64
+	DefaultPointsBlank     *float64
 }
 
 // =============== QUESTION (banco) ===============

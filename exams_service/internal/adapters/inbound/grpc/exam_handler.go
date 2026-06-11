@@ -25,13 +25,16 @@ func NewExamHandler(cmds ports.ExamCommands, qrys ports.ExamQueries) *ExamHandle
 
 func (h *ExamHandler) CreateExam(ctx context.Context, req *pb.CreateExamRequest) (*pb.ExamResponse, error) {
 	e, err := h.cmds.Create(ctx, ports.CreateExamInput{
-		ExamTypeCode:    req.GetExamTypeCode(),
-		SchoolID:        domain.SchoolID(req.GetSchoolId()),
-		Code:            req.GetCode(),
-		Name:            req.GetName(),
-		StartAt:         req.GetStartAt().AsTime(),
-		EndAt:           req.GetEndAt().AsTime(),
-		MaxParticipants: req.GetMaxParticipants(),
+		ExamTypeCode:           req.GetExamTypeCode(),
+		SchoolID:               domain.SchoolID(req.GetSchoolId()),
+		Code:                   req.GetCode(),
+		Name:                   req.GetName(),
+		StartAt:                req.GetStartAt().AsTime(),
+		EndAt:                  req.GetEndAt().AsTime(),
+		MaxParticipants:        req.GetMaxParticipants(),
+		DefaultPoints:          req.GetDefaultPoints(),
+		DefaultPointsIncorrect: req.GetDefaultPointsIncorrect(),
+		DefaultPointsBlank:     req.GetDefaultPointsBlank(),
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -56,12 +59,15 @@ func (h *ExamHandler) UpdateExam(ctx context.Context, req *pb.UpdateExamRequest)
 		endAt = req.GetEndAt().AsTime()
 	}
 	e, err := h.cmds.Update(ctx, ports.UpdateExamInput{
-		ID:              domain.ExamID(req.GetId()),
-		Code:            req.GetCode(),
-		Name:            req.GetName(),
-		StartAt:         startAt,
-		EndAt:           endAt,
-		MaxParticipants: req.GetMaxParticipants(),
+		ID:                     domain.ExamID(req.GetId()),
+		Code:                   req.GetCode(),
+		Name:                   req.GetName(),
+		StartAt:                startAt,
+		EndAt:                  endAt,
+		MaxParticipants:        req.GetMaxParticipants(),
+		DefaultPoints:          req.DefaultPoints,
+		DefaultPointsIncorrect: req.DefaultPointsIncorrect,
+		DefaultPointsBlank:     req.DefaultPointsBlank,
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

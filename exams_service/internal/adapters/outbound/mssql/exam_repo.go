@@ -33,17 +33,21 @@ const examCols = `CONVERT(NVARCHAR(36), id),
 		published,
 		active,
 		created_at,
-		updated_at`
+		updated_at,
+			default_points,
+			default_points_incorrect,
+			default_points_blank`
 
 func (r *ExamRepo) Save(ctx context.Context, e *domain.Exam) (domain.ExamID, error) {
 	const q = `
 		INSERT INTO exam (exam_type_id, school_id, parent_exam_id, version, code,
-		                  name, start_at, end_at, max_participants, published, active)
+		                  name, start_at, end_at, max_participants, published, active,
+		                  default_points, default_points_incorrect, default_points_blank)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1,
 		        IIF(@p2 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p2)),
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)),
-		        @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11)`
+		        @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14)`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		e.ExamTypeID,
@@ -57,6 +61,9 @@ func (r *ExamRepo) Save(ctx context.Context, e *domain.Exam) (domain.ExamID, err
 		e.MaxParticipants,
 		e.Published,
 		e.Active,
+		e.DefaultPoints,
+		e.DefaultPointsIncorrect,
+		e.DefaultPointsBlank,
 	).Scan(&id)
 	if err != nil {
 		return "", err
@@ -68,9 +75,11 @@ func (r *ExamRepo) Update(ctx context.Context, e *domain.Exam) error {
 	const q = `
 		UPDATE exam
 		   SET name = @p1, start_at = @p2, end_at = @p3,
-		       max_participants = @p4, code = @p5
-		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p6)`
-	res, err := r.db.ExecContext(ctx, q, e.Name, e.StartAt, e.EndAt, e.MaxParticipants, e.Code, string(e.ID))
+		       max_participants = @p4, code = @p5,
+		       default_points = @p6, default_points_incorrect = @p7, default_points_blank = @p8
+WHERE id = CONVERT(UNIQUEIDENTIFIER, @p9)`
+	res, err := r.db.ExecContext(ctx, q, e.Name, e.StartAt, e.EndAt, e.MaxParticipants, e.Code,
+		e.DefaultPoints, e.DefaultPointsIncorrect, e.DefaultPointsBlank, string(e.ID))
 	if err != nil {
 		return err
 	}
@@ -96,6 +105,7 @@ func (r *ExamRepo) FindByID(ctx context.Context, id domain.ExamID) (*domain.Exam
 		&idStr, &e.ExamTypeID, &schoolID, &parentID, &e.Version, &e.Code,
 		&e.Name, &e.StartAt, &e.EndAt, &e.MaxParticipants,
 		&e.Published, &e.Active, &e.CreatedAt, &updatedAt,
+		&e.DefaultPoints, &e.DefaultPointsIncorrect, &e.DefaultPointsBlank,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrExamNotFound

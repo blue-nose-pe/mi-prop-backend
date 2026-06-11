@@ -38,10 +38,16 @@ type Exam struct {
 	StartAt         time.Time
 	EndAt           time.Time
 	MaxParticipants int32 // 0 = ilimitado
-	Published       bool
-	Active          bool
-	CreatedAt       time.Time
-	UpdatedAt       *time.Time
+	// Reglas de puntaje por defecto del examen (migration 017): el builder
+	// las copia a cada exam_question al agregarla. UCSP 5/0/1, Nacional
+	// 1.25/0/0. El scoring real sigue siendo por pregunta.
+	DefaultPoints          float64
+	DefaultPointsIncorrect float64
+	DefaultPointsBlank     float64
+	Published              bool
+	Active                 bool
+	CreatedAt              time.Time
+	UpdatedAt              *time.Time
 }
 
 // QuestionKind discrimina cómo el front renderiza la pregunta y cómo el

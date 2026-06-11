@@ -12,19 +12,22 @@ func toProtoExam(e *domain.Exam) *pb.Exam {
 		return nil
 	}
 	out := &pb.Exam{
-		Id:              string(e.ID),
-		ExamTypeId:      e.ExamTypeID,
-		SchoolId:        string(e.SchoolID),
-		ParentExamId:    string(e.ParentExamID),
-		Version:         e.Version,
-		Code:            e.Code,
-		Name:            e.Name,
-		StartAt:         timestamppb.New(e.StartAt),
-		EndAt:           timestamppb.New(e.EndAt),
-		MaxParticipants: e.MaxParticipants,
-		Published:       e.Published,
-		Active:          e.Active,
-		CreatedAt:       timestamppb.New(e.CreatedAt),
+		Id:                     string(e.ID),
+		ExamTypeId:             e.ExamTypeID,
+		SchoolId:               string(e.SchoolID),
+		ParentExamId:           string(e.ParentExamID),
+		Version:                e.Version,
+		Code:                   e.Code,
+		Name:                   e.Name,
+		StartAt:                timestamppb.New(e.StartAt),
+		EndAt:                  timestamppb.New(e.EndAt),
+		MaxParticipants:        e.MaxParticipants,
+		DefaultPoints:          e.DefaultPoints,
+		DefaultPointsIncorrect: e.DefaultPointsIncorrect,
+		DefaultPointsBlank:     e.DefaultPointsBlank,
+		Published:              e.Published,
+		Active:                 e.Active,
+		CreatedAt:              timestamppb.New(e.CreatedAt),
 	}
 	if e.UpdatedAt != nil {
 		out.UpdatedAt = timestamppb.New(*e.UpdatedAt)

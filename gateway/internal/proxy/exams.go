@@ -110,6 +110,10 @@ type createExamRequest struct {
 	StartAt         string `json:"start_at"`
 	EndAt           string `json:"end_at"`
 	MaxParticipants int32  `json:"max_participants"`
+	// Reglas de puntaje por defecto del examen (correcta/incorrecta/blanco).
+	DefaultPoints          float64 `json:"default_points"`
+	DefaultPointsIncorrect float64 `json:"default_points_incorrect"`
+	DefaultPointsBlank     float64 `json:"default_points_blank"`
 }
 
 func (p *Proxy) createExam(w http.ResponseWriter, r *http.Request) {
@@ -129,13 +133,16 @@ func (p *Proxy) createExam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := p.cli.Exams.CreateExam(r.Context(), &examsgrpcpb.CreateExamRequest{
-		ExamTypeCode:    in.ExamTypeCode,
-		SchoolId:        in.SchoolID,
-		Code:            in.Code,
-		Name:            in.Name,
-		StartAt:         startAt,
-		EndAt:           endAt,
-		MaxParticipants: in.MaxParticipants,
+		ExamTypeCode:           in.ExamTypeCode,
+		SchoolId:               in.SchoolID,
+		Code:                   in.Code,
+		Name:                   in.Name,
+		StartAt:                startAt,
+		EndAt:                  endAt,
+		MaxParticipants:        in.MaxParticipants,
+		DefaultPoints:          in.DefaultPoints,
+		DefaultPointsIncorrect: in.DefaultPointsIncorrect,
+		DefaultPointsBlank:     in.DefaultPointsBlank,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -164,6 +171,10 @@ type updateExamRequest struct {
 	StartAt         string `json:"start_at"`
 	EndAt           string `json:"end_at"`
 	MaxParticipants int32  `json:"max_participants"`
+	// nil = no tocar; 0 explicito es valido (p.ej. blanco=0).
+	DefaultPoints          *float64 `json:"default_points"`
+	DefaultPointsIncorrect *float64 `json:"default_points_incorrect"`
+	DefaultPointsBlank     *float64 `json:"default_points_blank"`
 }
 
 func (p *Proxy) updateExam(w http.ResponseWriter, r *http.Request) {
@@ -183,12 +194,15 @@ func (p *Proxy) updateExam(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	resp, err := p.cli.Exams.UpdateExam(r.Context(), &examsgrpcpb.UpdateExamRequest{
-		Id:              r.PathValue("id"),
-		Code:            in.Code,
-		Name:            in.Name,
-		StartAt:         startAt,
-		EndAt:           endAt,
-		MaxParticipants: in.MaxParticipants,
+		Id:                     r.PathValue("id"),
+		Code:                   in.Code,
+		Name:                   in.Name,
+		StartAt:                startAt,
+		EndAt:                  endAt,
+		MaxParticipants:        in.MaxParticipants,
+		DefaultPoints:          in.DefaultPoints,
+		DefaultPointsIncorrect: in.DefaultPointsIncorrect,
+		DefaultPointsBlank:     in.DefaultPointsBlank,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -427,7 +441,7 @@ func (p *Proxy) listExamQuestions(w http.ResponseWriter, r *http.Request) {
 }
 
 type addExamQuestionRequest struct {
-	QuestionID      string `json:"question_id"`
+	QuestionID      string  `json:"question_id"`
 	Points          float64 `json:"points"`
 	SortOrder       int32   `json:"sort_order"`
 	PointsIncorrect float64 `json:"points_incorrect"`
@@ -561,13 +575,13 @@ func (p *Proxy) getAttempt(w http.ResponseWriter, r *http.Request) {
 }
 
 type answerAttemptRequest struct {
-	QuestionID string   `json:"question_id"`
+	QuestionID string `json:"question_id"`
 	// SINGLE_CHOICE / TRUE_FALSE / SCALE: una sola opcion.
-	OptionID   string   `json:"option_id"`
+	OptionID string `json:"option_id"`
 	// MULTIPLE_CHOICE: lista de opciones marcadas.
-	OptionIDs  []string `json:"option_ids"`
+	OptionIDs []string `json:"option_ids"`
 	// OPEN_TEXT: respuesta libre.
-	AnswerText string   `json:"answer_text"`
+	AnswerText string `json:"answer_text"`
 }
 
 func (p *Proxy) answerAttempt(w http.ResponseWriter, r *http.Request) {
@@ -796,20 +810,23 @@ func protoExamToJSON(e *examsgrpcpb.Exam) map[string]any {
 		return nil
 	}
 	return map[string]any{
-		"id":               e.GetId(),
-		"exam_type_id":     e.GetExamTypeId(),
-		"school_id":        e.GetSchoolId(),
-		"parent_exam_id":   e.GetParentExamId(),
-		"version":          e.GetVersion(),
-		"code":             e.GetCode(),
-		"name":             e.GetName(),
-		"start_at":         optionalTimestamp(e.GetStartAt()),
-		"end_at":           optionalTimestamp(e.GetEndAt()),
-		"max_participants": e.GetMaxParticipants(),
-		"published":        e.GetPublished(),
-		"active":           e.GetActive(),
-		"created_at":       optionalTimestamp(e.GetCreatedAt()),
-		"updated_at":       optionalTimestamp(e.GetUpdatedAt()),
+		"id":                       e.GetId(),
+		"exam_type_id":             e.GetExamTypeId(),
+		"school_id":                e.GetSchoolId(),
+		"parent_exam_id":           e.GetParentExamId(),
+		"version":                  e.GetVersion(),
+		"code":                     e.GetCode(),
+		"name":                     e.GetName(),
+		"start_at":                 optionalTimestamp(e.GetStartAt()),
+		"end_at":                   optionalTimestamp(e.GetEndAt()),
+		"max_participants":         e.GetMaxParticipants(),
+		"published":                e.GetPublished(),
+		"active":                   e.GetActive(),
+		"default_points":           e.GetDefaultPoints(),
+		"default_points_incorrect": e.GetDefaultPointsIncorrect(),
+		"default_points_blank":     e.GetDefaultPointsBlank(),
+		"created_at":               optionalTimestamp(e.GetCreatedAt()),
+		"updated_at":               optionalTimestamp(e.GetUpdatedAt()),
 	}
 }
 

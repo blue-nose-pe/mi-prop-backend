@@ -130,17 +130,26 @@ func (h *ExamHandler) Create(ctx context.Context, in ports.CreateExamInput) (*do
 		}
 	}
 
+	// Reglas de puntaje por defecto: correcta<=0 se normaliza a 1 para que un
+	// examen nuevo nunca quede con preguntas que no puntuan por accidente.
+	defPts := in.DefaultPoints
+	if defPts <= 0 {
+		defPts = 1
+	}
 	e := &domain.Exam{
-		ExamTypeID:      t.ID,
-		SchoolID:        in.SchoolID,
-		Code:            code,
-		Name:            strings.TrimSpace(in.Name),
-		StartAt:         in.StartAt,
-		EndAt:           in.EndAt,
-		MaxParticipants: in.MaxParticipants,
-		Version:         1,
-		Active:          true,
-		Published:       false,
+		ExamTypeID:             t.ID,
+		SchoolID:               in.SchoolID,
+		Code:                   code,
+		Name:                   strings.TrimSpace(in.Name),
+		StartAt:                in.StartAt,
+		EndAt:                  in.EndAt,
+		MaxParticipants:        in.MaxParticipants,
+		DefaultPoints:          defPts,
+		DefaultPointsIncorrect: in.DefaultPointsIncorrect,
+		DefaultPointsBlank:     in.DefaultPointsBlank,
+		Version:                1,
+		Active:                 true,
+		Published:              false,
 	}
 	id, err := h.exams.Save(ctx, e)
 	if err != nil {
@@ -180,6 +189,15 @@ func (h *ExamHandler) Update(ctx context.Context, in ports.UpdateExamInput) (*do
 	}
 	if in.MaxParticipants >= 0 {
 		e.MaxParticipants = in.MaxParticipants
+	}
+	if in.DefaultPoints != nil {
+		e.DefaultPoints = *in.DefaultPoints
+	}
+	if in.DefaultPointsIncorrect != nil {
+		e.DefaultPointsIncorrect = *in.DefaultPointsIncorrect
+	}
+	if in.DefaultPointsBlank != nil {
+		e.DefaultPointsBlank = *in.DefaultPointsBlank
 	}
 	if !e.StartAt.Before(e.EndAt) {
 		return nil, domain.ErrInvalidDateRange
