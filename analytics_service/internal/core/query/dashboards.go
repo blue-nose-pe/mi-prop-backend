@@ -212,17 +212,7 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 					areaBuckets[ex.ExamTypeCode] = bm
 				}
 				for _, ans := range answers {
-					cat := strings.ToUpper(strings.TrimSpace(ans.QuestionCategory))
-					if cat == "" {
-						continue
-					}
-					ag := bm[cat]
-					if ag == nil {
-						ag = &areaAgg{}
-						bm[cat] = ag
-					}
-					ag.points += ans.OptionSortOrder
-					ag.maxPoints += 3 // escala 0..3 (Nada/Poco/Bastante/Mucho)
+					accumColegioArea(bm, ex.ExamTypeCode, ans.QuestionCategory, ans.OptionSortOrder)
 				}
 			}
 		}
@@ -423,10 +413,46 @@ type areaAgg struct {
 	maxPoints int32
 }
 
+// accumColegioArea acumula una respuesta en el bucket de inclinaciones del
+// colegio, normalizando los tres encodings: TIV fiel "M{n}:{dim}" (solo M3 =
+// areas de interes alimenta la barra; peso por modulo), RIASEC legacy "R".."C"
+// (peso 3), y estilos "ACTIVO"/"VISUAL"/... (peso 1, binaria de prod).
+func accumColegioArea(bm map[string]*areaAgg, examTypeCode, rawCat string, weight int32) {
+	cat := strings.ToUpper(strings.TrimSpace(rawCat))
+	if cat == "" {
+		return
+	}
+	maxW := int32(3)
+	if strings.HasPrefix(cat, "M") && strings.Contains(cat, ":") {
+		mod, dim, ok := splitCat(cat)
+		if !ok || mod != "M3" {
+			return
+		}
+		cat = dim
+		maxW = vocMaxWeight[mod]
+	} else if examTypeCode == "habitos" {
+		maxW = 1
+	}
+	ag := bm[cat]
+	if ag == nil {
+		ag = &areaAgg{}
+		bm[cat] = ag
+	}
+	ag.points += weight
+	ag.maxPoints += maxW
+}
+
+// colegioAreaLabel resuelve la etiqueta legible: TIV (SS/CL/...) via
+// vocDimLabel, RIASEC legacy via riasecAreaLabel, estilos quedan tal cual.
+func colegioAreaLabel(code string) string {
+	if l, ok := vocDimLabel[code]; ok {
+		return l
+	}
+	return labelOr(riasecAreaLabel, code, code)
+}
+
 // buildColegioAreas convierte los buckets agregados del colegio en una lista
-// ordenada de menor a mayor inclinacion (para la barra roja->verde de
-// marketing). Reusa riasecAreaLabel (vocacional R..C); para canales/estilos el
-// code ya es legible (AUDITIVO/ACTIVO/...).
+// ordenada de menor a mayor inclinacion (para la barra roja->verde de marketing).
 func buildColegioAreas(bm map[string]*areaAgg) []domain.ColegioAreaStat {
 	out := make([]domain.ColegioAreaStat, 0, len(bm))
 	for code, ag := range bm {
@@ -436,7 +462,7 @@ func buildColegioAreas(bm map[string]*areaAgg) []domain.ColegioAreaStat {
 		}
 		out = append(out, domain.ColegioAreaStat{
 			Code:      code,
-			Label:     labelOr(riasecAreaLabel, code, code),
+			Label:     colegioAreaLabel(code),
 			Points:    ag.points,
 			MaxPoints: ag.maxPoints,
 			Ratio:     ratio,
@@ -464,18 +490,12 @@ func (h *DashboardHandler) topColegioArea(ctx context.Context, atts []ports.Upst
 		if err != nil {
 			continue
 		}
+		// examTypeCode no se conoce acá sin un GetExam extra; el peso solo
+		// afecta el ratio relativo (todas las dims del mismo examen comparten
+		// escala), y el "top" es el de mayor ratio — robusto al factor comun.
+		// Para el encoding TIV se normaliza la dimension igual.
 		for _, ans := range answers {
-			cat := strings.ToUpper(strings.TrimSpace(ans.QuestionCategory))
-			if cat == "" {
-				continue
-			}
-			ag := bm[cat]
-			if ag == nil {
-				ag = &areaAgg{}
-				bm[cat] = ag
-			}
-			ag.points += ans.OptionSortOrder
-			ag.maxPoints += 3
+			accumColegioArea(bm, "", ans.QuestionCategory, ans.OptionSortOrder)
 		}
 	}
 	areas := buildColegioAreas(bm) // ascendente por ratio
