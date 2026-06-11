@@ -132,8 +132,8 @@ type TestResult struct {
 	// renderizar el result-card por intento: simulacro carga sus answers y
 	// vocacional/estilos su reporte por attempt_id.
 	AttemptID   AttemptID
-	Score       int32
-	MaxScore    int32
+	Score       float64
+	MaxScore    float64
 	SubmittedAt time.Time
 }
 

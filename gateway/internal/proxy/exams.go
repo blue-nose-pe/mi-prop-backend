@@ -428,10 +428,10 @@ func (p *Proxy) listExamQuestions(w http.ResponseWriter, r *http.Request) {
 
 type addExamQuestionRequest struct {
 	QuestionID      string `json:"question_id"`
-	Points          int32  `json:"points"`
-	SortOrder       int32  `json:"sort_order"`
-	PointsIncorrect int32  `json:"points_incorrect"`
-	PointsBlank     int32  `json:"points_blank"`
+	Points          float64 `json:"points"`
+	SortOrder       int32   `json:"sort_order"`
+	PointsIncorrect float64 `json:"points_incorrect"`
+	PointsBlank     float64 `json:"points_blank"`
 }
 
 func (p *Proxy) addExamQuestion(w http.ResponseWriter, r *http.Request) {
@@ -669,8 +669,8 @@ func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt, authz string) {
 	if _, err := p.cli.Hubspot.SyncExamResult(ctx, &hubspotgrpcpb.SyncExamResultRequest{
 		Dni:          dni,
 		ExamTypeCode: examTypeCode,
-		Score:        a.GetScore(),
-		MaxScore:     a.GetMaxScore(),
+		Score:        int32(a.GetScore()),
+		MaxScore:     int32(a.GetMaxScore()),
 		AttemptId:    a.GetId(),
 		SubmittedAt:  submittedAt,
 	}); err != nil {

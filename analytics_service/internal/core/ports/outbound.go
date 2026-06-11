@@ -78,8 +78,8 @@ type UpstreamAttempt struct {
 	ID           domain.AttemptID
 	ExamID       domain.ExamID
 	UserID       domain.UserID
-	Score        *int32
-	MaxScore     *int32
+	Score        *float64
+	MaxScore     *float64
 	StartedAt    time.Time
 	SubmittedAt  *time.Time
 }

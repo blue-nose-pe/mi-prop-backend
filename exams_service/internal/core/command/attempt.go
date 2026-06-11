@@ -204,12 +204,12 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 	}
 
 	// maxScore = mejor caso (todas correctas) = Σ points por correcta.
-	maxScore := int32(0)
+	var maxScore float64
 	for _, eq := range eqs {
 		maxScore += eq.Points
 	}
 
-	var score int32
+	var score float64
 	// Vocacional (exam_type_id=1) NO se puntua con is_correct. Score=0,
 	// max_score=0 dejan claro al cliente que no aplica formula academica.
 	// El analytics_service tiene el RPC dedicado GetReporteEstudiante para

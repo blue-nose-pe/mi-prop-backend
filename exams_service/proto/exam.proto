@@ -109,10 +109,10 @@ message QuestionOption {
 message ExamQuestion {
   string exam_id          = 1;
   string question_id      = 2;
-  int32  points           = 3;
+  double points           = 3;
   int32  sort_order       = 4;
-  int32  points_incorrect = 5;
-  int32  points_blank     = 6;
+  double points_incorrect = 5;
+  double points_blank     = 6;
 }
 
 message Attempt {
@@ -120,8 +120,8 @@ message Attempt {
   string exam_id      = 2;
   string user_id      = 3;
   string key_id       = 4;
-  int32  score        = 5;
-  int32  max_score    = 6;
+  double score        = 5;
+  double max_score    = 6;
   google.protobuf.Timestamp started_at   = 7;
   google.protobuf.Timestamp submitted_at = 8;
 }
@@ -181,10 +181,10 @@ message OptionResponse      { QuestionOption option = 1; }
 message AddExamQuestionRequest {
   string exam_id          = 1;
   string question_id      = 2;
-  int32  points           = 3;
+  double points           = 3;
   int32  sort_order       = 4;
-  int32  points_incorrect = 5;
-  int32  points_blank     = 6;
+  double points_incorrect = 5;
+  double points_blank     = 6;
 }
 message RemoveExamQuestionRequest { string exam_id = 1; string question_id = 2; }
 message ReorderRequest            { string exam_id = 1; repeated string question_ids = 2; }

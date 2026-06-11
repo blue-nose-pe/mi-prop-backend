@@ -88,7 +88,7 @@ type AttemptRepository interface {
 	// y la opcion elegida pre-resueltas en un solo viaje a la DB. Pensado
 	// para reportes vocacionales que necesitan category + sort_order.
 	ListEnrichedAnswers(ctx context.Context, attemptID domain.AttemptID) ([]domain.EnrichedAnswer, error)
-	Finish(ctx context.Context, id domain.AttemptID, score, maxScore int32, when time.Time) error
+	Finish(ctx context.Context, id domain.AttemptID, score, maxScore float64, when time.Time) error
 	CountActiveByExam(ctx context.Context, examID domain.ExamID) (int32, error)
 	// FindActiveByExamUser devuelve el attempt activo (submitted_at IS NULL)
 	// mas reciente del user para ese exam, o (nil, nil) si no hay ninguno.

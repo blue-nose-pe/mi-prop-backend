@@ -86,8 +86,8 @@ func (p *Proxy) studentGradeHistory(w http.ResponseWriter, r *http.Request) {
 		KeyCode  string `json:"key_code"`
 		// Score/MaxScore solo tienen sentido en SIMULACRO (es la unica prueba
 		// medible por puntaje). Para vocacional/estilos el front no los muestra.
-		Score    int32 `json:"score"`
-		MaxScore int32 `json:"max_score"`
+		Score    float64 `json:"score"`
+		MaxScore float64 `json:"max_score"`
 		// IsScored marca si la prueba se mide por puntaje (solo simulacro).
 		IsScored bool `json:"is_scored"`
 		// Highlight: para vocacional/estilos, el area/inclinacion principal del

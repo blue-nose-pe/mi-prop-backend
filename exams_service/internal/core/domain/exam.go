@@ -112,12 +112,12 @@ type QuestionOption struct {
 type ExamQuestion struct {
 	ExamID     ExamID
 	QuestionID QuestionID
-	Points     int32 // puntaje por respuesta CORRECTA
-	// PointsIncorrect/PointsBlank — scoring fiel a prod (migration 015). En el
-	// simulacro UCSP: incorrecta 0, EN BLANCO +1. v2 no tiene módulos: cada
-	// pregunta lleva su trío heredado del módulo de origen al importar.
-	PointsIncorrect int32
-	PointsBlank     int32
+	Points     float64 // puntaje por respuesta CORRECTA (decimal: Nacional usa 1.25)
+	// PointsIncorrect/PointsBlank — scoring fiel a prod (migration 015). UCSP:
+	// incorrecta 0, EN BLANCO +1. Nacional: correcta 1.25, incorrecta 0,
+	// blanco 0. Decimal (migration 016) para representar el 1.25 fielmente.
+	PointsIncorrect float64
+	PointsBlank     float64
 	SortOrder       int32
 }
 
@@ -128,8 +128,8 @@ type ExamAttempt struct {
 	ExamID      ExamID
 	UserID      UserID
 	KeyID       KeyID // "" si no se requiere key (admin)
-	Score       *int32
-	MaxScore    *int32
+	Score       *float64
+	MaxScore    *float64
 	StartedAt   time.Time
 	SubmittedAt *time.Time
 }

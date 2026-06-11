@@ -19,8 +19,8 @@ type ReporteEstudiante struct {
 	ExamName     string
 	ExamTypeCode string // "vocacional" en este caso, "" si no se pudo resolver
 	SubmittedAt  *time.Time
-	Score        int32
-	MaxScore     int32
+	Score        float64
+	MaxScore     float64
 
 	AreasInteres   AreasInteresSection
 	Personalidad   ReportSection // placeholder

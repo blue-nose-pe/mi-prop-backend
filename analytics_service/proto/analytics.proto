@@ -80,8 +80,8 @@ message TestResult {
   string exam_type_code = 1;
   string exam_id        = 2;
   string exam_name      = 3;
-  int32  score          = 4;
-  int32  max_score      = 5;
+  double  score          = 4;
+  double  max_score      = 5;
   google.protobuf.Timestamp submitted_at = 6;
   string attempt_id     = 7;
 }
@@ -267,8 +267,8 @@ message ReporteEstudianteResponse {
   string exam_name      = 5;
   string exam_type_code = 6;
   google.protobuf.Timestamp submitted_at = 7;
-  int32  score          = 8;
-  int32  max_score      = 9;
+  double  score          = 8;
+  double  max_score      = 9;
   AreasInteresSection areas_interes   = 10;
   ReportSection      personalidad     = 11; // placeholder hasta tener rubrica
   ReportSection      apoyo_familiar   = 12; // idem

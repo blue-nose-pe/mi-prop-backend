@@ -276,7 +276,7 @@ func (r *AttemptRepo) ListEnrichedAnswers(ctx context.Context, attemptID domain.
 	return out, rows.Err()
 }
 
-func (r *AttemptRepo) Finish(ctx context.Context, id domain.AttemptID, score, maxScore int32, when time.Time) error {
+func (r *AttemptRepo) Finish(ctx context.Context, id domain.AttemptID, score, maxScore float64, when time.Time) error {
 	const q = `
 		UPDATE exam_attempt
 		   SET score = @p1, max_score = @p2, submitted_at = @p3
@@ -383,8 +383,8 @@ func scanAttempt(s rowScanner) (*domain.ExamAttempt, error) {
 		examID     string
 		userID     string
 		keyID      string
-		score      sql.NullInt32
-		maxScore   sql.NullInt32
+		score      sql.NullFloat64
+		maxScore   sql.NullFloat64
 		submitted  sql.NullTime
 	)
 	err := s.Scan(&idStr, &examID, &userID, &keyID, &score, &maxScore, &a.StartedAt, &submitted)
@@ -399,11 +399,11 @@ func scanAttempt(s rowScanner) (*domain.ExamAttempt, error) {
 	a.UserID = domain.UserID(userID)
 	a.KeyID = domain.KeyID(keyID)
 	if score.Valid {
-		v := score.Int32
+		v := score.Float64
 		a.Score = &v
 	}
 	if maxScore.Valid {
-		v := maxScore.Int32
+		v := maxScore.Float64
 		a.MaxScore = &v
 	}
 	if submitted.Valid {
