@@ -12,6 +12,8 @@ type KeyRepository interface {
 	Update(ctx context.Context, k *domain.Key) error
 	FindByID(ctx context.Context, id domain.KeyID) (*domain.Key, error)
 	FindByCode(ctx context.Context, code string) (*domain.Key, error)
+	// FindActiveLan: key masiva (mode='lan') activa y vigente mas reciente.
+	FindActiveLan(ctx context.Context) (*domain.Key, error)
 	SetActive(ctx context.Context, id domain.KeyID, active bool) error
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)

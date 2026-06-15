@@ -28,6 +28,10 @@ func (h *KeyHandler) GetByCode(ctx context.Context, code string) (*domain.Key, e
 	return h.keys.FindByCode(ctx, code)
 }
 
+func (h *KeyHandler) GetActiveLan(ctx context.Context) (*domain.Key, error) {
+	return h.keys.FindActiveLan(ctx)
+}
+
 func (h *KeyHandler) ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error) {
 	return h.keys.ListByAsesor(ctx, asesorID)
 }

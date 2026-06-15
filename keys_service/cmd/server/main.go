@@ -100,7 +100,10 @@ func main() {
 			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||
 			fullMethod == "/keys.v1.KeyService/ValidateKey" ||
 			fullMethod == "/keys.v1.KeyService/GetByCode" ||
-			fullMethod == "/keys.v1.KeyService/UserHasKeyUsage"
+			fullMethod == "/keys.v1.KeyService/UserHasKeyUsage" ||
+			// GetActiveLanKey: la landing publica "Preparate" lo invoca sin
+			// sesion para resolver la key masiva de la campaña.
+			fullMethod == "/keys.v1.KeyService/GetActiveLanKey"
 	}
 
 	s := grpc.NewServer(

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	hubspotgrpcpb "hubspot_service/proto/gen"
+	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 )
 
@@ -20,6 +21,24 @@ func (p *Proxy) RegisterLanding(mux *http.ServeMux) {
 	// publico (no va bajo /api/public/) → requiere JWT; users_service lo
 	// gatea ademas con analytics.simulacro_masivo.read.
 	mux.HandleFunc("GET /api/leads", p.listLeads)
+	// Key masiva activa de la campaña (publico): la landing y /ingresar la
+	// resuelven para no hardcodear el codigo. El asesor crea la key LAN en el
+	// admin y esta devuelve la mas reciente vigente.
+	mux.HandleFunc("GET /api/public/active-lan-key", p.getActiveLanKey)
+}
+
+func (p *Proxy) getActiveLanKey(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Keys.GetActiveLanKey(r.Context(), &keysgrpcpb.GetActiveLanKeyRequest{})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	k := resp.GetKey()
+	if k == nil {
+		writeNotFound(w, "active-lan-key")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(k)})
 }
 
 // listLeads - GET /api/leads?search=&key_code=&limit=&offset=

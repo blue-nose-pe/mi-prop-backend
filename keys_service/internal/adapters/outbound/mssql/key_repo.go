@@ -107,6 +107,20 @@ func (r *KeyRepo) FindByCode(ctx context.Context, code string) (*domain.Key, err
 	return scanKey(row)
 }
 
+// FindActiveLan devuelve la key masiva (mode='lan') ACTIVA y vigente mas
+// reciente. La usa la landing "Preparate": el asesor crea la key masiva de
+// la campaña y la landing la resuelve dinamicamente (en vez de hardcodear el
+// codigo). Si no hay ninguna activa, devuelve ErrKeyNotFound.
+func (r *KeyRepo) FindActiveLan(ctx context.Context) (*domain.Key, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT TOP 1 `+keyCols+` FROM [key]
+		  WHERE mode = 'lan' AND active = 1
+		    AND (valid_from IS NULL OR valid_from <= SYSUTCDATETIME())
+		    AND (valid_to   IS NULL OR valid_to   >= SYSUTCDATETIME())
+		  ORDER BY created_at DESC`)
+	return scanKey(row)
+}
+
 func (r *KeyRepo) SetActive(ctx context.Context, id domain.KeyID, active bool) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE [key] SET active = @p1 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p2)`,

@@ -28,6 +28,8 @@ type KeyCommands interface {
 type KeyQueries interface {
 	Get(ctx context.Context, id domain.KeyID) (*domain.Key, error)
 	GetByCode(ctx context.Context, code string) (*domain.Key, error)
+	// GetActiveLan: key masiva (mode='lan') activa y vigente mas reciente.
+	GetActiveLan(ctx context.Context) (*domain.Key, error)
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
 	// ListAll — dump completo, solo para el flujo admin resync-all.

@@ -21,6 +21,9 @@ service KeyService {
   rpc UserHasKeyUsage(UserHasKeyUsageRequest) returns (UserHasKeyUsageResponse);
   rpc GetKey        (GetKeyRequest)       returns (KeyResponse);
   rpc GetByCode     (GetByCodeRequest)    returns (KeyResponse);
+  // GetActiveLanKey: key masiva (mode='lan') activa y vigente mas reciente.
+  // La landing "Preparate" la usa para resolver la key de la campaña.
+  rpc GetActiveLanKey (GetActiveLanKeyRequest) returns (KeyResponse);
   rpc ListByAsesor  (ListByAsesorRequest) returns (ListKeysResponse);
   rpc ListByColegio (ListByColegioRequest)returns (ListKeysResponse);
   // Devuelve distinct user_ids que rindieron tests usando keys de este
@@ -130,6 +133,7 @@ message DeactivateKeyRequest { string id = 1; }
 message ValidateKeyRequest   { string code = 1; }
 message GetKeyRequest        { string id = 1; }
 message GetByCodeRequest     { string code = 1; }
+message GetActiveLanKeyRequest {}
 message ListByAsesorRequest  { string asesor_user_id = 1; }
 message ListByColegioRequest { string school_id = 1; }
 message ListKeysResponse     { repeated Key items = 1; }

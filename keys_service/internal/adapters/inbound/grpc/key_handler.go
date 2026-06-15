@@ -137,6 +137,14 @@ func (h *KeyHandler) GetByCode(ctx context.Context, req *pb.GetByCodeRequest) (*
 	return &pb.KeyResponse{Key: toProto(k)}, nil
 }
 
+func (h *KeyHandler) GetActiveLanKey(ctx context.Context, _ *pb.GetActiveLanKeyRequest) (*pb.KeyResponse, error) {
+	k, err := h.qrys.GetActiveLan(ctx)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.KeyResponse{Key: toProto(k)}, nil
+}
+
 func (h *KeyHandler) ListByAsesor(ctx context.Context, req *pb.ListByAsesorRequest) (*pb.ListKeysResponse, error) {
 	items, err := h.qrys.ListByAsesor(ctx, domain.UserID(req.GetAsesorUserId()))
 	if err != nil {

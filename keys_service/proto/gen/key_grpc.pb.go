@@ -28,6 +28,7 @@ const (
 	KeyService_UserHasKeyUsage_FullMethodName             = "/keys.v1.KeyService/UserHasKeyUsage"
 	KeyService_GetKey_FullMethodName                      = "/keys.v1.KeyService/GetKey"
 	KeyService_GetByCode_FullMethodName                   = "/keys.v1.KeyService/GetByCode"
+	KeyService_GetActiveLanKey_FullMethodName             = "/keys.v1.KeyService/GetActiveLanKey"
 	KeyService_ListByAsesor_FullMethodName                = "/keys.v1.KeyService/ListByAsesor"
 	KeyService_ListByColegio_FullMethodName               = "/keys.v1.KeyService/ListByColegio"
 	KeyService_ListUserIDsByColegio_FullMethodName        = "/keys.v1.KeyService/ListUserIDsByColegio"
@@ -54,6 +55,9 @@ type KeyServiceClient interface {
 	UserHasKeyUsage(ctx context.Context, in *UserHasKeyUsageRequest, opts ...grpc.CallOption) (*UserHasKeyUsageResponse, error)
 	GetKey(ctx context.Context, in *GetKeyRequest, opts ...grpc.CallOption) (*KeyResponse, error)
 	GetByCode(ctx context.Context, in *GetByCodeRequest, opts ...grpc.CallOption) (*KeyResponse, error)
+	// GetActiveLanKey: key masiva (mode='lan') activa y vigente mas reciente.
+	// La landing "Preparate" la usa para resolver la key de la campaña.
+	GetActiveLanKey(ctx context.Context, in *GetActiveLanKeyRequest, opts ...grpc.CallOption) (*KeyResponse, error)
 	ListByAsesor(ctx context.Context, in *ListByAsesorRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
 	ListByColegio(ctx context.Context, in *ListByColegioRequest, opts ...grpc.CallOption) (*ListKeysResponse, error)
 	// Devuelve distinct user_ids que rindieron tests usando keys de este
@@ -167,6 +171,16 @@ func (c *keyServiceClient) GetByCode(ctx context.Context, in *GetByCodeRequest, 
 	return out, nil
 }
 
+func (c *keyServiceClient) GetActiveLanKey(ctx context.Context, in *GetActiveLanKeyRequest, opts ...grpc.CallOption) (*KeyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(KeyResponse)
+	err := c.cc.Invoke(ctx, KeyService_GetActiveLanKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *keyServiceClient) ListByAsesor(ctx context.Context, in *ListByAsesorRequest, opts ...grpc.CallOption) (*ListKeysResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ListKeysResponse)
@@ -254,6 +268,9 @@ type KeyServiceServer interface {
 	UserHasKeyUsage(context.Context, *UserHasKeyUsageRequest) (*UserHasKeyUsageResponse, error)
 	GetKey(context.Context, *GetKeyRequest) (*KeyResponse, error)
 	GetByCode(context.Context, *GetByCodeRequest) (*KeyResponse, error)
+	// GetActiveLanKey: key masiva (mode='lan') activa y vigente mas reciente.
+	// La landing "Preparate" la usa para resolver la key de la campaña.
+	GetActiveLanKey(context.Context, *GetActiveLanKeyRequest) (*KeyResponse, error)
 	ListByAsesor(context.Context, *ListByAsesorRequest) (*ListKeysResponse, error)
 	ListByColegio(context.Context, *ListByColegioRequest) (*ListKeysResponse, error)
 	// Devuelve distinct user_ids que rindieron tests usando keys de este
@@ -310,6 +327,9 @@ func (UnimplementedKeyServiceServer) GetKey(context.Context, *GetKeyRequest) (*K
 }
 func (UnimplementedKeyServiceServer) GetByCode(context.Context, *GetByCodeRequest) (*KeyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetByCode not implemented")
+}
+func (UnimplementedKeyServiceServer) GetActiveLanKey(context.Context, *GetActiveLanKeyRequest) (*KeyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetActiveLanKey not implemented")
 }
 func (UnimplementedKeyServiceServer) ListByAsesor(context.Context, *ListByAsesorRequest) (*ListKeysResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListByAsesor not implemented")
@@ -497,6 +517,24 @@ func _KeyService_GetByCode_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _KeyService_GetActiveLanKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetActiveLanKeyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(KeyServiceServer).GetActiveLanKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: KeyService_GetActiveLanKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(KeyServiceServer).GetActiveLanKey(ctx, req.(*GetActiveLanKeyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _KeyService_ListByAsesor_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ListByAsesorRequest)
 	if err := dec(in); err != nil {
@@ -661,6 +699,10 @@ var KeyService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "GetByCode",
 			Handler:    _KeyService_GetByCode_Handler,
+		},
+		{
+			MethodName: "GetActiveLanKey",
+			Handler:    _KeyService_GetActiveLanKey_Handler,
 		},
 		{
 			MethodName: "ListByAsesor",
