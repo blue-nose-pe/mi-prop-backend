@@ -54,12 +54,12 @@ func NewSMTP(host string, port int, username, password, from string, hubspotCli 
 }
 
 func (s *SMTP) Send(ctx context.Context, email, plainOTP string) error {
-	return s.send(ctx, email, plainOTP, "")
+	return s.send(ctx, email, plainOTP, "", "")
 }
 
 func (s *SMTP) SendWithContact(ctx context.Context, in ports.OTPSendInput) error {
 	displayName := firstNonEmpty(in.FirstName, in.Email)
-	if err := s.send(ctx, in.Email, in.PlainOTP, displayName); err != nil {
+	if err := s.send(ctx, in.Email, in.PlainOTP, displayName, in.MagicLinkURL); err != nil {
 		return err
 	}
 	if s.hubspot != nil {
@@ -68,7 +68,7 @@ func (s *SMTP) SendWithContact(ctx context.Context, in ports.OTPSendInput) error
 	return nil
 }
 
-func (s *SMTP) send(ctx context.Context, email, plainOTP, displayName string) error {
+func (s *SMTP) send(ctx context.Context, email, plainOTP, displayName, magicLinkURL string) error {
 	if s.host == "" || s.username == "" || s.password == "" || s.from == "" {
 		return fmt.Errorf("smtp: missing host/username/password/from")
 	}
@@ -77,7 +77,10 @@ func (s *SMTP) send(ctx context.Context, email, plainOTP, displayName string) er
 	}
 
 	subject := "Tu codigo de verificacion - Mi Proposito UCSP"
-	body := buildOTPHTML(displayName, plainOTP)
+	if magicLinkURL != "" {
+		subject = "Ingresa a tu Examen Simulacro UCSP"
+	}
+	body := buildOTPHTML(displayName, plainOTP, magicLinkURL)
 	msg := buildMIME(s.from, email, subject, body)
 
 	addr := fmt.Sprintf("%s:%d", s.host, s.port)

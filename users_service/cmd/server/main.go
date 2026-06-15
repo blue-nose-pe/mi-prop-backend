@@ -171,7 +171,7 @@ func main() {
 
 	// ---------- 3. CORE — CQRS: commands y queries son piezas separadas ----------
 	userCmds := command.NewUserHandler(userRepo, permRepo, cache, hasher, hubspotSync)
-	authCmds := command.NewAuthHandler(userRepo, schoolRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier)
+	authCmds := command.NewAuthHandler(userRepo, schoolRepo, permRepo, cache, hasher, tokenIssuer, tokenVerifier, refreshRepo, otpRepo, otpHasher, otpSender, studentClassifier, cfg.FrontBaseURL)
 	permCmds := command.NewPermissionHandler(userRepo, permRepo)
 	permGroupCmds := command.NewPermissionGroupHandler(permRepo)
 	assignmentCmds := command.NewAssignmentHandler(userRepo, assignmentRepo)

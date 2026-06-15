@@ -358,6 +358,14 @@ type OTPSendInput struct {
 	SchoolRecordID string // school.hubspot_record_id; el hubspot_service lo
 	                       // usa para asociar Contact <-> Company despues
 	                       // del upsert del estudiante.
+	// MASIVO (landing "Preparate"): cuando WantMagicLink=true y hay
+	// FRONT_BASE_URL configurado, sendStudentOTPFull arma MagicLinkURL =
+	// <front>/test/simulacro/ingresar?e=<email>&c=<otp> y el correo incluye un
+	// boton "Ingresar a mi examen". Asi el alumno entra DESDE el correo (fiel
+	// a prod) sin tener que escribir el codigo. Solo lo activa el registro
+	// masivo (key LAN, sin colegio) — el login normal por OTP no lo usa.
+	WantMagicLink bool
+	MagicLinkURL  string
 }
 
 // StudentClassifier: decide si un user loguea via OTP (estudiante) o via

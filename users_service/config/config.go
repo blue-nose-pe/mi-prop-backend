@@ -60,6 +60,12 @@ type Config struct {
 	SMTPUsername string
 	SMTPPassword string
 	SMTPFrom     string // "Mi Proposito UCSP <tu-email@gmail.com>"
+
+	// FrontBaseURL: base publica del front (ej https://miproposito.ucsp.edu.pe
+	// o http://15.156.100.140). La usa el correo del MASIVO para armar el magic
+	// link <front>/test/simulacro/ingresar?e=&c=. "" = el correo solo lleva el
+	// codigo (sin boton de acceso directo).
+	FrontBaseURL string
 }
 
 func Load() *Config {
@@ -100,6 +106,7 @@ func Load() *Config {
 		SMTPUsername: getEnv("SMTP_USERNAME", ""),
 		SMTPPassword: getEnv("SMTP_PASSWORD", ""),
 		SMTPFrom:     getEnv("SMTP_FROM", ""),
+		FrontBaseURL: getEnv("FRONT_BASE_URL", ""),
 	}
 	log.Printf("[config] grpc=%s sql=%s/%s redis=%s hubspot=%s otpsender=%s", c.GRPCPort, c.SQLServer, c.SQLDatabase, c.RedisAddr, c.HubspotServiceAddr, c.OTPSender)
 	return c

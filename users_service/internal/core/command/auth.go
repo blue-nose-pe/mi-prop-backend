@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"math/big"
+	"net/url"
 	"strings"
 	"time"
 
@@ -37,6 +38,10 @@ type AuthHandler struct {
 	otpSender    ports.OTPSender
 	classifier   ports.StudentClassifier
 	otpTTL       time.Duration
+	// frontBaseURL: base del front (ej https://...) para armar el magic link
+	// del correo masivo (<front>/test/simulacro/ingresar?e=&c=). "" = no se
+	// incluye el boton (el alumno usa el codigo manual). Viene de FRONT_BASE_URL.
+	frontBaseURL string
 }
 
 var _ ports.AuthCommands = (*AuthHandler)(nil)
@@ -54,6 +59,7 @@ func NewAuthHandler(
 	otpHasher ports.OTPHasher,
 	otpSender ports.OTPSender,
 	classifier ports.StudentClassifier,
+	frontBaseURL string,
 ) *AuthHandler {
 	return &AuthHandler{
 		users:        users,
@@ -69,6 +75,7 @@ func NewAuthHandler(
 		otpSender:    otpSender,
 		classifier:   classifier,
 		otpTTL:       10 * time.Minute,
+		frontBaseURL: strings.TrimRight(frontBaseURL, "/"),
 	}
 }
 
@@ -446,6 +453,7 @@ func (h *AuthHandler) RegisterStudentWithKey(
 			DocumentNumber: strings.TrimSpace(firstOrFallback(in.DocumentNumber, existing.DocumentNumber)),
 			Phone:          strings.TrimSpace(firstOrFallback(in.Phone, existing.Phone)),
 			SchoolID:       string(existing.SchoolID),
+			WantMagicLink:  string(in.SchoolID) == "", // masivo (key LAN, sin colegio)
 		}, in.IP); err != nil {
 			return nil, err
 		}
@@ -500,6 +508,7 @@ func (h *AuthHandler) RegisterStudentWithKey(
 		DocumentNumber: strings.TrimSpace(in.DocumentNumber),
 		Phone:          strings.TrimSpace(in.Phone),
 		SchoolID:       string(in.SchoolID),
+		WantMagicLink:  string(in.SchoolID) == "", // masivo (key LAN, sin colegio)
 	}, in.IP); err != nil {
 		return nil, err
 	}
@@ -556,6 +565,13 @@ func (h *AuthHandler) sendStudentOTPFull(ctx context.Context, u *domain.User, ex
 	log.Printf("[DEBUG OTP] email=%s otp=%s user=%s — REMOVER tras fix HubSpot", string(u.Email), plain, u.ID)
 	extra.Email = string(u.Email)
 	extra.PlainOTP = plain
+	// MASIVO (landing "Preparate"): armamos el magic link con el OTP embebido
+	// para que el alumno entre directo desde el correo (fiel a prod). Solo si
+	// el caller lo pidio (registro masivo, key LAN) y hay front configurado.
+	if extra.WantMagicLink && h.frontBaseURL != "" {
+		extra.MagicLinkURL = h.frontBaseURL + "/test/simulacro/ingresar?e=" +
+			url.QueryEscape(string(u.Email)) + "&c=" + url.QueryEscape(plain)
+	}
 	// Resolver datos del colegio para que hubspot_service pueda popular
 	// la prop mi_proposito___id_colegio (INTEGER, P1 usaba autoincr de
 	// MySQL) y asociar Contact <-> Company. Best-effort: si falla la
