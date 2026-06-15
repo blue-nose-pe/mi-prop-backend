@@ -81,6 +81,20 @@ func (h *HubspotHandler) SyncStudentContact(ctx context.Context, req *pb.SyncStu
 	return &pb.EmptyResponse{}, nil
 }
 
+func (h *HubspotHandler) SyncLead(ctx context.Context, req *pb.SyncLeadRequest) (*pb.EmptyResponse, error) {
+	if err := h.cmds.SyncLead(ctx, ports.SyncLeadInput{
+		Email:          req.GetEmail(),
+		FirstName:      req.GetFirstName(),
+		LastName:       req.GetLastName(),
+		DocumentNumber: req.GetDocumentNumber(),
+		Phone:          req.GetPhone(),
+		GraduationYear: req.GetGraduationYear(),
+	}); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
 func (h *HubspotHandler) SyncKey(ctx context.Context, req *pb.SyncKeyRequest) (*pb.EmptyResponse, error) {
 	validFrom, _ := time.Parse(time.RFC3339, req.GetValidFrom())
 	validTo, _ := time.Parse(time.RFC3339, req.GetValidTo())

@@ -126,6 +126,31 @@ type ListSchoolsInput struct {
 	ActiveOnly bool
 }
 
+// ---------- Lead (landing publica "Preparate") ----------
+
+type LeadRepository interface {
+	// Create persiste un lead nuevo (modelo APPEND, no upsert) y devuelve
+	// su UUID generado por la BD.
+	Create(ctx context.Context, l *domain.Lead) (domain.LeadID, error)
+	// List devuelve leads paginados, mas reciente primero, opcionalmente
+	// filtrando por texto (nombre/dni/correo) y/o key_code. Devuelve tambien
+	// el total sin paginar para la reporteria del simulacro masivo.
+	List(ctx context.Context, in ListLeadsInput) ([]domain.Lead, uint32, error)
+	// FindByID recupera un lead por su UUID.
+	FindByID(ctx context.Context, id domain.LeadID) (*domain.Lead, error)
+	// SetHubspotRecordID guarda el record_id que devuelve HubSpot tras el
+	// upsert del contacto del lead.
+	SetHubspotRecordID(ctx context.Context, id domain.LeadID, recordID string) error
+}
+
+// ListLeadsInput: filtros del listado paginado de leads del masivo.
+type ListLeadsInput struct {
+	Search  string // matchea first_name/last_name/dni/email (LIKE %search%)
+	KeyCode string // filtro por campaña (key masiva), opcional
+	Limit   uint32
+	Offset  uint32
+}
+
 // ---------- Cache ----------
 
 type UserCache interface {

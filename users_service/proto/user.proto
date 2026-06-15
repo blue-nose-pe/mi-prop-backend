@@ -50,6 +50,16 @@ service SchoolService {
   rpc AssignAsesor        (AssignAsesorRequest)        returns (EmptyResponse);
 }
 
+// LeadService — captacion de leads de la landing publica "Preparate"
+// (simulacro masivo). CreateLead es PUBLICO (lo invoca el gateway en
+// /api/public/leads sin auth): el lead es un contacto anonimo que aun no
+// tiene cuenta. ListLeads alimenta la reporteria del simulacro masivo
+// (permiso analytics.simulacro_masivo.read en el gateway).
+service LeadService {
+  rpc CreateLead (CreateLeadRequest) returns (LeadResponse);
+  rpc ListLeads  (ListLeadsRequest)  returns (ListLeadsResponse);
+}
+
 // VisitaService — CRUD de visitas (presenciales o remotas) que un asesor
 // hace a un colegio. Mantenido como entidad operativa del modulo P1
 // reimplementada en P2.
@@ -220,6 +230,54 @@ message School {
   string asesor_user_id    = 17;
   string asesor_name       = 18;
   string personal_a_cargo  = 19; // persona/contacto a cargo en el colegio ("" si no se cargo)
+}
+
+// ---------- Lead (landing publica "Preparate" / simulacro masivo) ----------
+
+message Lead {
+  string id                = 1;
+  string first_name        = 2;
+  string last_name         = 3;
+  string dni               = 4;  // "" = no registrado
+  string phone             = 5;  // "" = no registrado
+  string email             = 6;
+  int32  graduation_year   = 7;  // anio de egreso del colegio; 0 = sin especificar
+  string school_text       = 8;  // colegio de procedencia (texto libre); "" = sin registrar
+  string origen            = 9;  // en prod siempre "landing Simulacro"
+  string key_code          = 10; // key masiva (LAN) de la campaña; "" = sin atar
+  bool   terms_accepted    = 11; // consentimiento terminos y condiciones
+  bool   data_processing   = 12; // consentimiento tratamiento de datos (Ley 29733)
+  string hubspot_record_id = 13; // record_id del contacto en HubSpot; "" = sin sincronizar
+  google.protobuf.Timestamp created_at = 14;
+}
+
+message CreateLeadRequest {
+  string first_name      = 1;  // requerido
+  string last_name       = 2;  // requerido
+  string dni             = 3;  // opcional
+  string phone           = 4;  // opcional
+  string email           = 5;  // requerido
+  int32  graduation_year = 6;  // opcional (anio de egreso)
+  string school_text     = 7;  // opcional (colegio de procedencia, texto libre)
+  string key_code        = 8;  // opcional (campaña / key masiva)
+  bool   terms_accepted  = 9;
+  bool   data_processing = 10;
+  // origen: opcional; si vacio el server usa "landing Simulacro".
+  string origen          = 11;
+}
+
+message LeadResponse { Lead lead = 1; }
+
+message ListLeadsRequest {
+  string search   = 1; // matchea first_name/last_name/dni/email (LIKE %search%)
+  string key_code = 2; // filtro por campaña, opcional
+  uint32 limit    = 3; // 0 = default 100, max 1000
+  uint32 offset   = 4;
+}
+
+message ListLeadsResponse {
+  repeated Lead items = 1;
+  uint32 total = 2;    // total sin paginar
 }
 
 // AuthService — separado de UserService porque los endpoints de auth

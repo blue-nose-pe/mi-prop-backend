@@ -938,6 +938,158 @@ var SchoolService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	LeadService_CreateLead_FullMethodName = "/users.v1.LeadService/CreateLead"
+	LeadService_ListLeads_FullMethodName  = "/users.v1.LeadService/ListLeads"
+)
+
+// LeadServiceClient is the client API for LeadService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// LeadService — captacion de leads de la landing publica "Preparate"
+// (simulacro masivo). CreateLead es PUBLICO (lo invoca el gateway en
+// /api/public/leads sin auth): el lead es un contacto anonimo que aun no
+// tiene cuenta. ListLeads alimenta la reporteria del simulacro masivo
+// (permiso analytics.simulacro_masivo.read en el gateway).
+type LeadServiceClient interface {
+	CreateLead(ctx context.Context, in *CreateLeadRequest, opts ...grpc.CallOption) (*LeadResponse, error)
+	ListLeads(ctx context.Context, in *ListLeadsRequest, opts ...grpc.CallOption) (*ListLeadsResponse, error)
+}
+
+type leadServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewLeadServiceClient(cc grpc.ClientConnInterface) LeadServiceClient {
+	return &leadServiceClient{cc}
+}
+
+func (c *leadServiceClient) CreateLead(ctx context.Context, in *CreateLeadRequest, opts ...grpc.CallOption) (*LeadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LeadResponse)
+	err := c.cc.Invoke(ctx, LeadService_CreateLead_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *leadServiceClient) ListLeads(ctx context.Context, in *ListLeadsRequest, opts ...grpc.CallOption) (*ListLeadsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListLeadsResponse)
+	err := c.cc.Invoke(ctx, LeadService_ListLeads_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// LeadServiceServer is the server API for LeadService service.
+// All implementations must embed UnimplementedLeadServiceServer
+// for forward compatibility.
+//
+// LeadService — captacion de leads de la landing publica "Preparate"
+// (simulacro masivo). CreateLead es PUBLICO (lo invoca el gateway en
+// /api/public/leads sin auth): el lead es un contacto anonimo que aun no
+// tiene cuenta. ListLeads alimenta la reporteria del simulacro masivo
+// (permiso analytics.simulacro_masivo.read en el gateway).
+type LeadServiceServer interface {
+	CreateLead(context.Context, *CreateLeadRequest) (*LeadResponse, error)
+	ListLeads(context.Context, *ListLeadsRequest) (*ListLeadsResponse, error)
+	mustEmbedUnimplementedLeadServiceServer()
+}
+
+// UnimplementedLeadServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedLeadServiceServer struct{}
+
+func (UnimplementedLeadServiceServer) CreateLead(context.Context, *CreateLeadRequest) (*LeadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method CreateLead not implemented")
+}
+func (UnimplementedLeadServiceServer) ListLeads(context.Context, *ListLeadsRequest) (*ListLeadsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListLeads not implemented")
+}
+func (UnimplementedLeadServiceServer) mustEmbedUnimplementedLeadServiceServer() {}
+func (UnimplementedLeadServiceServer) testEmbeddedByValue()                     {}
+
+// UnsafeLeadServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to LeadServiceServer will
+// result in compilation errors.
+type UnsafeLeadServiceServer interface {
+	mustEmbedUnimplementedLeadServiceServer()
+}
+
+func RegisterLeadServiceServer(s grpc.ServiceRegistrar, srv LeadServiceServer) {
+	// If the following call pancis, it indicates UnimplementedLeadServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&LeadService_ServiceDesc, srv)
+}
+
+func _LeadService_CreateLead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CreateLeadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeadServiceServer).CreateLead(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LeadService_CreateLead_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeadServiceServer).CreateLead(ctx, req.(*CreateLeadRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LeadService_ListLeads_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListLeadsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeadServiceServer).ListLeads(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LeadService_ListLeads_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeadServiceServer).ListLeads(ctx, req.(*ListLeadsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// LeadService_ServiceDesc is the grpc.ServiceDesc for LeadService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var LeadService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "users.v1.LeadService",
+	HandlerType: (*LeadServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "CreateLead",
+			Handler:    _LeadService_CreateLead_Handler,
+		},
+		{
+			MethodName: "ListLeads",
+			Handler:    _LeadService_ListLeads_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "user.proto",
+}
+
+const (
 	VisitaService_CreateVisita_FullMethodName = "/users.v1.VisitaService/CreateVisita"
 	VisitaService_UpdateVisita_FullMethodName = "/users.v1.VisitaService/UpdateVisita"
 	VisitaService_GetVisita_FullMethodName    = "/users.v1.VisitaService/GetVisita"

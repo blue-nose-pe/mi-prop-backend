@@ -83,6 +83,7 @@ func main() {
 	userRepo := mssqladapter.NewUserRepo(db)
 	permRepo := mssqladapter.NewPermissionRepo(db)
 	schoolRepo := mssqladapter.NewSchoolRepo(db)
+	leadRepo := mssqladapter.NewLeadRepo(db)
 	visitaRepo := mssqladapter.NewVisitaRepo(db)
 	refreshRepo := mssqladapter.NewRefreshTokenRepo(db)
 	assignmentRepo := mssqladapter.NewAssignmentRepo(db)
@@ -229,6 +230,7 @@ func main() {
 	pb.RegisterUserServiceServer(s, userHandler)
 	pb.RegisterAuthServiceServer(s, authHandler)
 	pb.RegisterSchoolServiceServer(s, grpchandler.NewSchoolHandler(schoolRepo, assignmentRepo))
+	pb.RegisterLeadServiceServer(s, grpchandler.NewLeadHandler(leadRepo))
 	pb.RegisterVisitaServiceServer(s, grpchandler.NewVisitaHandler(visitaRepo))
 	pb.RegisterPermissionGroupServiceServer(s, permGroupHandler)
 
@@ -238,6 +240,7 @@ func main() {
 	hs.SetServingStatus("users.v1.UserService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("users.v1.AuthService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("users.v1.SchoolService", healthpb.HealthCheckResponse_SERVING)
+	hs.SetServingStatus("users.v1.LeadService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("users.v1.VisitaService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("users.v1.PermissionGroupService", healthpb.HealthCheckResponse_SERVING)
 	hs.SetServingStatus("", healthpb.HealthCheckResponse_SERVING)

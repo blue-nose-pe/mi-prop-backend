@@ -23,6 +23,7 @@ const (
 	HubspotService_GetContactByDNI_FullMethodName    = "/hubspot.v1.HubspotService/GetContactByDNI"
 	HubspotService_SendOTP_FullMethodName            = "/hubspot.v1.HubspotService/SendOTP"
 	HubspotService_SyncStudentContact_FullMethodName = "/hubspot.v1.HubspotService/SyncStudentContact"
+	HubspotService_SyncLead_FullMethodName           = "/hubspot.v1.HubspotService/SyncLead"
 	HubspotService_SyncKey_FullMethodName            = "/hubspot.v1.HubspotService/SyncKey"
 	HubspotService_SyncExamResult_FullMethodName     = "/hubspot.v1.HubspotService/SyncExamResult"
 	HubspotService_UpsertSchool_FullMethodName       = "/hubspot.v1.HubspotService/UpsertSchool"
@@ -50,6 +51,13 @@ type HubspotServiceClient interface {
 	// tenga el contacto completo + relacion al colegio para que el cliente
 	// UCSP lo vea en el CRM. Mismo set de props que SendOTP minus el OTP.
 	SyncStudentContact(ctx context.Context, in *SyncStudentContactRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// SyncLead: upsert del contacto de un LEAD de la landing publica
+	// "Preparate" (simulacro masivo) al portal UCSP. Como el lead es anonimo
+	// y sin colegio real, NO asocia Company. Setea origen_del_contacto =
+	// "Examen Simulacro" (igual que el flujo de prod) + los flags de origen
+	// Mi Proposito + ano de egreso. Best-effort (fire-and-forget desde el
+	// gateway). Solo email es obligatorio (key de identidad del lead).
+	SyncLead(ctx context.Context, in *SyncLeadRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	// SyncKey: upsert del custom object Key (2-32450705) + asociaciones a
 	// Asesor (2-32448565) y Company del colegio (0-2). Paridad con v1:
 	// createKey/createVisita sincronizaban automaticamente cada key creada.
@@ -107,6 +115,16 @@ func (c *hubspotServiceClient) SyncStudentContact(ctx context.Context, in *SyncS
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(EmptyResponse)
 	err := c.cc.Invoke(ctx, HubspotService_SyncStudentContact_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *hubspotServiceClient) SyncLead(ctx context.Context, in *SyncLeadRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, HubspotService_SyncLead_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -192,6 +210,13 @@ type HubspotServiceServer interface {
 	// tenga el contacto completo + relacion al colegio para que el cliente
 	// UCSP lo vea en el CRM. Mismo set de props que SendOTP minus el OTP.
 	SyncStudentContact(context.Context, *SyncStudentContactRequest) (*EmptyResponse, error)
+	// SyncLead: upsert del contacto de un LEAD de la landing publica
+	// "Preparate" (simulacro masivo) al portal UCSP. Como el lead es anonimo
+	// y sin colegio real, NO asocia Company. Setea origen_del_contacto =
+	// "Examen Simulacro" (igual que el flujo de prod) + los flags de origen
+	// Mi Proposito + ano de egreso. Best-effort (fire-and-forget desde el
+	// gateway). Solo email es obligatorio (key de identidad del lead).
+	SyncLead(context.Context, *SyncLeadRequest) (*EmptyResponse, error)
 	// SyncKey: upsert del custom object Key (2-32450705) + asociaciones a
 	// Asesor (2-32448565) y Company del colegio (0-2). Paridad con v1:
 	// createKey/createVisita sincronizaban automaticamente cada key creada.
@@ -226,6 +251,9 @@ func (UnimplementedHubspotServiceServer) SendOTP(context.Context, *SendOTPReques
 }
 func (UnimplementedHubspotServiceServer) SyncStudentContact(context.Context, *SyncStudentContactRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SyncStudentContact not implemented")
+}
+func (UnimplementedHubspotServiceServer) SyncLead(context.Context, *SyncLeadRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method SyncLead not implemented")
 }
 func (UnimplementedHubspotServiceServer) SyncKey(context.Context, *SyncKeyRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SyncKey not implemented")
@@ -334,6 +362,24 @@ func _HubspotService_SyncStudentContact_Handler(srv interface{}, ctx context.Con
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(HubspotServiceServer).SyncStudentContact(ctx, req.(*SyncStudentContactRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _HubspotService_SyncLead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SyncLeadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(HubspotServiceServer).SyncLead(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: HubspotService_SyncLead_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(HubspotServiceServer).SyncLead(ctx, req.(*SyncLeadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -468,6 +514,10 @@ var HubspotService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SyncStudentContact",
 			Handler:    _HubspotService_SyncStudentContact_Handler,
+		},
+		{
+			MethodName: "SyncLead",
+			Handler:    _HubspotService_SyncLead_Handler,
 		},
 		{
 			MethodName: "SyncKey",

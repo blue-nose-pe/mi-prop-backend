@@ -27,6 +27,7 @@ type Clients struct {
 	Users        usersgrpcpb.UserServiceClient
 	Auth         usersgrpcpb.AuthServiceClient
 	Schools      usersgrpcpb.SchoolServiceClient
+	Leads        usersgrpcpb.LeadServiceClient
 	Visitas      usersgrpcpb.VisitaServiceClient
 	PermGroups   usersgrpcpb.PermissionGroupServiceClient
 	Exams        examsgrpcpb.ExamServiceClient
@@ -96,6 +97,7 @@ func Dial(a Addrs) (*Clients, error) {
 		Users:      usersgrpcpb.NewUserServiceClient(usersConn),
 		Auth:       usersgrpcpb.NewAuthServiceClient(usersConn),
 		Schools:    usersgrpcpb.NewSchoolServiceClient(usersConn),
+		Leads:      usersgrpcpb.NewLeadServiceClient(usersConn),
 		Visitas:    usersgrpcpb.NewVisitaServiceClient(usersConn),
 		PermGroups: usersgrpcpb.NewPermissionGroupServiceClient(usersConn),
 		Exams:     examsgrpcpb.NewExamServiceClient(examsConn),

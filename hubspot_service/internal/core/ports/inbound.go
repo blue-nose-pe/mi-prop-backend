@@ -16,6 +16,11 @@ type SyncCommands interface {
 	UpsertContact(ctx context.Context, c domain.Contact) (domain.RecordID, error)
 	SendOTP(ctx context.Context, in SendOTPInput) error
 	SyncStudentContact(ctx context.Context, in SyncStudentContactInput) error
+	// SyncLead upsertea el contacto de un lead de la landing masiva
+	// ("Preparate") al portal UCSP, SIN asociar Company (lead anonimo, sin
+	// colegio real). Setea origen_del_contacto="Examen Simulacro" + flags
+	// de origen Mi Proposito. Best-effort.
+	SyncLead(ctx context.Context, in SyncLeadInput) error
 	// SyncKey upsertea el custom object Key (2-32450705) + asociaciones a
 	// Asesor (2-32448565) y Company (0-2). Best-effort: errores de
 	// asociacion no fallan el upsert. Paridad con v1.
@@ -37,6 +42,18 @@ type SyncStudentContactInput struct {
 	Phone          string
 	SchoolIntID    int32
 	SchoolRecordID string
+}
+
+// SyncLeadInput — payload para sincronizar el contacto de un lead de la
+// landing masiva. Solo Email es obligatorio. GraduationYear va como string
+// (props ano_de_egreso / ano_colegio_abc_fb son texto en el portal).
+type SyncLeadInput struct {
+	Email          string
+	FirstName      string
+	LastName       string
+	DocumentNumber string
+	Phone          string
+	GraduationYear string
 }
 
 type SendOTPInput struct {

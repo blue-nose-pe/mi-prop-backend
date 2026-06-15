@@ -164,6 +164,51 @@ func (h *SyncHandler) SyncStudentContact(ctx context.Context, in ports.SyncStude
 	return nil
 }
 
+// SyncLead — upsert del contacto de un lead de la landing publica
+// "Preparate" (simulacro masivo) al portal UCSP. Diferencias vs
+// SyncStudentContact:
+//   - identidad por EMAIL (el lead es anonimo, puede no tener DNI todavia).
+//   - NO asocia Company: el lead masivo no tiene colegio real (en prod la
+//     key LAN usa id_colegio=1 generico).
+//   - setea origen_del_contacto="Examen Simulacro" (el valor interno del
+//     enum en el portal UCSP coincide con el label) — igual que el flujo
+//     de prod, para que admision lo trabaje en el mismo pipeline de leads.
+//   - ano_de_egreso / ano_colegio_abc_fb (props texto) con el anio de egreso
+//     que el alumno eligio en la landing.
+// Best-effort: el caller (gateway) lo dispara fire-and-forget; el lead ya
+// quedo persistido en la BD aunque HubSpot falle.
+func (h *SyncHandler) SyncLead(ctx context.Context, in ports.SyncLeadInput) error {
+	if in.Email == "" {
+		return domain.ErrInvalidPayload
+	}
+	props := map[string]string{
+		"origina_de_mi_proposito_":       "true",
+		"sincronizado_por_mi_proposito_": "true",
+		"origen_del_contacto":            "Examen Simulacro",
+	}
+	if in.FirstName != "" {
+		props["firstname"] = in.FirstName
+	}
+	if in.LastName != "" {
+		props["lastname"] = in.LastName
+	}
+	if in.DocumentNumber != "" {
+		props["dni"] = in.DocumentNumber
+	}
+	if in.Phone != "" {
+		props["phone"] = in.Phone
+	}
+	if in.GraduationYear != "" {
+		props["ano_de_egreso"] = in.GraduationYear
+		props["ano_colegio_abc_fb"] = in.GraduationYear
+	}
+	if _, err := h.hs.UpsertContactByEmail(ctx, props, in.Email); err != nil {
+		log.Printf("[SyncLead] UpsertContactByEmail FAIL email=%s err=%v", in.Email, err)
+		return err
+	}
+	return nil
+}
+
 // Object type IDs en HubSpot UCSP (produccion). Cambiar aca si UCSP
 // migra a otro portal o redefine los custom objects.
 const (

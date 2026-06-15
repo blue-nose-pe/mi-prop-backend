@@ -23,6 +23,14 @@ service HubspotService {
   // UCSP lo vea en el CRM. Mismo set de props que SendOTP minus el OTP.
   rpc SyncStudentContact (SyncStudentContactRequest) returns (EmptyResponse);
 
+  // SyncLead: upsert del contacto de un LEAD de la landing publica
+  // "Preparate" (simulacro masivo) al portal UCSP. Como el lead es anonimo
+  // y sin colegio real, NO asocia Company. Setea origen_del_contacto =
+  // "Examen Simulacro" (igual que el flujo de prod) + los flags de origen
+  // Mi Proposito + ano de egreso. Best-effort (fire-and-forget desde el
+  // gateway). Solo email es obligatorio (key de identidad del lead).
+  rpc SyncLead (SyncLeadRequest) returns (EmptyResponse);
+
   // SyncKey: upsert del custom object Key (2-32450705) + asociaciones a
   // Asesor (2-32448565) y Company del colegio (0-2). Paridad con v1:
   // createKey/createVisita sincronizaban automaticamente cada key creada.
@@ -97,6 +105,21 @@ message SyncStudentContactRequest {
   string phone           = 5;
   int32  school_int_id   = 6;
   string school_record_id = 7;
+}
+
+// SyncLeadRequest — payload para sincronizar el contacto de un lead de la
+// landing masiva a HubSpot. Solo email es obligatorio. graduation_year va
+// como string (las props ano_de_egreso / ano_colegio_abc_fb del portal UCSP
+// son de tipo texto). NO lleva colegio: colegio_de_procedencia en el portal
+// es un enum de colegios predefinidos y el lead masivo escribe texto libre,
+// asi que ese dato queda en la BD del lead, no en HubSpot.
+message SyncLeadRequest {
+  string email           = 1;
+  string first_name      = 2;
+  string last_name       = 3;
+  string document_number = 4;
+  string phone           = 5;
+  string graduation_year = 6;
 }
 
 // SyncKeyRequest — payload para upsert del custom object Key (2-32450705)

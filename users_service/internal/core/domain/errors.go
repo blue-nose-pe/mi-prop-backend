@@ -10,6 +10,7 @@ var (
 	// ----- Not found -----
 	ErrUserNotFound       = apperr.NewNotFound("USER_NOT_FOUND", "user not found")
 	ErrSchoolNotFound     = apperr.NewNotFound("SCHOOL_NOT_FOUND", "school not found")
+	ErrLeadNotFound       = apperr.NewNotFound("LEAD_NOT_FOUND", "lead not found")
 	ErrVisitaNotFound     = apperr.NewNotFound("VISITA_NOT_FOUND", "visita not found")
 	ErrPermissionNotFound = apperr.NewNotFound("PERMISSION_NOT_FOUND", "permission not found")
 	ErrPermGroupNotFound  = apperr.NewNotFound("PERMISSION_GROUP_NOT_FOUND", "permission group not found")
