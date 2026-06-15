@@ -16,6 +16,31 @@ import (
 // todavia no tiene cuenta.
 func (p *Proxy) RegisterLanding(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/public/leads", p.createPublicLead)
+	// Reporteria del simulacro masivo: lista los leads captados. NO es
+	// publico (no va bajo /api/public/) → requiere JWT; users_service lo
+	// gatea ademas con analytics.simulacro_masivo.read.
+	mux.HandleFunc("GET /api/leads", p.listLeads)
+}
+
+// listLeads - GET /api/leads?search=&key_code=&limit=&offset=
+// Alimenta los KPIs del panel "Simulacro Masivo". Devuelve {items, total}.
+func (p *Proxy) listLeads(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	resp, err := p.cli.Leads.ListLeads(r.Context(), &usersgrpcpb.ListLeadsRequest{
+		Search:  q.Get("search"),
+		KeyCode: q.Get("key_code"),
+		Limit:   parseUint32Query(q.Get("limit"), 100),
+		Offset:  parseUint32Query(q.Get("offset"), 0),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, l := range resp.GetItems() {
+		items = append(items, protoLeadToJSON(l))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": resp.GetTotal()})
 }
 
 type createPublicLeadRequest struct {
