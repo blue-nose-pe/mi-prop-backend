@@ -29,7 +29,7 @@ func newAuthHandlerWithMocks() (
 	// Tests existentes no ejercitan OTP. Pasamos nil-implementations seguras
 	// para los nuevos puertos: stubs que devuelven valores neutrales.
 	h := NewAuthHandler(users, stubSchoolRepo{}, perms, cache, hasher, issuer, verifier, refresh,
-		stubOTPRepo{}, stubOTPHasher{}, stubOTPSender{}, stubClassifier{})
+		stubOTPRepo{}, stubOTPHasher{}, stubOTPSender{}, stubClassifier{}, "")
 	return h, users, perms, refresh, issuer, verifier
 }
 
