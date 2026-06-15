@@ -102,7 +102,12 @@ func main() {
 			strings.HasPrefix(fullMethod, "/grpc.reflection.") ||
 			fullMethod == "/hubspot.v1.HubspotService/SendOTP" ||
 			fullMethod == "/hubspot.v1.HubspotService/UpsertContact" ||
-			fullMethod == "/hubspot.v1.HubspotService/SyncStudentContact"
+			fullMethod == "/hubspot.v1.HubspotService/SyncStudentContact" ||
+			// SyncLead lo invoca el gateway fire-and-forget desde la ruta
+			// PUBLICA /api/public/leads (landing masiva), que no tiene sesion
+			// del caller → sin authz. Sin esto el sync del lead a HubSpot
+			// fallaba con Unauthenticated y el lead nunca aparecia en el CRM.
+			fullMethod == "/hubspot.v1.HubspotService/SyncLead"
 	}
 
 	gs := grpc.NewServer(
