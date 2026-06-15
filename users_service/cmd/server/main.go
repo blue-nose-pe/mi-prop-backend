@@ -203,6 +203,11 @@ func main() {
 	// pedir un token).
 	jwtSkip := func(fullMethod string) bool {
 		return strings.HasPrefix(fullMethod, "/users.v1.AuthService/") ||
+			// CreateLead es publico: lo invoca el gateway en /api/public/leads
+			// (landing "Preparate"/masivo) sin JWT — el lead es un contacto
+			// anonimo que todavia no tiene cuenta. ListLeads SI requiere auth
+			// (va en el PermissionMap con analytics.simulacro_masivo.read).
+			fullMethod == "/users.v1.LeadService/CreateLead" ||
 			strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.")
 	}

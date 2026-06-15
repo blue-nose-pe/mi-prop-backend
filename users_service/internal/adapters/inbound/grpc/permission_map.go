@@ -54,6 +54,12 @@ var PermissionMap = map[string]string{
 	// que CreateSchool/UpdateSchool — la mutacion es del mismo nivel.
 	"/users.v1.SchoolService/AssignAsesor":          "db_users.school.write",
 
+	// leads (landing "Preparate" / simulacro masivo)
+	// CreateLead NO va aca: es publico (jwtmw skip-list lo maneja) — lo
+	// invoca el gateway en /api/public/leads sin token. ListLeads alimenta
+	// la reporteria del masivo → mismo permiso que esa seccion del panel.
+	"/users.v1.LeadService/ListLeads":               "analytics.simulacro_masivo.read",
+
 	// visitas (operacional, asesor)
 	"/users.v1.VisitaService/CreateVisita": "db_users.school.write",
 	"/users.v1.VisitaService/UpdateVisita": "db_users.school.write",
