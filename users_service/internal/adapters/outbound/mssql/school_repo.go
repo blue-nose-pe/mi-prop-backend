@@ -213,9 +213,14 @@ func (r *SchoolRepo) Update(ctx context.Context, s *domain.School) error {
 	return nil
 }
 
-// ListByAsesor: JOIN con assignment para resolver colegios del asesor en
-// un solo viaje a la DB. assignment.target_user_id apunta al usuario
-// coordinador del colegio; school.user_id = ese mismo coordinator.
+// ListByAsesor resuelve los colegios que un usuario puede ver/gestionar.
+// DOS vias (el nombre quedo del asesor pero cubre ambos roles):
+//   1. COORDINADOR: es el dueno del colegio (school.user_id = userID). El
+//      manual de accesos define al coordinador con "vista acotada, solo su
+//      colegio"; su vinculo es school.user_id (NO hay assignment
+//      'coordinador_de_colegio' en uso — verificado en la BD).
+//   2. ASESOR: tiene un assignment 'asesor_de_colegio' vigente cuyo target
+//      es el user_id/dueno del colegio.
 func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.School, error) {
 	const q = `
 		SELECT CONVERT(NVARCHAR(36), s.id),
@@ -228,10 +233,14 @@ func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) (
 		       ISNULL(s.ruc, ''), ISNULL(s.poblacion, ''),
 		       ISNULL(s.personal_a_cargo, '')
 		  FROM school s
-		  JOIN assignment a ON a.target_user_id = s.user_id
-		 WHERE a.source_user_id = CONVERT(UNIQUEIDENTIFIER, @p1)
-		   AND a.kind = 'asesor_de_colegio'
-		   AND a.valid_to IS NULL
+		 WHERE s.user_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		    OR EXISTS (
+		         SELECT 1 FROM assignment a
+		          WHERE a.target_user_id = s.user_id
+		            AND a.source_user_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		            AND a.kind = 'asesor_de_colegio'
+		            AND a.valid_to IS NULL
+		       )
 		 ORDER BY s.name`
 	rows, err := r.db.QueryContext(ctx, q, string(asesorID))
 	if err != nil {
