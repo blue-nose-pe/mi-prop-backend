@@ -30,6 +30,10 @@ var (
 	// ErrKeyExamTypeMismatch: la key es de otro tipo de prueba que el exam.
 	// Ejemplo: key vocacional (VO-XXXX) usada para iniciar un simulacro.
 	ErrKeyExamTypeMismatch = apperr.NewValidation("KEY_EXAM_TYPE_MISMATCH", "key is for a different exam type", "key_code")
+	// ErrMasivoUCSPOnly: una key masiva/LAN (sin colegio) solo habilita el
+	// simulacro UCSP, nunca el Examen Nacional — paridad con prod y con el
+	// front, que en el masivo solo ofrece UCSP. Defense-in-depth.
+	ErrMasivoUCSPOnly = apperr.NewPermissionDenied("MASIVO_UCSP_ONLY", "la key masiva solo permite el examen UCSP, no el Nacional")
 	ErrAttemptAlreadyDone = apperr.NewConflict("ATTEMPT_ALREADY_SUBMITTED", "attempt was already submitted", "attempt_id")
 	// ErrMaxAttemptsReached: el alumno ya rindio key.MaxAttemptsPerUser
 	// veces este exam. El handler StartAttempt devuelve esto y el front

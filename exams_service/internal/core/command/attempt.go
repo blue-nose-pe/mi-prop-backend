@@ -4,6 +4,7 @@ package command
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"exams_service/internal/core/domain"
@@ -78,6 +79,14 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 	// preguntas RIASEC (scoring nonsense).
 	if in.ExpectedExamTypeID != 0 && e.ExamTypeID != in.ExpectedExamTypeID {
 		return nil, domain.ErrKeyExamTypeMismatch
+	}
+
+	// Candado masivo: una key LAN/masiva (con código pero sin colegio) SOLO
+	// habilita el simulacro UCSP, nunca el Examen Nacional. El front ya solo
+	// ofrece UCSP en el masivo; esto es defense-in-depth por si llega una
+	// request armada a mano con un exam_id Nacional (code SIME-NAC-*).
+	if in.KeyIsMasivo && strings.HasPrefix(strings.ToUpper(e.Code), "SIME-NAC") {
+		return nil, domain.ErrMasivoUCSPOnly
 	}
 
 	// Aforo a nivel exam (e.MaxParticipants): solo aplica cuando NO hay

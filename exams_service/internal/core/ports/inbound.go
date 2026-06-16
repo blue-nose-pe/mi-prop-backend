@@ -180,6 +180,10 @@ type StartAttemptInput struct {
 	// para impedir que una key vocacional arranque un examen de simulacro
 	// y viceversa (Fix A). Cuando es 0, no se hace el chequeo (modo admin).
 	ExpectedExamTypeID int32
+	// KeyIsMasivo: true si la key es masiva/LAN (sin colegio). El handler lo
+	// setea cuando validation.SchoolID == "". Start lo usa para bloquear el
+	// Examen Nacional en el masivo (la key masiva solo habilita UCSP).
+	KeyIsMasivo bool
 }
 
 // AnswerInput modela la respuesta de un alumno a UNA pregunta. El shape

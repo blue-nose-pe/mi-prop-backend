@@ -57,6 +57,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 	userID := domain.UserID(req.GetUserId())
 
 	var keyID domain.KeyID
+	var keySchoolID domain.SchoolID
 	var expectedExamTypeID int32
 	var maxAttemptsPerUser int32
 	if req.GetKeyCode() != "" {
@@ -68,6 +69,7 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 			return nil, apperr.ToGRPC(ctx, domain.ErrExamClosed)
 		}
 		keyID = validation.KeyID
+		keySchoolID = validation.SchoolID
 		expectedExamTypeID = validation.ExamTypeID
 		maxAttemptsPerUser = validation.MaxAttemptsPerUser
 	}
@@ -117,6 +119,9 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 		UserID:             userID,
 		KeyID:              keyID,
 		ExpectedExamTypeID: expectedExamTypeID,
+		// Masivo = key LAN/masiva (con código pero sin colegio). Start usa
+		// esto para bloquear el Examen Nacional (el masivo es solo UCSP).
+		KeyIsMasivo: keyID != "" && keySchoolID == "",
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
