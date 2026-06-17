@@ -22,15 +22,24 @@ func NewLeadRepo(db *sql.DB) *LeadRepo { return &LeadRepo{db: db} }
 // Create persiste un lead nuevo. Modelo APPEND: cada inscripcion es una fila
 // (sin upsert por dni/email — fiel a prod). La BD genera el UUID via DEFAULT
 // NEWID() y lo recuperamos con OUTPUT INSERTED.id. graduation_year 0 => NULL.
+//
+// Estado de acceso: si el lead trae key_code (hubo una LAN ACTIVA → la landing
+// auto-envia el magic-link al registrar), lo marcamos como ENVIADO en la
+// creacion (acceso_enviado_at = ahora, acceso_key_code = la LAN). Si key_code
+// es vacio (sin campaña activa → edge case), queda PENDIENTE y el staff se lo
+// envia desde el panel. Asi el panel refleja el estado real, no "Pendiente"
+// para alguien que ya recibio su acceso.
 func (r *LeadRepo) Create(ctx context.Context, l *domain.Lead) (domain.LeadID, error) {
 	const q = `
 		INSERT INTO landing_lead (first_name, last_name, dni, phone, email,
 		                          graduation_year, school_text, origen, key_code,
-		                          terms_accepted, data_processing, hubspot_record_id)
+		                          terms_accepted, data_processing, hubspot_record_id,
+		                          acceso_enviado_at, acceso_key_code)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1, @p2, NULLIF(@p3, ''), NULLIF(@p4, ''), @p5,
 		        NULLIF(@p6, 0), NULLIF(@p7, ''), @p8, NULLIF(@p9, ''),
-		        @p10, @p11, NULLIF(@p12, ''))`
+		        @p10, @p11, NULLIF(@p12, ''),
+		        IIF(@p9 = '', NULL, SYSUTCDATETIME()), NULLIF(@p9, ''))`
 	origen := l.Origen
 	if origen == "" {
 		origen = "landing Simulacro"
