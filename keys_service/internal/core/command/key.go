@@ -174,6 +174,14 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 	if err != nil {
 		return nil, err
 	}
+	// Invariante "1 LAN activa a la vez": toda LAN nace activa (Active:true
+	// arriba); al crearla, desactivamos cualquier otra LAN activa. Validado
+	// con UCSP: hay un solo simulacro masivo por proceso de admision.
+	if in.Mode == domain.ModeLAN {
+		if err := h.keys.DeactivateOtherLans(ctx, id); err != nil {
+			return nil, err
+		}
+	}
 	h.syncToHubspot(ctx, saved, recordIDs{
 		AsesorRecordID: in.AsesorRecordID,
 		SchoolRecordID: in.SchoolRecordID,
@@ -219,6 +227,13 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 	}
 	if err := h.keys.Update(ctx, k); err != nil {
 		return nil, err
+	}
+	// Invariante "1 LAN activa a la vez": si esta Update ACTIVO una LAN,
+	// desactivamos las demas LAN activas.
+	if in.Active != nil && *in.Active && k.Mode == domain.ModeLAN {
+		if err := h.keys.DeactivateOtherLans(ctx, k.ID); err != nil {
+			return nil, err
+		}
 	}
 	// Update no recibe record_ids hoy (UpdateKeyInput no los expone). El
 	// hubspot-service hara intento de lookup via mi_proposito_* — si falla,

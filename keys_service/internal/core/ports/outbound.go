@@ -15,6 +15,10 @@ type KeyRepository interface {
 	// FindActiveLan: key masiva (mode='lan') activa y vigente mas reciente.
 	FindActiveLan(ctx context.Context) (*domain.Key, error)
 	SetActive(ctx context.Context, id domain.KeyID, active bool) error
+	// DeactivateOtherLans: desactiva las demas keys masivas (mode='lan')
+	// activas, excepto exceptID. Garantiza la invariante "una sola LAN activa
+	// a la vez" (UCSP: un solo simulacro masivo por proceso de admision).
+	DeactivateOtherLans(ctx context.Context, exceptID domain.KeyID) error
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
 	// ListAll — dump completo de la tabla key. Solo lo usa el endpoint

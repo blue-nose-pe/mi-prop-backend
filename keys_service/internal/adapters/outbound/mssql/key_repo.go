@@ -134,6 +134,20 @@ func (r *KeyRepo) SetActive(ctx context.Context, id domain.KeyID, active bool) e
 	return nil
 }
 
+// DeactivateOtherLans desactiva TODAS las keys masivas (mode='lan') activas
+// EXCEPTO la indicada. Garantiza la invariante "una sola LAN activa a la vez"
+// (validado con UCSP: solo hay un examen simulacro masivo por proceso de
+// admision). Se invoca al crear o reactivar una LAN. No falla si no hay otras
+// (0 filas afectadas es valido).
+func (r *KeyRepo) DeactivateOtherLans(ctx context.Context, exceptID domain.KeyID) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE [key] SET active = 0
+		  WHERE mode = 'lan' AND active = 1
+		    AND id <> CONVERT(UNIQUEIDENTIFIER, @p1)`,
+		string(exceptID))
+	return err
+}
+
 func (r *KeyRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error) {
 	return r.list(ctx,
 		`SELECT `+keyCols+` FROM [key]
