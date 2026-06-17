@@ -219,12 +219,16 @@ func (h *AttemptHandler) Finish(ctx context.Context, id domain.AttemptID) (*doma
 	}
 
 	var score float64
-	// Vocacional (exam_type_id=1) NO se puntua con is_correct. Score=0,
-	// max_score=0 dejan claro al cliente que no aplica formula academica.
-	// El analytics_service tiene el RPC dedicado GetReporteEstudiante para
-	// la lectura RIASEC.
+	// Vocacional (1) y Estilos/hábitos (3) NO se puntúan con is_correct: sus
+	// preguntas son SCALE/Likert sin respuesta correcta. score=0, max_score=0
+	// dejan claro que no aplica fórmula académica Y los excluyen de los
+	// promedios de analytics (que filtran por max_score>0). Bug: antes solo se
+	// zereaba vocacional → estilos entraba a los avg con max_score=Σpoints>0 y
+	// score=0, contaminando con 0% falsos. El simulacro (2) sí se puntúa.
+	// Cada tipo tiene su lectura dedicada (GetReporteEstudiante: RIASEC / EDA).
 	const examTypeVocacional = int32(1)
-	if e.ExamTypeID == examTypeVocacional {
+	const examTypeHabitos = int32(3)
+	if e.ExamTypeID == examTypeVocacional || e.ExamTypeID == examTypeHabitos {
 		maxScore = 0
 	} else {
 		// Agrupamos respuestas por question — necesario para MULTIPLE_CHOICE

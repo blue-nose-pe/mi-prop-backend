@@ -51,8 +51,15 @@ func (p *Proxy) RegisterKeys(mux *http.ServeMux) {
 // la key, no en el registro del user, así que el front enriquece con esto
 // el listado "Ver estudiantes" (antes mostraba grado/sección = "—" fijos).
 func (p *Proxy) studentKeyInfoByColegio(w http.ResponseWriter, r *http.Request) {
+	schoolID := r.PathValue("id")
+	// Scope por colegio (como sus hermanos listKeysByColegio/listStudentsByColegio):
+	// un asesor/coordinador solo puede ver info de SUS colegios; superadmin todos.
+	if !p.enforceColegioScope(r, schoolID) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	resp, err := p.cli.Keys.ListStudentKeyInfoByColegio(r.Context(), &keysgrpcpb.ListByColegioRequest{
-		SchoolId: r.PathValue("id"),
+		SchoolId: schoolID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)

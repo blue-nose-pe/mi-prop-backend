@@ -370,9 +370,17 @@ func (p *Proxy) submitSurveyResponse(w http.ResponseWriter, r *http.Request) {
 			HasNumber:   a.HasNumber,
 		})
 	}
+	// Anti-suplantación: si el request viene autenticado, el user_id SIEMPRE es
+	// el del JWT (ignoramos el del body, que era forjable — un alumno podía
+	// mandar respuestas en nombre de otro). La ruta pública anónima (sin JWT)
+	// usa el del body.
+	userID := in.UserID
+	if caller := userIDFromContext(r); caller != "" {
+		userID = caller
+	}
 	resp, err := p.cli.Responses.Submit(r.Context(), &satisfactiongrpcpb.SubmitResponseRequest{
 		SurveyId:      in.SurveyID,
-		UserId:        in.UserID,
+		UserId:        userID,
 		ExamAttemptId: in.ExamAttemptID,
 		Answers:       answers,
 	})

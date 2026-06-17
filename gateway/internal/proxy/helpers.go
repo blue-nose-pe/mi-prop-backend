@@ -270,6 +270,15 @@ func (p *Proxy) enforceColegioScope(r *http.Request, targetSchoolID string) bool
 	if isSuperadminContext(r) {
 		return true
 	}
+	// Admin (admin_permissions): ve TODOS los colegios — no está atado a uno.
+	// Se distingue por db_users.permission_group.write, que (verificado en BD:
+	// solo admin_permissions lo tiene) ni el asesor ni el coordinador poseen.
+	// Sin este caso, un admin no-superadmin (is_superadmin=0, sin school_id y
+	// sin assignments) quedaba bloqueado de TODO endpoint scopeado por colegio
+	// (dashboard, keys, students, student-key-info) con un 403.
+	if hasPermission(r, "db_users.permission_group.write") {
+		return true
+	}
 	caller := userIDFromContext(r)
 	if caller == "" || targetSchoolID == "" {
 		return false

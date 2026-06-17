@@ -59,6 +59,11 @@ var PermissionMap = map[string]string{
 	// invoca el gateway en /api/public/leads sin token. ListLeads alimenta
 	// la reporteria del masivo → mismo permiso que esa seccion del panel.
 	"/users.v1.LeadService/ListLeads":               "analytics.simulacro_masivo.read",
+	// GetLeadsByIDs (resuelve PII de leads) y MarkLeadAccessSent (muta estado)
+	// son del panel masivo → mismo permiso. Sin esto, whitelist-by-default-PASS
+	// dejaba que cualquier autenticado (incluso un alumno) los invocara.
+	"/users.v1.LeadService/GetLeadsByIDs":           "analytics.simulacro_masivo.read",
+	"/users.v1.LeadService/MarkLeadAccessSent":      "analytics.simulacro_masivo.read",
 
 	// visitas (operacional, asesor)
 	"/users.v1.VisitaService/CreateVisita": "db_users.school.write",
