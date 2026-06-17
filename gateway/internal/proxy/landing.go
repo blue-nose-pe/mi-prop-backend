@@ -205,6 +205,42 @@ func (p *Proxy) createPublicLead(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// Consentimientos OBLIGATORIOS (Ley 29733 — protección de datos personales
+	// del Perú). Sin ambos NO se persiste ni se sincroniza el lead a HubSpot.
+	// El front ya los exige (checkboxes requiredTrue), pero este endpoint es
+	// PÚBLICO y forjable → se valida también en el server (cumplimiento legal).
+	if !in.TermsAccepted || !in.DataProcessing {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "CONSENT_REQUIRED",
+			Message: "Debes aceptar los términos y el tratamiento de datos personales.",
+		})
+		return
+	}
+	// DNI peruano: exactamente 8 dígitos. Es la llave que une el lead con su
+	// resultado del simulacro (lead↔resultado por DNI, fiel a prod).
+	if !isNDigits(in.DNI, 8) {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "VALIDATION_ERROR",
+			Message: "El DNI debe tener 8 dígitos.",
+		})
+		return
+	}
+	// Celular: el front lo manda en E.164 (+51 + 9 dígitos). Validamos por
+	// cantidad de dígitos para aceptar tanto el local (9) como el E.164 (11).
+	if d := digitsOnly(in.Phone); d != "" && len(d) != 9 && len(d) != 11 {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "VALIDATION_ERROR",
+			Message: "El celular debe tener 9 dígitos.",
+		})
+		return
+	}
+	if !looksLikeEmail(in.Email) {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "VALIDATION_ERROR",
+			Message: "El correo no tiene un formato válido.",
+		})
+		return
+	}
 
 	resp, err := p.cli.Leads.CreateLead(r.Context(), &usersgrpcpb.CreateLeadRequest{
 		FirstName:      in.FirstName,
@@ -269,4 +305,55 @@ func protoLeadToJSON(l *usersgrpcpb.Lead) map[string]any {
 		"acceso_enviado_at": optionalTimestamp(l.GetAccesoEnviadoAt()),
 		"acceso_key_code":   l.GetAccesoKeyCode(),
 	}
+}
+
+// isNDigits reporta si s tiene exactamente n caracteres y todos son dígitos.
+func isNDigits(s string, n int) bool {
+	if len(s) != n {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// digitsOnly devuelve solo los dígitos de s (descarta '+', espacios, guiones).
+// Lo usa la validación del celular para aceptar tanto el local (9) como el
+// E.164 que manda el front (+51 + 9 = 11 dígitos).
+func digitsOnly(s string) string {
+	out := make([]byte, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			out = append(out, s[i])
+		}
+	}
+	return string(out)
+}
+
+// looksLikeEmail hace una validación de formato mínima: un solo '@' con texto
+// a ambos lados y un '.' válido en el dominio. No pretende ser RFC 5322 — el
+// front ya valida con Validators.email; esto es la red de seguridad del server
+// para un endpoint público forjable.
+func looksLikeEmail(s string) bool {
+	at := -1
+	for i := 0; i < len(s); i++ {
+		if s[i] == '@' {
+			if at != -1 {
+				return false // más de un '@'
+			}
+			at = i
+		}
+	}
+	if at <= 0 || at == len(s)-1 {
+		return false
+	}
+	for i := at + 2; i < len(s)-1; i++ {
+		if s[i] == '.' {
+			return true
+		}
+	}
+	return false
 }

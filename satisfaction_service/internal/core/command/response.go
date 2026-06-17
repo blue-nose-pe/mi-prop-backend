@@ -48,24 +48,31 @@ func (h *ResponseHandler) Submit(ctx context.Context, in ports.SubmitResponseInp
 		}
 	}
 
-	switch s.Trigger {
-	case "post_test":
-		if in.ExamAttemptID != "" {
-			exists, err := h.responses.ExistsByUserAttempt(ctx, in.UserID, in.SurveyID, in.ExamAttemptID)
+	// La dedup por usuario solo aplica cuando hay un user_id. Las encuestas
+	// PÚBLICAS/anónimas (alumno sin sesión) llegan con user_id vacío: no se
+	// pueden deduplicar por usuario y, además, CONVERT(UNIQUEIDENTIFIER, '')
+	// reventaría la query → 500. Por eso se saltan los checks Exists* cuando
+	// in.UserID == "".
+	if in.UserID != "" {
+		switch s.Trigger {
+		case "post_test":
+			if in.ExamAttemptID != "" {
+				exists, err := h.responses.ExistsByUserAttempt(ctx, in.UserID, in.SurveyID, in.ExamAttemptID)
+				if err != nil {
+					return nil, err
+				}
+				if exists {
+					return nil, domain.ErrAlreadySubmittedThisAttempt
+				}
+			}
+		case "on_demand":
+			exists, err := h.responses.ExistsByUserSurvey(ctx, in.UserID, in.SurveyID)
 			if err != nil {
 				return nil, err
 			}
 			if exists {
-				return nil, domain.ErrAlreadySubmittedThisAttempt
+				return nil, domain.ErrAlreadySubmittedThisSurvey
 			}
-		}
-	case "on_demand":
-		exists, err := h.responses.ExistsByUserSurvey(ctx, in.UserID, in.SurveyID)
-		if err != nil {
-			return nil, err
-		}
-		if exists {
-			return nil, domain.ErrAlreadySubmittedThisSurvey
 		}
 	}
 

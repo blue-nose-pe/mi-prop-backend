@@ -29,7 +29,7 @@ func (r *ResponseRepo) Submit(ctx context.Context, resp *domain.Response, answer
 		INSERT INTO survey_response (survey_id, user_id, exam_attempt_id)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (CONVERT(UNIQUEIDENTIFIER, @p1),
-		        CONVERT(UNIQUEIDENTIFIER, @p2),
+		        IIF(@p2 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p2)),
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)))`
 	var idStr string
 	if err := tx.QueryRowContext(ctx, insertResp,
@@ -62,7 +62,7 @@ func (r *ResponseRepo) FindByID(ctx context.Context, id domain.ResponseID) (*dom
 	const q = `
 		SELECT CONVERT(NVARCHAR(36), id),
 		       CONVERT(NVARCHAR(36), survey_id),
-		       CONVERT(NVARCHAR(36), user_id),
+		       ISNULL(CONVERT(NVARCHAR(36), user_id), ''),
 		       ISNULL(CONVERT(NVARCHAR(36), exam_attempt_id), ''),
 		       submitted_at
 		  FROM survey_response WHERE id = CONVERT(UNIQUEIDENTIFIER, @p1)`
