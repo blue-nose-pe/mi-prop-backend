@@ -700,9 +700,6 @@ func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt, authz string) {
 // con db_exams.exam_attempt.write (que permite operar sobre attempts ajenos
 // — caso un proctor o asesor asistiendo a un estudiante en presencial).
 func (p *Proxy) callerOwnsAttempt(r *http.Request) bool {
-	if hasPermission(r, "db_exams.exam_attempt.write") {
-		return true
-	}
 	caller := userIDFromContext(r)
 	if caller == "" {
 		return false
@@ -713,7 +710,15 @@ func (p *Proxy) callerOwnsAttempt(r *http.Request) bool {
 	if err != nil || resp.GetAttempt() == nil {
 		return false
 	}
-	return resp.GetAttempt().GetUserId() == caller
+	if resp.GetAttempt().GetUserId() == caller {
+		return true
+	}
+	// El caller NO es el dueño del intento. Override SOLO para staff real
+	// (superadmin o admin). OJO: db_exams.exam_attempt.write NO sirve como
+	// bypass — el grupo de ALUMNOS lo tiene (para responder/cerrar SU propio
+	// intento), así que usarlo permitía a un alumno inyectar respuestas y
+	// fijar el puntaje del intento de OTRO alumno (integridad de scoring rota).
+	return isSuperadminContext(r) || hasPermission(r, "db_users.permission_group.write")
 }
 
 func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {

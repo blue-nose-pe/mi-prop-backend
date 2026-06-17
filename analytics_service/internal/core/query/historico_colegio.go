@@ -155,13 +155,16 @@ func (h *DashboardHandler) GetHistoricoColegio(ctx context.Context, in ports.His
 	for _, k := range keys {
 		y := k / 10
 		q := k % 10
-		avg, n := computeAvgScore(buckets[k])
+		avg, _ := computeAvgScore(buckets[k])
 		p := domain.HistoricoColegioPoint{
-			Period:   periodLabel(y, q),
-			Year:     y,
-			Quarter:  q,
+			Period:  periodLabel(y, q),
+			Year:    y,
+			Quarter: q,
 			AvgScore: avg,
-			Attempts: n,
+			// Attempts = TODAS las pruebas rendidas del tipo en el periodo;
+			// computeAvgScore solo cuenta las puntuadas (max_score>0), por lo
+			// que vocacional/estilos (Likert) salían en 0 intentos.
+			Attempts: int32(len(buckets[k])),
 		}
 		if hadPrev && prevAvg > 0 {
 			p.VariationPct = (avg - prevAvg) / prevAvg * 100.0
@@ -294,10 +297,15 @@ func (h *DashboardHandler) GetColegiosHistorico(ctx context.Context, in ports.Co
 					}
 				}
 			}
-			avgCur, nCur := computeAvgScore(current)
+			avgCur, _ := computeAvgScore(current)
 			avgPrev, nPrev := computeAvgScore(previous)
 			row.AvgScore = avgCur
-			row.Attempts = nCur
+			// Attempts = TODAS las pruebas rendidas del tipo en el periodo, no
+			// solo las PUNTUADAS. Vocacional y estilos son Likert (max_score=0):
+			// computeAvgScore las descartaba (línea: MaxScore==0) y el colegio
+			// aparecía con 0 intentos aunque sí las rindieron. El puntaje
+			// promedio (AvgScore) sigue siendo solo de las puntuadas.
+			row.Attempts = int32(len(current))
 			if nPrev > 0 && avgPrev > 0 {
 				row.VariationPct = (avgCur - avgPrev) / avgPrev * 100.0
 				row.HasPrevious = true

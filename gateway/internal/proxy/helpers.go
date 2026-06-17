@@ -212,6 +212,13 @@ func enforceAsesorScope(r *http.Request, requested string) string {
 	if isSuperadminContext(r) {
 		return requested
 	}
+	// Admin (admin_permissions): ve TODO — mismo marcador que enforceColegioScope
+	// (db_users.permission_group.write, solo admin/superadmin lo tienen). Sin
+	// esto, un admin no-superadmin quedaba forzado a su propio id y veía 0
+	// visitas / no podía drill-downear las keys de un asesor concreto.
+	if hasPermission(r, "db_users.permission_group.write") {
+		return requested
+	}
 	return userIDFromContext(r)
 }
 
@@ -221,6 +228,13 @@ func enforceAsesorScope(r *http.Request, requested string) string {
 // dashboards individuales, historicos, reporte vocacional).
 func enforceUserScope(r *http.Request, target string) bool {
 	if isSuperadminContext(r) {
+		return true
+	}
+	// Admin (admin_permissions): ve los resultados/reporte de CUALQUIER alumno
+	// (mismo marcador admin que enforceColegioScope/enforceAsesorScope). Sin
+	// esto, un admin no-superadmin recibía 403 en dashboard/reporte/reporte.xlsx
+	// del estudiante (inconsistente con el histórico, que sí lo permitía).
+	if hasPermission(r, "db_users.permission_group.write") {
 		return true
 	}
 	caller := userIDFromContext(r)

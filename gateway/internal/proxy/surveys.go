@@ -101,7 +101,27 @@ type createSurveyRequest struct {
 	KeyID       string `json:"key_id"` // opcional: dirige la encuesta a una key
 }
 
+// requireSurveyWrite gatea TODAS las rutas de escritura de encuestas. Solo
+// db_satisfaction.survey.write (verificado en BD: solo admin_permissions lo
+// tiene) puede crear/editar/publicar/desactivar/reactivar/clonar encuestas y
+// gestionar sus preguntas. Sin esto, cualquier autenticado (asesor,
+// coordinador, o incluso un alumno con su JWT) podía desactivar/editar la
+// encuesta de satisfacción de PRODUCCIÓN y dejar a todos sin encuesta.
+func (p *Proxy) requireSurveyWrite(w http.ResponseWriter, r *http.Request) bool {
+	if hasPermission(r, "db_satisfaction.survey.write") {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, errorBody{
+		Status: "error", Code: "PERMISSION_DENIED",
+		Message: "no tienes permiso para gestionar encuestas (db_satisfaction.survey.write)",
+	})
+	return false
+}
+
 func (p *Proxy) createSurvey(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	var in createSurveyRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -147,6 +167,9 @@ type updateSurveyRequest struct {
 }
 
 func (p *Proxy) updateSurvey(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	var in updateSurveyRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -167,6 +190,9 @@ func (p *Proxy) updateSurvey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) publishSurvey(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Surveys.PublishSurvey(r.Context(), &satisfactiongrpcpb.PublishSurveyRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
@@ -175,6 +201,9 @@ func (p *Proxy) publishSurvey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) deactivateSurvey(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Surveys.DeactivateSurvey(r.Context(), &satisfactiongrpcpb.DeactivateSurveyRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
@@ -186,6 +215,9 @@ func (p *Proxy) deactivateSurvey(w http.ResponseWriter, r *http.Request) {
 // published=false). El usuario debe pasar por publish despues si quiere
 // volver a publicarlo.
 func (p *Proxy) reactivateSurvey(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	resp, err := p.cli.Surveys.ReactivateSurvey(r.Context(), &satisfactiongrpcpb.ReactivateSurveyRequest{Id: r.PathValue("id")})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -202,6 +234,9 @@ func (p *Proxy) reactivateSurvey(w http.ResponseWriter, r *http.Request) {
 // cloneSurvey crea un draft nuevo del survey indicado, copiando preguntas.
 // Util cuando el original esta publicado y no admite mas ediciones.
 func (p *Proxy) cloneSurvey(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	resp, err := p.cli.Surveys.CloneSurvey(r.Context(), &satisfactiongrpcpb.CloneSurveyRequest{Id: r.PathValue("id")})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -285,6 +320,9 @@ type addSurveyQuestionRequest struct {
 }
 
 func (p *Proxy) addSurveyQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	var in addSurveyQuestionRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -313,6 +351,9 @@ type updateSurveyQuestionRequest struct {
 }
 
 func (p *Proxy) updateSurveyQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	var in updateSurveyQuestionRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -332,6 +373,9 @@ func (p *Proxy) updateSurveyQuestion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) removeSurveyQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Surveys.RemoveQuestion(r.Context(), &satisfactiongrpcpb.RemoveQuestionRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
