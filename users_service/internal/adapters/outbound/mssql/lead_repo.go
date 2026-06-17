@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"strconv"
+	"strings"
 
 	"users_service/internal/core/domain"
 	"users_service/internal/core/ports"
@@ -110,6 +111,55 @@ func (r *LeadRepo) FindByID(ctx context.Context, id domain.LeadID) (*domain.Lead
 	return l, nil
 }
 
+// MarkAccessSent marca que al lead se le envio el correo de acceso (magic-link)
+// con la key indicada. El caller (panel masivo) saltea los ya enviados; aqui
+// siempre setea, asi un reenvio actualiza timestamp/key.
+func (r *LeadRepo) MarkAccessSent(ctx context.Context, id domain.LeadID, keyCode string) error {
+	res, err := r.db.ExecContext(ctx,
+		`UPDATE landing_lead
+		    SET acceso_enviado_at = SYSUTCDATETIME(), acceso_key_code = NULLIF(@p1, '')
+		  WHERE id = CONVERT(UNIQUEIDENTIFIER, @p2)`,
+		keyCode, string(id))
+	if err != nil {
+		return err
+	}
+	if rows, _ := res.RowsAffected(); rows == 0 {
+		return domain.ErrLeadNotFound
+	}
+	return nil
+}
+
+// ListByIDs devuelve los leads cuyos ids estan en la lista. Lo usa el envio
+// masivo del panel: el front manda los ids seleccionados y el gateway resuelve
+// sus datos (email/nombre/dni/phone) para mandarles el acceso. Cap defensivo
+// en el caller (no pasar miles de ids).
+func (r *LeadRepo) ListByIDs(ctx context.Context, ids []domain.LeadID) ([]domain.Lead, error) {
+	if len(ids) == 0 {
+		return []domain.Lead{}, nil
+	}
+	ph := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		ph[i] = "CONVERT(UNIQUEIDENTIFIER, @p" + strconv.Itoa(i+1) + ")"
+		args[i] = string(id)
+	}
+	q := `SELECT ` + leadCols + ` FROM landing_lead WHERE id IN (` + strings.Join(ph, ",") + `)`
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.Lead, 0, len(ids))
+	for rows.Next() {
+		l, err := scanLead(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *l)
+	}
+	return out, rows.Err()
+}
+
 func (r *LeadRepo) SetHubspotRecordID(ctx context.Context, id domain.LeadID, recordID string) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE landing_lead SET hubspot_record_id = NULLIF(@p1, '')
@@ -129,7 +179,8 @@ const leadCols = `CONVERT(NVARCHAR(36), id),
 	first_name, last_name, ISNULL(dni, ''), ISNULL(phone, ''), email,
 	ISNULL(graduation_year, 0), ISNULL(school_text, ''), origen,
 	ISNULL(key_code, ''), terms_accepted, data_processing,
-	ISNULL(hubspot_record_id, ''), created_at`
+	ISNULL(hubspot_record_id, ''), created_at,
+	acceso_enviado_at, ISNULL(acceso_key_code, '')`
 
 // scanRow abstrae *sql.Row y *sql.Rows (ambos exponen Scan).
 type scanRow interface {
@@ -138,15 +189,20 @@ type scanRow interface {
 
 func scanLead(row scanRow) (*domain.Lead, error) {
 	var (
-		l     domain.Lead
-		idStr string
+		l        domain.Lead
+		idStr    string
+		accesoAt sql.NullTime
 	)
 	if err := row.Scan(
 		&idStr, &l.FirstName, &l.LastName, &l.DNI, &l.Phone, &l.Email,
 		&l.GraduationYear, &l.SchoolText, &l.Origen, &l.KeyCode,
 		&l.TermsAccepted, &l.DataProcessing, &l.HubspotRecordID, &l.CreatedAt,
+		&accesoAt, &l.AccesoKeyCode,
 	); err != nil {
 		return nil, err
+	}
+	if accesoAt.Valid {
+		l.AccesoEnviadoAt = &accesoAt.Time
 	}
 	l.ID = domain.LeadID(idStr)
 	return &l, nil

@@ -75,11 +75,48 @@ func (h *LeadHandler) ListLeads(ctx context.Context, req *pb.ListLeadsRequest) (
 	return &pb.ListLeadsResponse{Items: out, Total: total}, nil
 }
 
+// GetLeadsByIDs resuelve datos de varios leads por id. Lo usa el gateway en
+// el envio masivo del panel: el front manda los ids seleccionados y aqui se
+// resuelven email/nombre/dni/phone para mandarles el acceso.
+func (h *LeadHandler) GetLeadsByIDs(ctx context.Context, req *pb.GetLeadsByIDsRequest) (*pb.ListLeadsResponse, error) {
+	ids := make([]domain.LeadID, 0, len(req.GetIds()))
+	for _, s := range req.GetIds() {
+		if s != "" {
+			ids = append(ids, domain.LeadID(s))
+		}
+	}
+	items, err := h.repo.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	out := make([]*pb.Lead, 0, len(items))
+	for i := range items {
+		out = append(out, leadToProto(&items[i]))
+	}
+	return &pb.ListLeadsResponse{Items: out, Total: uint32(len(out))}, nil
+}
+
+// MarkLeadAccessSent marca que al lead se le envio el correo de acceso con la
+// key indicada (anti-doble-envio + estado "enviado" en el panel).
+func (h *LeadHandler) MarkLeadAccessSent(ctx context.Context, req *pb.MarkLeadAccessSentRequest) (*pb.LeadResponse, error) {
+	if req.GetLeadId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_LEAD_ID", "lead_id is required", "lead_id"))
+	}
+	if err := h.repo.MarkAccessSent(ctx, domain.LeadID(req.GetLeadId()), req.GetKeyCode()); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	saved, err := h.repo.FindByID(ctx, domain.LeadID(req.GetLeadId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.LeadResponse{Lead: leadToProto(saved)}, nil
+}
+
 func leadToProto(l *domain.Lead) *pb.Lead {
 	if l == nil {
 		return nil
 	}
-	return &pb.Lead{
+	p := &pb.Lead{
 		Id:              string(l.ID),
 		FirstName:       l.FirstName,
 		LastName:        l.LastName,
@@ -94,5 +131,10 @@ func leadToProto(l *domain.Lead) *pb.Lead {
 		DataProcessing:  l.DataProcessing,
 		HubspotRecordId: l.HubspotRecordID,
 		CreatedAt:       timestamppb.New(l.CreatedAt),
+		AccesoKeyCode:   l.AccesoKeyCode,
 	}
+	if l.AccesoEnviadoAt != nil {
+		p.AccesoEnviadoAt = timestamppb.New(*l.AccesoEnviadoAt)
+	}
+	return p
 }

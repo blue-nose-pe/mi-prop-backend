@@ -37,4 +37,10 @@ type Lead struct {
 	// sincronizado.
 	HubspotRecordID string
 	CreatedAt       time.Time
+	// AccesoEnviadoAt: cuando se le envio el correo de acceso (magic-link) al
+	// lead desde el panel masivo. nil = pendiente. Evita doble envio y permite
+	// reenviar solo a los pendientes.
+	AccesoEnviadoAt *time.Time
+	// AccesoKeyCode: la key masiva (LAN) con la que se le envio el acceso.
+	AccesoKeyCode string
 }

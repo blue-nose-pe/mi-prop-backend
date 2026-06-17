@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -9,6 +10,8 @@ import (
 	hubspotgrpcpb "hubspot_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
+
+	"google.golang.org/grpc/metadata"
 )
 
 // RegisterLanding registra las rutas PUBLICAS de la landing "Preparate"
@@ -21,6 +24,9 @@ func (p *Proxy) RegisterLanding(mux *http.ServeMux) {
 	// publico (no va bajo /api/public/) → requiere JWT; users_service lo
 	// gatea ademas con analytics.simulacro_masivo.read.
 	mux.HandleFunc("GET /api/leads", p.listLeads)
+	// Envio masivo del correo de acceso (magic-link) a los leads seleccionados.
+	// Staff-only (gateado por permiso del masivo). NO publico.
+	mux.HandleFunc("POST /api/leads/enviar-acceso", p.enviarAccesoLeads)
 	// Key masiva activa de la campaña (publico): la landing y /ingresar la
 	// resuelven para no hardcodear el codigo. El asesor crea la key LAN en el
 	// admin y esta devuelve la mas reciente vigente.
@@ -44,6 +50,8 @@ func (p *Proxy) getActiveLanKey(w http.ResponseWriter, r *http.Request) {
 // listLeads - GET /api/leads?search=&key_code=&limit=&offset=
 // Alimenta los KPIs del panel "Simulacro Masivo". Devuelve {items, total}.
 func (p *Proxy) listLeads(w http.ResponseWriter, r *http.Request) {
+	// Siempre fresco: el panel debe ver el estado actual al recargar (no cache).
+	w.Header().Set("Cache-Control", "no-store")
 	q := r.URL.Query()
 	resp, err := p.cli.Leads.ListLeads(r.Context(), &usersgrpcpb.ListLeadsRequest{
 		Search:  q.Get("search"),
@@ -60,6 +68,106 @@ func (p *Proxy) listLeads(w http.ResponseWriter, r *http.Request) {
 		items = append(items, protoLeadToJSON(l))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": resp.GetTotal()})
+}
+
+type enviarAccesoLeadsRequest struct {
+	KeyCode string   `json:"key_code"`
+	LeadIDs []string `json:"lead_ids"`
+}
+
+// enviarAccesoLeads - POST /api/leads/enviar-acceso
+// Envio masivo del correo de acceso (magic-link) a los leads seleccionados,
+// con la key (LAN) indicada. ASINCRONO: valida + encola un goroutine y
+// responde 202; el front ve el avance recargando GET /api/leads (los leads
+// pasan a "enviado" via acceso_enviado_at). Idempotente: saltea los ya
+// enviados. Rate-limit para no saturar SMTP/Resend (el "que no explote").
+func (p *Proxy) enviarAccesoLeads(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "analytics.simulacro_masivo.read") {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "PERMISSION_DENIED",
+			Message: "no tienes permiso para el simulacro masivo",
+		})
+		return
+	}
+	var in enviarAccesoLeadsRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	if in.KeyCode == "" || len(in.LeadIDs) == 0 {
+		writeJSON(w, http.StatusBadRequest, errorBody{
+			Status: "error", Code: "VALIDATION_ERROR",
+			Message: "key_code y lead_ids son obligatorios",
+		})
+		return
+	}
+	const maxBatch = 2000
+	if len(in.LeadIDs) > maxBatch {
+		in.LeadIDs = in.LeadIDs[:maxBatch] // cap defensivo
+	}
+
+	// 1) Validar la key (LAN) una vez. Para masivo school_id="".
+	keyResp, err := p.cli.Keys.ValidateKey(r.Context(), &keysgrpcpb.ValidateKeyRequest{Code: in.KeyCode})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	if keyResp.GetKey() == nil {
+		writeJSON(w, http.StatusNotFound, errorBody{Status: "error", Code: "KEY_NOT_FOUND", Message: "La llave indicada no existe o no esta disponible."})
+		return
+	}
+	schoolID := keyResp.GetKey().GetSchoolId()
+
+	// 2) Resolver datos de los leads seleccionados.
+	leadsResp, err := p.cli.Leads.GetLeadsByIDs(r.Context(), &usersgrpcpb.GetLeadsByIDsRequest{Ids: in.LeadIDs})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	leads := leadsResp.GetItems()
+
+	// 3) Encolar el envio en background. Propagamos el JWT del caller para que
+	//    MarkLeadAccessSent (que exige auth) no falle. RegisterStudentWithKey es
+	//    publico (jwtSkip). El front ve el avance recargando GET /api/leads.
+	authz := r.Header.Get("Authorization")
+	keyCode := in.KeyCode
+	go func() {
+		sent := 0
+		for _, l := range leads {
+			if l.GetAccesoEnviadoAt() != nil {
+				continue // idempotente: ya tiene acceso enviado
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			if authz != "" {
+				ctx = metadata.AppendToOutgoingContext(ctx, "authorization", authz)
+			}
+			_, rerr := p.cli.Auth.RegisterStudentWithKey(ctx, &usersgrpcpb.RegisterStudentWithKeyRequest{
+				Email:          l.GetEmail(),
+				FirstName:      l.GetFirstName(),
+				LastName:       l.GetLastName(),
+				DocumentNumber: l.GetDni(),
+				Phone:          l.GetPhone(),
+				SchoolId:       schoolID,
+			})
+			if rerr != nil {
+				log.Printf("[masivo-acceso] register FAIL lead=%s email=%s err=%v", l.GetId(), l.GetEmail(), rerr)
+				cancel()
+				continue
+			}
+			if _, merr := p.cli.Leads.MarkLeadAccessSent(ctx, &usersgrpcpb.MarkLeadAccessSentRequest{LeadId: l.GetId(), KeyCode: keyCode}); merr != nil {
+				log.Printf("[masivo-acceso] mark FAIL lead=%s err=%v", l.GetId(), merr)
+			}
+			cancel()
+			sent++
+			time.Sleep(150 * time.Millisecond) // rate-limit SMTP/Resend
+		}
+		log.Printf("[masivo-acceso] envio terminado: %d/%d enviados con key=%s", sent, len(leads), keyCode)
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"status": "accepted",
+		"queued": len(leads),
+	})
 }
 
 type createPublicLeadRequest struct {
@@ -156,7 +264,9 @@ func protoLeadToJSON(l *usersgrpcpb.Lead) map[string]any {
 		"origen":          l.GetOrigen(),
 		"key_code":        l.GetKeyCode(),
 		"terms_accepted":  l.GetTermsAccepted(),
-		"data_processing": l.GetDataProcessing(),
-		"created_at":      optionalTimestamp(l.GetCreatedAt()),
+		"data_processing":   l.GetDataProcessing(),
+		"created_at":        optionalTimestamp(l.GetCreatedAt()),
+		"acceso_enviado_at": optionalTimestamp(l.GetAccesoEnviadoAt()),
+		"acceso_key_code":   l.GetAccesoKeyCode(),
 	}
 }

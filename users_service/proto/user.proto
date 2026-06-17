@@ -58,6 +58,10 @@ service SchoolService {
 service LeadService {
   rpc CreateLead (CreateLeadRequest) returns (LeadResponse);
   rpc ListLeads  (ListLeadsRequest)  returns (ListLeadsResponse);
+  // GetLeadsByIDs: resuelve datos de varios leads por id (envio masivo del panel).
+  rpc GetLeadsByIDs (GetLeadsByIDsRequest) returns (ListLeadsResponse);
+  // MarkLeadAccessSent: marca que al lead se le envio el correo de acceso.
+  rpc MarkLeadAccessSent (MarkLeadAccessSentRequest) returns (LeadResponse);
 }
 
 // VisitaService — CRUD de visitas (presenciales o remotas) que un asesor
@@ -249,6 +253,10 @@ message Lead {
   bool   data_processing   = 12; // consentimiento tratamiento de datos (Ley 29733)
   string hubspot_record_id = 13; // record_id del contacto en HubSpot; "" = sin sincronizar
   google.protobuf.Timestamp created_at = 14;
+  // acceso_enviado_at: cuando se le envio el correo de acceso (magic-link)
+  // desde el panel masivo. ausente = pendiente de envio.
+  google.protobuf.Timestamp acceso_enviado_at = 15;
+  string acceso_key_code = 16; // key (LAN) con la que se le envio el acceso
 }
 
 message CreateLeadRequest {
@@ -267,6 +275,13 @@ message CreateLeadRequest {
 }
 
 message LeadResponse { Lead lead = 1; }
+
+message GetLeadsByIDsRequest { repeated string ids = 1; }
+
+message MarkLeadAccessSentRequest {
+  string lead_id  = 1;
+  string key_code = 2;
+}
 
 message ListLeadsRequest {
   string search   = 1; // matchea first_name/last_name/dni/email (LIKE %search%)

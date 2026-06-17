@@ -138,6 +138,11 @@ type LeadRepository interface {
 	List(ctx context.Context, in ListLeadsInput) ([]domain.Lead, uint32, error)
 	// FindByID recupera un lead por su UUID.
 	FindByID(ctx context.Context, id domain.LeadID) (*domain.Lead, error)
+	// ListByIDs recupera varios leads por sus UUIDs (envio masivo del panel).
+	ListByIDs(ctx context.Context, ids []domain.LeadID) ([]domain.Lead, error)
+	// MarkAccessSent marca que al lead se le envio el correo de acceso con la
+	// key indicada (anti-doble-envio + estado en el panel).
+	MarkAccessSent(ctx context.Context, id domain.LeadID, keyCode string) error
 	// SetHubspotRecordID guarda el record_id que devuelve HubSpot tras el
 	// upsert del contacto del lead.
 	SetHubspotRecordID(ctx context.Context, id domain.LeadID, recordID string) error

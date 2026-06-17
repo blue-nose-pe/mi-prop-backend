@@ -938,8 +938,10 @@ var SchoolService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	LeadService_CreateLead_FullMethodName = "/users.v1.LeadService/CreateLead"
-	LeadService_ListLeads_FullMethodName  = "/users.v1.LeadService/ListLeads"
+	LeadService_CreateLead_FullMethodName         = "/users.v1.LeadService/CreateLead"
+	LeadService_ListLeads_FullMethodName          = "/users.v1.LeadService/ListLeads"
+	LeadService_GetLeadsByIDs_FullMethodName      = "/users.v1.LeadService/GetLeadsByIDs"
+	LeadService_MarkLeadAccessSent_FullMethodName = "/users.v1.LeadService/MarkLeadAccessSent"
 )
 
 // LeadServiceClient is the client API for LeadService service.
@@ -954,6 +956,10 @@ const (
 type LeadServiceClient interface {
 	CreateLead(ctx context.Context, in *CreateLeadRequest, opts ...grpc.CallOption) (*LeadResponse, error)
 	ListLeads(ctx context.Context, in *ListLeadsRequest, opts ...grpc.CallOption) (*ListLeadsResponse, error)
+	// GetLeadsByIDs: resuelve datos de varios leads por id (envio masivo del panel).
+	GetLeadsByIDs(ctx context.Context, in *GetLeadsByIDsRequest, opts ...grpc.CallOption) (*ListLeadsResponse, error)
+	// MarkLeadAccessSent: marca que al lead se le envio el correo de acceso.
+	MarkLeadAccessSent(ctx context.Context, in *MarkLeadAccessSentRequest, opts ...grpc.CallOption) (*LeadResponse, error)
 }
 
 type leadServiceClient struct {
@@ -984,6 +990,26 @@ func (c *leadServiceClient) ListLeads(ctx context.Context, in *ListLeadsRequest,
 	return out, nil
 }
 
+func (c *leadServiceClient) GetLeadsByIDs(ctx context.Context, in *GetLeadsByIDsRequest, opts ...grpc.CallOption) (*ListLeadsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListLeadsResponse)
+	err := c.cc.Invoke(ctx, LeadService_GetLeadsByIDs_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *leadServiceClient) MarkLeadAccessSent(ctx context.Context, in *MarkLeadAccessSentRequest, opts ...grpc.CallOption) (*LeadResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(LeadResponse)
+	err := c.cc.Invoke(ctx, LeadService_MarkLeadAccessSent_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // LeadServiceServer is the server API for LeadService service.
 // All implementations must embed UnimplementedLeadServiceServer
 // for forward compatibility.
@@ -996,6 +1022,10 @@ func (c *leadServiceClient) ListLeads(ctx context.Context, in *ListLeadsRequest,
 type LeadServiceServer interface {
 	CreateLead(context.Context, *CreateLeadRequest) (*LeadResponse, error)
 	ListLeads(context.Context, *ListLeadsRequest) (*ListLeadsResponse, error)
+	// GetLeadsByIDs: resuelve datos de varios leads por id (envio masivo del panel).
+	GetLeadsByIDs(context.Context, *GetLeadsByIDsRequest) (*ListLeadsResponse, error)
+	// MarkLeadAccessSent: marca que al lead se le envio el correo de acceso.
+	MarkLeadAccessSent(context.Context, *MarkLeadAccessSentRequest) (*LeadResponse, error)
 	mustEmbedUnimplementedLeadServiceServer()
 }
 
@@ -1011,6 +1041,12 @@ func (UnimplementedLeadServiceServer) CreateLead(context.Context, *CreateLeadReq
 }
 func (UnimplementedLeadServiceServer) ListLeads(context.Context, *ListLeadsRequest) (*ListLeadsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListLeads not implemented")
+}
+func (UnimplementedLeadServiceServer) GetLeadsByIDs(context.Context, *GetLeadsByIDsRequest) (*ListLeadsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetLeadsByIDs not implemented")
+}
+func (UnimplementedLeadServiceServer) MarkLeadAccessSent(context.Context, *MarkLeadAccessSentRequest) (*LeadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method MarkLeadAccessSent not implemented")
 }
 func (UnimplementedLeadServiceServer) mustEmbedUnimplementedLeadServiceServer() {}
 func (UnimplementedLeadServiceServer) testEmbeddedByValue()                     {}
@@ -1069,6 +1105,42 @@ func _LeadService_ListLeads_Handler(srv interface{}, ctx context.Context, dec fu
 	return interceptor(ctx, in, info, handler)
 }
 
+func _LeadService_GetLeadsByIDs_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetLeadsByIDsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeadServiceServer).GetLeadsByIDs(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LeadService_GetLeadsByIDs_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeadServiceServer).GetLeadsByIDs(ctx, req.(*GetLeadsByIDsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _LeadService_MarkLeadAccessSent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(MarkLeadAccessSentRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(LeadServiceServer).MarkLeadAccessSent(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: LeadService_MarkLeadAccessSent_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(LeadServiceServer).MarkLeadAccessSent(ctx, req.(*MarkLeadAccessSentRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // LeadService_ServiceDesc is the grpc.ServiceDesc for LeadService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -1083,6 +1155,14 @@ var LeadService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListLeads",
 			Handler:    _LeadService_ListLeads_Handler,
+		},
+		{
+			MethodName: "GetLeadsByIDs",
+			Handler:    _LeadService_GetLeadsByIDs_Handler,
+		},
+		{
+			MethodName: "MarkLeadAccessSent",
+			Handler:    _LeadService_MarkLeadAccessSent_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
