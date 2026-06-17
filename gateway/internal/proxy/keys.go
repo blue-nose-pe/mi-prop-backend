@@ -141,6 +141,13 @@ type generateKeyRequest struct {
 }
 
 func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
+	// Crear key (colegio o LAN masiva) exige db_keys.key.write. Antes solo lo
+	// gateaba el front (item "Crear" + route guard); el endpoint quedaba
+	// abierto a cualquier JWT. Ahora el servidor también lo bloquea.
+	if !hasPermission(r, "db_keys.key.write") {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write"})
+		return
+	}
 	var in generateKeyRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -322,6 +329,10 @@ type updateKeyRequest struct {
 }
 
 func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "db_keys.key.write") {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write"})
+		return
+	}
 	var in updateKeyRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -369,6 +380,10 @@ func (p *Proxy) getKeyByCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) deactivateKey(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "db_keys.key.write") {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write"})
+		return
+	}
 	if _, err := p.cli.Keys.DeactivateKey(r.Context(), &keysgrpcpb.DeactivateKeyRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
