@@ -686,14 +686,13 @@ func (p *Proxy) finishAttempt(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	// Sincroniza el resultado (score_<tool>, max_score_<tool>, ultima_evaluacion)
-	// al Contact de HubSpot. Antes NADIE disparaba esto → los puntajes de examen
-	// nunca viajaban a HubSpot (observacion del cliente). Fire-and-forget: no
-	// bloquea ni hace fallar la finalizacion del examen para el alumno.
-	// Capturamos el Bearer ANTES de lanzar la goroutine: corre con
-	// context.Background() (r.Context() ya estara cancelado), y los RPCs
-	// upstream (GetExam/GetUser/SyncExamResult) requieren el JWT del caller.
-	go p.syncResultToHubspot(resp.GetAttempt(), r.Header.Get("Authorization"))
+	// Sync de resultado de examen a HubSpot DESACTIVADO (2026-06-17): el equipo
+	// decidió NO llevar los scores a HubSpot. Las props score_*/max_score_*/
+	// ultima_evaluacion NUNCA se crearon en el portal 9013951 → el worker daba
+	// 400 INVALID_PROPERTY y los jobs caían al DLQ. Coincide con la decisión
+	// original de arquitectura ("no SyncExamResult — feature creep"). Si UCSP lo
+	// pide a futuro: crear las props en el portal + reactivar la línea de abajo.
+	//   go p.syncResultToHubspot(resp.GetAttempt(), r.Header.Get("Authorization"))
 	writeJSON(w, http.StatusOK, map[string]any{"attempt": protoAttemptToJSON(resp.GetAttempt())})
 }
 
