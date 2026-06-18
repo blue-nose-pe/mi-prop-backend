@@ -14,7 +14,7 @@ import (
 
 type DashboardQueries interface {
 	GetAsesorDashboard(ctx context.Context, asesorID domain.UserID) (*domain.AsesorDashboard, error)
-	GetColegioDashboard(ctx context.Context, schoolID domain.SchoolID) (*domain.ColegioDashboard, error)
+	GetColegioDashboard(ctx context.Context, schoolID domain.SchoolID, period string) (*domain.ColegioDashboard, error)
 	GetEstudianteDashboard(ctx context.Context, userID domain.UserID) (*domain.EstudianteDashboard, error)
 	GetColegioComparativo(ctx context.Context, examTypeCode string) (*domain.ColegioComparativo, error)
 	GetHistoricoEstudiante(ctx context.Context, userID domain.UserID) (*domain.HistoricoEstudiante, error)

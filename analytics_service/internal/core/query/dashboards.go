@@ -159,13 +159,41 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 
 // ----- Colegio dashboard -----
 
-func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID domain.SchoolID) (*domain.ColegioDashboard, error) {
-	cacheKey := "colegio:" + string(schoolID)
+func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID domain.SchoolID, period string) (*domain.ColegioDashboard, error) {
+	cacheKey := "colegio:" + string(schoolID) + ":" + period
 	if h.cache != nil {
 		var cached domain.ColegioDashboard
 		if hit, _ := h.cache.Get(ctx, cacheKey, &cached); hit {
 			return &cached, nil
 		}
+	}
+
+	// Filtro de periodo: "" / "current" / "all" = todos los attempts (back-compat
+	// con el portal de colegio); "YYYY" = año; "YYYY-QN" = quarter. Así el
+	// doughnut/radar/detalle del comparativo respetan el periodo elegido.
+	var pYear, pQuarter int32
+	pAnnual, pAll := false, false
+	switch strings.ToLower(strings.TrimSpace(period)) {
+	case "", "current", "all":
+		pAll = true
+	default:
+		if y, q, ok := parsePeriodLabel(period); ok {
+			pYear, pQuarter = y, q
+		} else if y, ok := parseYearOnly(period); ok {
+			pYear, pQuarter, pAnnual = y, 0, true
+		} else {
+			pAll = true
+		}
+	}
+	inSelectedPeriod := func(t time.Time) bool {
+		if pAll {
+			return true
+		}
+		y, q := quarterOf(t)
+		if pAnnual {
+			return y == pYear
+		}
+		return y == pYear && q == pQuarter
 	}
 
 	school, err := h.users.GetSchool(ctx, schoolID)
@@ -181,6 +209,7 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 		return nil, err
 	}
 
+	attemptsInPeriod := int32(0)
 	stats := map[string]*domain.ExamTypeStats{}
 	// Buckets de inclinaciones por exam_type_code (solo vocacional/estilos):
 	// examTypeCode -> categoria -> {points, maxPoints} agregado sobre TODOS
@@ -191,6 +220,10 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 		if a.SubmittedAt == nil {
 			continue
 		}
+		if !inSelectedPeriod(*a.SubmittedAt) {
+			continue
+		}
+		attemptsInPeriod++
 		ex, err := h.exams.GetExam(ctx, a.ExamID)
 		if err != nil {
 			continue
@@ -241,7 +274,7 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 		SchoolID:      schoolID,
 		SchoolName:    school.Name,
 		TotalStudents: int32(len(students)),
-		TotalAttempts: int32(len(atts)),
+		TotalAttempts: attemptsInPeriod,
 		ByExamType:    materialize(stats),
 		Students:      studentRows,
 		GeneratedAt:   time.Now().UTC(),

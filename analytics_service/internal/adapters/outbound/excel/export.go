@@ -102,7 +102,7 @@ func (e *Exporter) ExportAsesorDashboard(ctx context.Context, asesorID domain.Us
 }
 
 func (e *Exporter) ExportColegioDashboard(ctx context.Context, schoolID domain.SchoolID) ([]byte, error) {
-	d, err := e.dashboards.GetColegioDashboard(ctx, schoolID)
+	d, err := e.dashboards.GetColegioDashboard(ctx, schoolID, "") // export = todo el histórico
 	if err != nil {
 		return nil, err
 	}

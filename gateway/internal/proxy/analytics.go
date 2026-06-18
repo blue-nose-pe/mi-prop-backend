@@ -210,6 +210,10 @@ func (p *Proxy) getColegioDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	resp, err := p.cli.Analytics.GetColegioDashboard(r.Context(), &analyticsgrpcpb.GetColegioDashboardRequest{
 		SchoolId: schoolID,
+		// period (opcional): el comparativo lo pasa (?period=YYYY) para que el
+		// doughnut/radar/detalle respeten el periodo elegido. Sin él = todo el
+		// histórico (el portal de colegio no lo manda).
+		Period: r.URL.Query().Get("period"),
 	})
 	if err != nil {
 		writeGRPCError(w, err)
