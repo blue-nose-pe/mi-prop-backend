@@ -280,6 +280,62 @@ func (p *Proxy) callerOwnsKeyOrSuperadmin(r *http.Request, keyID string) bool {
 // puede cachear (school list rara vez cambia). Por ahora best-effort
 // sincronico — si la consulta falla, devuelve false (cerrado por
 // defecto).
+// callerColegioScope resuelve el alcance de colegios del caller para filtrar
+// listados/búsquedas que NO toman un school_id de path. Devuelve:
+//   - unrestricted=true para superadmin/admin (admin-marker): ven TODO.
+//   - allowed: set de school_ids visibles para asesor/coordinador (sus colegios
+//     vía assignments + el school_id del JWT si lo tuviera).
+//   - caller: el user_id del caller (para permitir que SIEMPRE se vea a sí mismo
+//     — necesario para los flujos públicos del examen que hidratan el propio
+//     registro del alumno con su token).
+func (p *Proxy) callerColegioScope(r *http.Request) (unrestricted bool, allowed map[string]bool, caller string) {
+	caller = userIDFromContext(r)
+	if isSuperadminContext(r) || hasPermission(r, "db_users.permission_group.write") {
+		return true, nil, caller
+	}
+	allowed = map[string]bool{}
+	if sid := schoolIDFromContext(r); sid != "" {
+		allowed[sid] = true
+	}
+	resp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{
+		AsesorId: caller,
+	})
+	if err == nil {
+		for _, s := range resp.GetItems() {
+			if id := s.GetId(); id != "" {
+				allowed[id] = true
+			}
+		}
+	}
+	return false, allowed, caller
+}
+
+// scopeSearchResults filtra resultados de un /search property-bag al alcance de
+// colegios del caller: conserva su propio registro (id==caller) y los que
+// pertenezcan a un colegio permitido (property "school_id"). Se usa para
+// cerrar la fuga de PII cross-colegio en /api/users/search y /api/keys/search.
+func scopeSearchResults[R searchResultLike](results []R, allowed map[string]bool, caller string) []R {
+	out := make([]R, 0, len(results))
+	for _, rr := range results {
+		if caller != "" && rr.GetId() == caller {
+			out = append(out, rr)
+			continue
+		}
+		sid := ""
+		if rr.GetProperties() != nil {
+			if v, ok := rr.GetProperties().AsMap()["school_id"]; ok {
+				if s, ok2 := v.(string); ok2 {
+					sid = s
+				}
+			}
+		}
+		if sid != "" && allowed[sid] {
+			out = append(out, rr)
+		}
+	}
+	return out
+}
+
 func (p *Proxy) enforceColegioScope(r *http.Request, targetSchoolID string) bool {
 	if isSuperadminContext(r) {
 		return true

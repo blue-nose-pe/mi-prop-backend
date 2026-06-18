@@ -88,22 +88,37 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 
 // Atajo: GET /api/students = GET /api/permission-groups/1/users
 func (p *Proxy) listStudents(w http.ResponseWriter, r *http.Request) {
-	p.listUsersInGroup(w, r, 1)
+	p.listUsersInGroup(w, r, 1, true) // alumnos → scope por colegio
 }
 
 // Atajo: GET /api/asesores = GET /api/permission-groups/3/users
 func (p *Proxy) listAsesores(w http.ResponseWriter, r *http.Request) {
-	p.listUsersInGroup(w, r, 3)
+	p.listUsersInGroup(w, r, 3, false) // staff: no atado a un colegio (reportería)
 }
 
 // Atajo: GET /api/coordinadores = GET /api/permission-groups/4/users
 func (p *Proxy) listCoordinadores(w http.ResponseWriter, r *http.Request) {
-	p.listUsersInGroup(w, r, 4)
+	p.listUsersInGroup(w, r, 4, false)
 }
 
 // listUsersInGroup reusa el handler de listGroupUsers pero con el group_id
 // fijado por código (no por path param).
-func (p *Proxy) listUsersInGroup(w http.ResponseWriter, r *http.Request, groupID uint32) {
+//
+// Gate: estos listados exponen PII (DNI/email/teléfono). Antes eran accesibles
+// a CUALQUIER autenticado — un alumno (que tenía db_users.users.read) podía
+// enumerar el directorio entero de alumnos/asesores/coordinadores (PII de
+// menores, Ley 29733). Ahora exigen analytics.dashboard.read (lo tienen
+// admin/asesor/coordinador/marketing; el alumno NO). Además, el listado de
+// ALUMNOS se filtra al colegio del caller (scopeByColegio) para que un
+// asesor/coordinador solo vea SUS alumnos, no los de todos los colegios.
+func (p *Proxy) listUsersInGroup(w http.ResponseWriter, r *http.Request, groupID uint32, scopeByColegio bool) {
+	if !hasPermission(r, "analytics.dashboard.read") {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "PERMISSION_DENIED",
+			Message: "no tienes permiso para listar usuarios (analytics.dashboard.read)",
+		})
+		return
+	}
 	q := r.URL.Query()
 	resp, err := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{
 		GroupId:    groupID,
@@ -116,13 +131,27 @@ func (p *Proxy) listUsersInGroup(w http.ResponseWriter, r *http.Request, groupID
 		writeGRPCError(w, err)
 		return
 	}
-	items := make([]map[string]any, 0, len(resp.GetItems()))
-	for _, u := range resp.GetItems() {
+	users := resp.GetItems()
+	total := resp.GetTotal()
+	if scopeByColegio {
+		if unrestricted, allowed, caller := p.callerColegioScope(r); !unrestricted {
+			filtered := make([]*usersgrpcpb.User, 0, len(users))
+			for _, u := range users {
+				if (caller != "" && u.GetId() == caller) || (u.GetSchoolId() != "" && allowed[u.GetSchoolId()]) {
+					filtered = append(filtered, u)
+				}
+			}
+			users = filtered
+			total = uint32(len(filtered))
+		}
+	}
+	items := make([]map[string]any, 0, len(users))
+	for _, u := range users {
 		items = append(items, protoUserToJSON(u))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items,
-		"total": resp.GetTotal(),
+		"total": total,
 	})
 }
 
@@ -487,13 +516,29 @@ func (p *Proxy) searchUsers(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
 		return
 	}
+	// SCOPE por colegio: el asesor/coordinador (y cualquier no-admin) solo puede
+	// ver alumnos/staff de SUS colegios (o a sí mismo). Antes /api/users/search
+	// devolvía DNI/email/teléfono/school_id de TODOS los colegios a cualquier
+	// asesor → fuga de PII de menores (Ley 29733). Si el caller pidió props
+	// específicas, forzamos school_id para poder filtrar; si pidió todas
+	// (properties vacío) ya viene incluida.
+	unrestricted, allowed, caller := p.callerColegioScope(r)
+	if !unrestricted && len(req.GetProperties()) > 0 {
+		req.Properties = append(req.Properties, "school_id")
+	}
 	resp, err := p.cli.Users.SearchUsers(r.Context(), req)
 	if err != nil {
 		writeGRPCError(w, err)
 		return
 	}
+	results := resp.GetResults()
+	total := resp.GetTotal()
+	if !unrestricted {
+		results = scopeSearchResults(results, allowed, caller)
+		total = uint32(len(results))
+	}
 	writeJSON(w, http.StatusOK, searchResponseToJSON[*userscommonpb.SearchResult, *userscommonpb.Paging](
-		resp.GetTotal(), resp.GetResults(), resp.GetPaging(),
+		total, results, resp.GetPaging(),
 	))
 }
 

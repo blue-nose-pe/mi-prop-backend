@@ -468,13 +468,27 @@ func (p *Proxy) searchKeys(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
 		return
 	}
+	// SCOPE por colegio: el asesor/coordinador solo ve las keys de SUS colegios.
+	// Antes /api/keys/search devolvía TODAS las keys (el código es el secreto de
+	// acceso) de todos los colegios. Las keys LAN/masivo (school_id vacío) solo
+	// las ve el admin. Forzamos school_id en la respuesta si se pidieron props.
+	unrestricted, allowed, caller := p.callerColegioScope(r)
+	if !unrestricted && len(req.GetProperties()) > 0 {
+		req.Properties = append(req.Properties, "school_id")
+	}
 	resp, err := p.cli.Keys.SearchKeys(r.Context(), req)
 	if err != nil {
 		writeGRPCError(w, err)
 		return
 	}
+	results := resp.GetResults()
+	total := resp.GetTotal()
+	if !unrestricted {
+		results = scopeSearchResults(results, allowed, caller)
+		total = uint32(len(results))
+	}
 	writeJSON(w, http.StatusOK, searchResponseToJSON[*keyscommonpb.SearchResult, *keyscommonpb.Paging](
-		resp.GetTotal(), resp.GetResults(), resp.GetPaging(),
+		total, results, resp.GetPaging(),
 	))
 }
 

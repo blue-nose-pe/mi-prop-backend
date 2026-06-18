@@ -116,7 +116,26 @@ type createExamRequest struct {
 	DefaultPointsBlank     float64 `json:"default_points_blank"`
 }
 
+// requireExamWrite gatea TODAS las rutas de escritura de exámenes/preguntas/
+// opciones. Exige db_exams.exam.write (admin y asesor lo tienen; alumno y
+// coordinador NO). Sin esto, un alumno autenticado por OTP podía editar un
+// examen publicado o flip-ear la respuesta correcta de un simulacro → todos
+// los puntajes a partir de ahí salían mal (integridad de scoring rota).
+func (p *Proxy) requireExamWrite(w http.ResponseWriter, r *http.Request) bool {
+	if hasPermission(r, "db_exams.exam.write") {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, errorBody{
+		Status: "error", Code: "PERMISSION_DENIED",
+		Message: "no tienes permiso para gestionar exámenes (db_exams.exam.write)",
+	})
+	return false
+}
+
 func (p *Proxy) createExam(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in createExamRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -178,6 +197,9 @@ type updateExamRequest struct {
 }
 
 func (p *Proxy) updateExam(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in updateExamRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -212,6 +234,9 @@ func (p *Proxy) updateExam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) publishExam(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Exams.PublishExam(r.Context(), &examsgrpcpb.PublishExamRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
@@ -220,6 +245,9 @@ func (p *Proxy) publishExam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) deactivateExam(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Exams.DeactivateExam(r.Context(), &examsgrpcpb.DeactivateExamRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
@@ -228,6 +256,9 @@ func (p *Proxy) deactivateExam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) reactivateExam(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Exams.ReactivateExam(r.Context(), &examsgrpcpb.ReactivateExamRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
@@ -236,6 +267,9 @@ func (p *Proxy) reactivateExam(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) cloneExam(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	resp, err := p.cli.Exams.CloneExam(r.Context(), &examsgrpcpb.CloneExamRequest{Id: r.PathValue("id")})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -269,6 +303,9 @@ type createQuestionRequest struct {
 }
 
 func (p *Proxy) createQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in createQuestionRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -302,6 +339,9 @@ type updateQuestionRequest struct {
 }
 
 func (p *Proxy) updateQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in updateQuestionRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -321,6 +361,9 @@ func (p *Proxy) updateQuestion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) deactivateQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Questions.DeactivateQuestion(r.Context(), &examsgrpcpb.DeactivateQuestionRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
@@ -350,6 +393,9 @@ type addQuestionOptionRequest struct {
 }
 
 func (p *Proxy) addQuestionOption(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in addQuestionOptionRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -393,6 +439,9 @@ type updateOptionRequest struct {
 }
 
 func (p *Proxy) updateOption(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in updateOptionRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -411,6 +460,9 @@ func (p *Proxy) updateOption(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) removeOption(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.Questions.RemoveOption(r.Context(), &examsgrpcpb.RemoveOptionRequest{Id: r.PathValue("id")}); err != nil {
 		writeGRPCError(w, err)
 		return
@@ -449,6 +501,9 @@ type addExamQuestionRequest struct {
 }
 
 func (p *Proxy) addExamQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in addExamQuestionRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -469,6 +524,9 @@ func (p *Proxy) addExamQuestion(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) removeExamQuestion(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	if _, err := p.cli.ExamQs.RemoveQuestion(r.Context(), &examsgrpcpb.RemoveExamQuestionRequest{
 		ExamId:     r.PathValue("id"),
 		QuestionId: r.PathValue("question_id"),
@@ -484,6 +542,9 @@ type reorderExamQuestionsRequest struct {
 }
 
 func (p *Proxy) reorderExamQuestions(w http.ResponseWriter, r *http.Request) {
+	if !p.requireExamWrite(w, r) {
+		return
+	}
 	var in reorderExamQuestionsRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
