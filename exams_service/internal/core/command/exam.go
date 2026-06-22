@@ -272,8 +272,14 @@ func (h *ExamHandler) Clone(ctx context.Context, id domain.ExamID) (*domain.Exam
 		StartAt:         src.StartAt,
 		EndAt:           src.EndAt,
 		MaxParticipants: src.MaxParticipants,
-		Active:          true,
-		Published:       false, // la nueva versión nace en draft
+		// Fix (audit 2026-06-18): copiar los puntajes default del examen padre. Sin
+		// esto el clon nacía con DefaultPoints=0 y las preguntas NUEVAS que se le
+		// agregaban (las clonadas traen sus puntos propios) puntuaban 0.
+		DefaultPoints:          src.DefaultPoints,
+		DefaultPointsIncorrect: src.DefaultPointsIncorrect,
+		DefaultPointsBlank:     src.DefaultPointsBlank,
+		Active:                 true,
+		Published:              false, // la nueva versión nace en draft
 	}
 	newID, err := h.exams.Save(ctx, clone)
 	if err != nil {
