@@ -379,9 +379,21 @@ func (p *Proxy) listQuestionOptions(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+	// SEGURIDAD (P0): este MISMO endpoint lo usa el alumno para RENDIR el examen
+	// (simulacro/voca/eda public-session.service piden GET /api/questions/{id}/options),
+	// asi que devolver is_correct filtraba el answer-key al browser → cualquier
+	// alumno leia la correcta en devtools y sacaba 100. La calificacion es
+	// server-side (finishAttempt), el alumno NUNCA necesita is_correct. Solo el
+	// staff que gestiona examenes (exam.write) o revisa resultados (exam_attempt.read)
+	// recibe is_correct; al resto se le ELIMINA del payload.
+	staff := hasPermission(r, "db_exams.exam.write") || hasPermission(r, "db_exams.exam_attempt.read")
 	out := make([]map[string]any, 0, len(resp.GetOptions()))
 	for _, o := range resp.GetOptions() {
-		out = append(out, protoQuestionOptionToJSON(o))
+		j := protoQuestionOptionToJSON(o)
+		if !staff {
+			delete(j, "is_correct")
+		}
+		out = append(out, j)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"options": out})
 }
@@ -743,6 +755,11 @@ func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt, authz string) {
 	if _, err := p.cli.Hubspot.SyncExamResult(ctx, &hubspotgrpcpb.SyncExamResultRequest{
 		Dni:          dni,
 		ExamTypeCode: examTypeCode,
+		// TODO(audit 2026-06-18, P1): Score/MaxScore son int32 en el proto de
+		// hubspot_service → truncan decimales (Nacional 11.25 → 11). Al RE-HABILITAR
+		// el sync (hoy desactivado, commit 1fce8cb) hay que ensanchar el campo del
+		// proto a double + regenerar hubspot_service + crear las props score_* en el
+		// portal 9013951 (no existen). Mientras tanto se mantiene int32.
 		Score:        int32(a.GetScore()),
 		MaxScore:     int32(a.GetMaxScore()),
 		AttemptId:    a.GetId(),
@@ -751,7 +768,7 @@ func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt, authz string) {
 		log.Printf("[hubspot-result] SyncExamResult FAIL attempt=%s dni=%s err=%v", a.GetId(), dni, err)
 		return
 	}
-	log.Printf("[hubspot-result] enqueued attempt=%s dni=%s type=%s score=%d/%d", a.GetId(), dni, examTypeCode, a.GetScore(), a.GetMaxScore())
+	log.Printf("[hubspot-result] enqueued attempt=%s dni=%s type=%s score=%v/%v", a.GetId(), dni, examTypeCode, a.GetScore(), a.GetMaxScore())
 }
 
 // callerOwnsAttempt resuelve el ownership del attempt en el path.

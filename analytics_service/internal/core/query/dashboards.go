@@ -230,9 +230,13 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 		}
 		s := getOrInit(stats, ex.ExamTypeCode)
 		s.Attempts++
-		if a.Score != nil && a.MaxScore != nil {
-			s.AvgScore += float64(*a.Score)
-			s.AvgMaxScore += float64(*a.MaxScore)
+		// Bug fix (audit 2026-06-18): normalizar a porcentaje ANTES de promediar,
+		// igual que GetAsesorDashboard (ln 78-80). Antes se sumaban scores
+		// absolutos (ej. 265/450) y el dashboard de colegio mostraba 265 como si
+		// fuera /100. Acumulamos (score/max)*100 por attempt; finalize divide /Attempts.
+		if a.Score != nil && a.MaxScore != nil && *a.MaxScore > 0 {
+			s.AvgScore += (float64(*a.Score) / float64(*a.MaxScore)) * 100
+			s.AvgMaxScore += 100
 		}
 		// Vocacional/estilos: acumulamos las inclinaciones por categoria
 		// (RIASEC / canales / estilos) leyendo las enriched answers del
