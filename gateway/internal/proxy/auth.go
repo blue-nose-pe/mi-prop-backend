@@ -28,13 +28,21 @@ import (
 // (acceso normal hace 1-2 lookups) y corta el script de ataque.
 const lookupRateLimitPerMinute = 30
 
+// Rate-limit per-IP anti-fuerza-bruta (audit 2026-06-18): login = guessing de
+// password (antes SIN límite); request-otp / register-with-key = spam y enumeración
+// de OTP. Buckets separados del global. Si p.rdb es nil (dev sin redis) cae a noop.
+const loginRateLimitPerMinute = 10
+const otpRateLimitPerMinute = 8
+
 func (p *Proxy) RegisterAuth(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/auth/login", p.login)
+	loginMw := middleware.RateLimitNamed(p.rdb, loginRateLimitPerMinute, "auth-login")
+	otpMw := middleware.RateLimitNamed(p.rdb, otpRateLimitPerMinute, "auth-otp")
+	mux.Handle("POST /api/auth/login", loginMw(http.HandlerFunc(p.login)))
 	mux.HandleFunc("POST /api/auth/refresh", p.refresh)
 	mux.HandleFunc("POST /api/auth/logout", p.logout)
-	mux.HandleFunc("POST /api/auth/student/request-otp", p.requestStudentOTP)
+	mux.Handle("POST /api/auth/student/request-otp", otpMw(http.HandlerFunc(p.requestStudentOTP)))
 	mux.HandleFunc("POST /api/auth/student/verify-otp", p.verifyStudentOTP)
-	mux.HandleFunc("POST /api/auth/student/register-with-key", p.registerStudentWithKey)
+	mux.Handle("POST /api/auth/student/register-with-key", otpMw(http.HandlerFunc(p.registerStudentWithKey)))
 	// Bug #27 fix: rate-limit estricto, bucket separado del global. Si
 	// p.rdb es nil (dev sin redis) cae a noop — sigue funcionando.
 	lookupMw := middleware.RateLimitNamed(p.rdb, lookupRateLimitPerMinute, "lookup")
