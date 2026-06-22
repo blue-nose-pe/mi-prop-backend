@@ -70,6 +70,17 @@ func (p *Proxy) getGlobalDashboard(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	// SEGURIDAD (audit 2026-06-18): este dashboard agrega métricas de TODOS los
+	// colegios/asesores. Solo admin/superadmin (unrestricted). Un rol scopeado
+	// (asesor/coordinador) tenía analytics.dashboard.read y leía el agregado global
+	// de colegios ajenos. El front NO llama este endpoint para roles scopeados
+	// (admin usa colegios/historico, asesor usa asesor/{id}/dashboard).
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		writeJSON(w, http.StatusForbidden, errorBody{
+			Status: "error", Code: "PERMISSION_DENIED", Message: "el dashboard global es solo para administración",
+		})
+		return
+	}
 	ctx := r.Context()
 	// 1. Lista de asesores (grupo 3).
 	asesores, err := p.cli.PermGroups.ListGroupUsers(ctx, &usersgrpcpb.ListGroupUsersRequest{
@@ -275,8 +286,17 @@ func (p *Proxy) getComparativo(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+	// SEGURIDAD (audit 2026-06-18): el comparativo agrega TODOS los colegios. El
+	// front lo usa también para el promedio del asesor, así que en vez de 403 lo
+	// FILTRAMOS al alcance de colegios del caller (admin/superadmin = todos). Antes
+	// un asesor/coordinador con analytics.dashboard.read veía el promedio de colegios
+	// ajenos.
+	unrestricted, allowed, _ := p.callerColegioScope(r)
 	items := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, it := range resp.GetItems() {
+		if !unrestricted && !allowed[it.GetSchoolId()] {
+			continue
+		}
 		items = append(items, map[string]any{
 			"school_id":   it.GetSchoolId(),
 			"school_name": it.GetSchoolName(),

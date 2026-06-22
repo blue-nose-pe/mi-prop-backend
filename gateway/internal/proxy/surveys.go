@@ -414,11 +414,12 @@ func (p *Proxy) submitSurveyResponse(w http.ResponseWriter, r *http.Request) {
 			HasNumber:   a.HasNumber,
 		})
 	}
-	// Anti-suplantación: si el request viene autenticado, el user_id SIEMPRE es
-	// el del JWT (ignoramos el del body, que era forjable — un alumno podía
-	// mandar respuestas en nombre de otro). La ruta pública anónima (sin JWT)
-	// usa el del body.
-	userID := in.UserID
+	// Anti-suplantación (audit 2026-06-18): NUNCA confiamos en in.UserID del body
+	// (era forjable — cualquiera, incluso anónimo en /api/public/, podía mandar
+	// respuestas en nombre de otro alumno). El user_id se toma SOLO del JWT si el
+	// request viene autenticado; el flujo público anónimo queda con user_id vacío
+	// (la encuesta de satisfacción es anónima, user_id NULLABLE en la BD).
+	userID := ""
 	if caller := userIDFromContext(r); caller != "" {
 		userID = caller
 	}
