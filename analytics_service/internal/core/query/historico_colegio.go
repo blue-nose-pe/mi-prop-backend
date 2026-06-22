@@ -26,8 +26,15 @@ import (
 
 const defaultHistoricoPeriods = 8
 
+// limaLoc: Perú es UTC-5 todo el año (sin DST). Usamos un FixedZone en vez de
+// LoadLocation("America/Lima") para no depender de tzdata en el contenedor distroless.
+var limaLoc = time.FixedZone("America/Lima", -5*3600)
+
 func quarterOf(t time.Time) (int32, int32) {
-	t = t.UTC()
+	// Fix (audit 2026-06-18): bucketing por (año, quarter) en hora de LIMA, no UTC.
+	// Un submitted_at cerca de medianoche/fin de año en UTC caía en el periodo
+	// equivocado para Perú (un examen del 31-dic 20:00 Lima = 01-ene 01:00 UTC).
+	t = t.In(limaLoc)
 	return int32(t.Year()), int32((int(t.Month())-1)/3 + 1)
 }
 

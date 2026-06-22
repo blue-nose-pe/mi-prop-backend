@@ -254,10 +254,14 @@ func (h *SyncHandler) SyncKey(ctx context.Context, k domain.KeyPayload) error {
 
 	// Asociacion Key <-> Company. Mismo patron.
 	companyID := k.SchoolRecordID
-	if companyID == "" && k.SchoolID != "" {
-		found, err := h.hs.FindObjectByProp(ctx, HubspotTypeCompany, "mi_proposito___id_colegio", string(k.SchoolID))
+	if companyID == "" && k.SchoolIntID > 0 {
+		// Fix (audit 2026-06-18): mi_proposito___id_colegio es una prop INTEGER
+		// (school.int_id), NO el UUID. Antes se buscaba la Company con
+		// string(k.SchoolID) (un UUID) → nunca matcheaba y la Key quedaba sin
+		// asociar a su colegio en HubSpot.
+		found, err := h.hs.FindObjectByProp(ctx, HubspotTypeCompany, "mi_proposito___id_colegio", strconv.Itoa(int(k.SchoolIntID)))
 		if err != nil {
-			log.Printf("[SyncKey] FindCompany FAIL school=%s err=%v", k.SchoolID, err)
+			log.Printf("[SyncKey] FindCompany FAIL school_int=%d err=%v", k.SchoolIntID, err)
 		} else {
 			companyID = found
 		}
