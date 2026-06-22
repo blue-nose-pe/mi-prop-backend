@@ -293,11 +293,12 @@ func (p *Proxy) getComparativo(w http.ResponseWriter, r *http.Request) {
 
 func (p *Proxy) getEstudianteHistorico(w http.ResponseWriter, r *http.Request) {
 	userID := r.PathValue("id")
-	// Self / superadmin (enforceUserScope) O un admin/asesor con permiso de
-	// lectura de attempts. Esto habilita la búsqueda por DNI en el histórico:
-	// el cliente (César) pidió ver TODAS las pruebas de un alumno por su DNI,
-	// no solo las propias. Mismo criterio que GET /api/users/{id}/attempts.
-	if !enforceUserScope(r, userID) && !hasPermission(r, "db_exams.exam_attempt.read") {
+	// Self / admin (callerColegioScope.unrestricted) O un staff con permiso de
+	// lectura de attempts. attempt.read habilita ver el histórico de otros (búsqueda
+	// por DNI que pidió César), PERO ahora se scopea por colegio abajo.
+	unrestricted, allowedColegios, caller := p.callerColegioScope(r)
+	selfView := userID == caller
+	if !selfView && !unrestricted && !hasPermission(r, "db_exams.exam_attempt.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
 			Status: "error", Code: "FORBIDDEN", Message: "no access to this user's historial",
 		})
@@ -311,35 +312,44 @@ func (p *Proxy) getEstudianteHistorico(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	items := testResultsToJSON(resp.GetItems())
-	// Enriquecer cada item con el CODIGO de la key usada (cliente: el portal
-	// del alumno mostraba "KEY —"). El historico de analytics no transporta
-	// key_id, asi que lo resolvemos aqui igual que grade-history: attempts
-	// del user (exams) -> key_id -> GetKey (keys, con cache). Best-effort:
-	// si algo falla, el item queda sin key_code y el card muestra el guion.
+	// Enriquecemos cada item con el CODIGO de la key usada (el card mostraba "KEY —")
+	// resolviendo attempt -> key_id -> GetKey. SEGURIDAD (audit 2026-06-18, IDOR):
+	// además leemos el SCHOOL de la key para SCOPEAR: un staff scopeado (attempt.read
+	// pero no admin) viendo el histórico de OTRO alumno solo ve los intentos de sus
+	// colegios. self/admin (needScope=false) ven todo. Intento sin key resoluble
+	// (LAN/masivo o key borrada) queda fuera del alcance de un rol scopeado.
+	needScope := !selfView && !unrestricted
+	keyIDByAttempt := map[string]string{}
 	if attemptsResp, aerr := p.cli.Attempts.ListByUser(r.Context(), &examsgrpcpb.ListAttemptsByUserRequest{UserId: userID}); aerr == nil {
-		keyIDByAttempt := map[string]string{}
 		for _, a := range attemptsResp.GetItems() {
 			keyIDByAttempt[a.GetId()] = a.GetKeyId()
 		}
-		keyCodeCache := map[string]string{}
-		for _, it := range items {
-			attemptID, _ := it["attempt_id"].(string)
-			keyID := keyIDByAttempt[attemptID]
-			if keyID == "" {
-				continue
-			}
-			code, ok := keyCodeCache[keyID]
-			if !ok {
-				if kr, kerr := p.cli.Keys.GetKey(r.Context(), &keysgrpcpb.GetKeyRequest{Id: keyID}); kerr == nil {
-					code = kr.GetKey().GetCode()
-				}
-				keyCodeCache[keyID] = code
-			}
-			if code != "" {
-				it["key_code"] = code
-			}
-		}
 	}
+	type keyMeta struct{ code, school string }
+	keyCache := map[string]keyMeta{}
+	scoped := items[:0]
+	for _, it := range items {
+		attemptID, _ := it["attempt_id"].(string)
+		var km keyMeta
+		if keyID := keyIDByAttempt[attemptID]; keyID != "" {
+			cached, ok := keyCache[keyID]
+			if !ok {
+				if kr, kerr := p.cli.Keys.GetKey(r.Context(), &keysgrpcpb.GetKeyRequest{Id: keyID}); kerr == nil && kr.GetKey() != nil {
+					cached = keyMeta{code: kr.GetKey().GetCode(), school: kr.GetKey().GetSchoolId()}
+				}
+				keyCache[keyID] = cached
+			}
+			km = cached
+		}
+		if needScope && !allowedColegios[km.school] {
+			continue
+		}
+		if km.code != "" {
+			it["key_code"] = km.code
+		}
+		scoped = append(scoped, it)
+	}
+	items = scoped
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user_id":      resp.GetUserId(),
 		"items":        items,

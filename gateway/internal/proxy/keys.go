@@ -316,6 +316,14 @@ func (p *Proxy) getKey(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w, "key")
 		return
 	}
+	// SEGURIDAD (audit 2026-06-18, IDOR): antes GET /api/keys/{id} exponía cualquier
+	// key (código + asesor/colegio) a cualquier caller. Limitamos a: el asesor dueño,
+	// un caller con el colegio de la key asignado, o admin/superadmin (bypass dentro
+	// de enforceColegioScope). Las LAN (school_id vacío) solo las ve admin.
+	if k.GetAsesorUserId() != userIDFromContext(r) && !p.enforceColegioScope(r, k.GetSchoolId()) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a esta llave"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"key": protoKeyToJSON(k)})
 }
 

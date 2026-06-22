@@ -47,6 +47,13 @@ func (p *Proxy) studentGradeHistory(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_exams.exam_attempt.read"})
 		return
 	}
+	// SEGURIDAD (audit 2026-06-18, IDOR): el permiso exam_attempt.read NO basta —
+	// un coordinador/asesor con ese permiso leía el histórico (PII + puntajes) de
+	// CUALQUIER alumno de CUALQUIER colegio por DNI. Scopeamos la salida al alcance
+	// de colegios del caller: cada intento pertenece a un colegio vía la key usada,
+	// así que abajo se descartan los intentos cuya key NO esté en el alcance.
+	// Admin/superadmin = unrestricted (ven todo).
+	unrestricted, allowedColegios, _ := p.callerColegioScope(r)
 
 	// 1) Usuarios con ese DNI (pueden ser varios: distintos años/correos).
 	usersResp, err := p.cli.Users.SearchUsers(r.Context(), &userscommonpb.SearchRequest{
@@ -117,6 +124,13 @@ func (p *Proxy) studentGradeHistory(w http.ResponseWriter, r *http.Request) {
 					key = kr.GetKey()
 				}
 				keyCache[keyID] = key // cachea incluso nil para no reintentar
+			}
+			// SEGURIDAD (audit 2026-06-18): si el caller está scopeado, solo ve los
+			// intentos cuya key pertenece a un colegio que tiene asignado. Sin key
+			// resoluble (LAN/masivo o key borrada) → fuera del alcance de un rol
+			// scopeado. Admin (unrestricted) ve todo.
+			if !unrestricted && (key == nil || !allowedColegios[key.GetSchoolId()]) {
+				continue
 			}
 			year := a.GetSubmittedAt().AsTime().Year()
 			grade, code, examType := "—", "—", "—"

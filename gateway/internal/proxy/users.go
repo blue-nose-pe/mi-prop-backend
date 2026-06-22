@@ -373,6 +373,18 @@ func (p *Proxy) getUser(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w, "user")
 		return
 	}
+	// SEGURIDAD (audit 2026-06-18, IDOR): antes GET /api/users/{id} devolvía la PII
+	// (DNI/email/tel) de CUALQUIER usuario a cualquier asesor/coordinador forjando
+	// el id — fuga de datos de menores cross-colegio (Ley 29733), la contraparte
+	// del scoping que ya tenía /api/users/search. Scopeamos los usuarios CON
+	// colegio (alumnos) al alcance del caller. Pasan: el propio usuario (flujos
+	// públicos del examen hidratan su registro con su token) y admin/superadmin
+	// (bypass dentro de enforceColegioScope). Staff sin school_id no se scopea
+	// para no romper lookups internos de la UI.
+	if u.GetId() != userIDFromContext(r) && u.GetSchoolId() != "" && !p.enforceColegioScope(r, u.GetSchoolId()) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a este usuario"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(u)})
 }
 
