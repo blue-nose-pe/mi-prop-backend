@@ -5,8 +5,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
+	examsgrpcpb "exams_service/proto/gen"
 	hubspotgrpcpb "hubspot_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
@@ -67,7 +69,63 @@ func (p *Proxy) listLeads(w http.ResponseWriter, r *http.Request) {
 	for _, l := range resp.GetItems() {
 		items = append(items, protoLeadToJSON(l))
 	}
+	// El panel pide ?enrich=1 para saber quién YA rindió el examen (columna
+	// "¿Presentó?"). Es un cruce cross-service, así que solo se hace a demanda.
+	if q.Get("enrich") == "1" {
+		p.enrichLeadsPresento(r.Context(), items)
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items, "total": resp.GetTotal()})
+}
+
+// enrichLeadsPresento marca cada lead con "presento" (rindió el examen). Cruce:
+// acceso_key_code (la LAN que se le envió) → attempts de esa key (exams.ListByKey)
+// → user_ids que FINALIZARON → sus emails → match con el email del lead. Eficiente:
+// 1 ListByKey por LAN distinta + 1 GetUser por presentante (acotado por presentantes,
+// no por lead). Best-effort: si algo falla, el lead queda con presento=false.
+func (p *Proxy) enrichLeadsPresento(ctx context.Context, items []map[string]any) {
+	// 1. Códigos de key distintos que se enviaron.
+	codes := map[string]bool{}
+	for _, it := range items {
+		if c, _ := it["acceso_key_code"].(string); c != "" {
+			codes[c] = true
+		}
+	}
+	if len(codes) == 0 {
+		return
+	}
+	// 2. Por cada código: key_id → ListByKey → user_ids que finalizaron.
+	submitted := map[string]bool{}
+	for code := range codes {
+		kr, err := p.cli.Keys.ValidateKey(ctx, &keysgrpcpb.ValidateKeyRequest{Code: code})
+		if err != nil || kr.GetKey() == nil {
+			continue
+		}
+		ar, err := p.cli.Attempts.ListByKey(ctx, &examsgrpcpb.ListAttemptsByKeyRequest{KeyId: kr.GetKey().GetId()})
+		if err != nil {
+			continue
+		}
+		for _, a := range ar.GetItems() {
+			if a.GetSubmittedAt() != nil {
+				submitted[a.GetUserId()] = true
+			}
+		}
+	}
+	// 3. user_ids que presentaron → emails (para matchear con el lead).
+	presentEmails := map[string]bool{}
+	for uid := range submitted {
+		u, err := p.cli.Users.GetUser(ctx, &usersgrpcpb.GetUserRequest{Id: uid})
+		if err != nil || u.GetUser() == nil {
+			continue
+		}
+		if e := strings.ToLower(u.GetUser().GetEmail()); e != "" {
+			presentEmails[e] = true
+		}
+	}
+	// 4. Marcar cada lead.
+	for _, it := range items {
+		email, _ := it["email"].(string)
+		it["presento"] = presentEmails[strings.ToLower(email)]
+	}
 }
 
 type enviarAccesoLeadsRequest struct {
