@@ -26,7 +26,7 @@ func (r *SchoolRepo) FindByID(ctx context.Context, id domain.SchoolID) (*domain.
 	// Segmento / Key de acceso vacias (front recibia error y caia al else).
 	const q = `SELECT CONVERT(NVARCHAR(36), id),
 	                  int_id,
-	                  CONVERT(NVARCHAR(36), user_id),
+	                  ISNULL(CONVERT(NVARCHAR(36), user_id), ''),
 	                  name, ISNULL(city, ''), ISNULL(category, ''),
 	                  ISNULL(code, ''), ISNULL(penetration, ''),
 	                  active, created_at, updated_at,
@@ -171,7 +171,9 @@ func (r *SchoolRepo) Update(ctx context.Context, s *domain.School) error {
 	const q = `
 		UPDATE school
 		   SET name              = COALESCE(NULLIF(@p1, ''), name),
-		       user_id           = COALESCE(IIF(@p2 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p2)), user_id),
+		       user_id           = CASE WHEN @p2 = '' THEN user_id
+		                                WHEN @p2 = '-' THEN NULL
+		                                ELSE CONVERT(UNIQUEIDENTIFIER, @p2) END,
 		       hubspot_record_id = COALESCE(NULLIF(@p3, ''), hubspot_record_id),
 		       city              = CASE WHEN @p4 = '' THEN city
 		                                WHEN @p4 = '-' THEN NULL
@@ -199,10 +201,13 @@ func (r *SchoolRepo) Update(ctx context.Context, s *domain.School) error {
 		                                ELSE @p12 END,
 		       personal_a_cargo  = CASE WHEN @p13 = '' THEN personal_a_cargo
 		                                WHEN @p13 = '-' THEN NULL
-		                                ELSE @p13 END
+		                                ELSE @p13 END,
+		       active            = CASE WHEN @p14 = '' THEN active
+		                                WHEN @p14 = 'true' THEN 1
+		                                ELSE 0 END
 		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p8)`
 	res, err := r.db.ExecContext(ctx, q,
-		s.Name, string(s.UserID), s.HubspotRecordID, s.City, s.Category, s.Code, s.Penetration, string(s.ID), s.Email, s.Phone, s.Ruc, s.Poblacion, s.PersonalACargo)
+		s.Name, string(s.UserID), s.HubspotRecordID, s.City, s.Category, s.Code, s.Penetration, string(s.ID), s.Email, s.Phone, s.Ruc, s.Poblacion, s.PersonalACargo, s.ActiveRaw)
 	if err != nil {
 		return err
 	}

@@ -41,6 +41,9 @@ type School struct {
 	AsesorUserID    string
 	AsesorName      string
 	Active          bool
+	// ActiveRaw: solo escritura (Update). "" = no tocar; "true"/"false" =
+	// activar/desactivar el colegio (C1). No se hidrata al leer (usar Active).
+	ActiveRaw       string
 	CreatedAt       time.Time
 	UpdatedAt       *time.Time
 	HubspotRecordID string // "" = aún no sincronizado con HubSpot

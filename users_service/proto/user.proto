@@ -195,7 +195,7 @@ message CreateSchoolRequest {
 message UpdateSchoolRequest {
   string id                = 1;
   string name              = 2;  // "" = no tocar
-  string user_id           = 3;  // "" = no tocar
+  string user_id           = 3;  // "" = no tocar; "-" = quitar coordinador (NULL) (C4)
   string hubspot_record_id = 4;  // "" = no tocar
   string city              = 5;  // "" = no tocar; "-" = limpiar (NULL)
   string category          = 6;  // "" = no tocar; "-" = limpiar (NULL)
@@ -206,6 +206,7 @@ message UpdateSchoolRequest {
   string ruc               = 11; // "" = no tocar; "-" = limpiar (NULL)
   string poblacion         = 12; // "" = no tocar; "-" = limpiar (NULL)
   string personal_a_cargo  = 13; // "" = no tocar; "-" = limpiar (NULL)
+  string active            = 14; // "" = no tocar; "true"/"false" = activar/desactivar (C1)
 }
 
 message School {

@@ -2,6 +2,7 @@ package grpchandler
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	"users_service/internal/core/domain"
@@ -47,7 +48,7 @@ func (h *SchoolHandler) CreateSchool(ctx context.Context, req *pb.CreateSchoolRe
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A1, A2, B1, B2, C, OP, OR (or legacy A+/A/B/D)", "category"))
 	}
 	if pen := req.GetPenetration(); pen != "" && !isValidPenetration(pen) {
-		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_PENETRATION", "penetration must be one of: Alta, Media, Baja", "penetration"))
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_PENETRATION", "penetration must be 1-100 (or legacy Alta/Media/Baja)", "penetration"))
 	}
 	s := &domain.School{
 		Name:            req.GetName(),
@@ -81,7 +82,7 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_CATEGORY", "category must be one of: A1, A2, B1, B2, C, OP, OR (or legacy A+/A/B/D)", "category"))
 	}
 	if pen := req.GetPenetration(); pen != "" && pen != "-" && !isValidPenetration(pen) {
-		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_PENETRATION", "penetration must be one of: Alta, Media, Baja", "penetration"))
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("INVALID_PENETRATION", "penetration must be 1-100 (or legacy Alta/Media/Baja)", "penetration"))
 	}
 	s := &domain.School{
 		ID:              domain.SchoolID(req.GetId()),
@@ -97,6 +98,7 @@ func (h *SchoolHandler) UpdateSchool(ctx context.Context, req *pb.UpdateSchoolRe
 		Ruc:             req.GetRuc(),
 		Poblacion:       req.GetPoblacion(),
 		PersonalACargo:  req.GetPersonalACargo(),
+		ActiveRaw:       req.GetActive(), // C1: ""=no tocar, "true"/"false"
 	}
 	if err := h.repo.Update(ctx, s); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -233,11 +235,15 @@ func isValidSchoolCategory(c string) bool {
 	return false
 }
 
-// isValidPenetration acepta los valores que el constraint check de la
-// migracion 023 permite para school.penetration.
+// isValidPenetration acepta la penetración NUMÉRICA 1-100 (cliente C2: campo
+// tipeable, como prod) o los valores legacy Alta/Media/Baja (data pre-2026,
+// para no romper updates de colegios viejos).
 func isValidPenetration(p string) bool {
 	switch p {
 	case "Alta", "Media", "Baja":
+		return true
+	}
+	if n, err := strconv.Atoi(p); err == nil && n >= 1 && n <= 100 {
 		return true
 	}
 	return false

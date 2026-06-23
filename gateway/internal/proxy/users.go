@@ -210,6 +210,7 @@ type updateSchoolRequest struct {
 	Ruc             string `json:"ruc"`         // "" no toca; "-" limpia
 	Poblacion       string `json:"poblacion"`   // "" no toca; "-" limpia
 	PersonalACargo  string `json:"personal_a_cargo"` // "" no toca; "-" limpia
+	Active          string `json:"active"`      // C1: "" no toca; "true"/"false"
 }
 
 func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
@@ -232,6 +233,7 @@ func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
 		Ruc:             in.Ruc,
 		Poblacion:       in.Poblacion,
 		PersonalACargo:  in.PersonalACargo,
+		Active:          in.Active,
 	})
 	if err != nil {
 		writeGRPCError(w, err)

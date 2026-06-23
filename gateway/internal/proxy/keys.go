@@ -174,6 +174,14 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 	// keys-service hace pass-through al hubspot.SyncKey en goroutine.
 	hids := p.resolveHubspotIDsForKey(r.Context(), in.SchoolID, in.AsesorUserID)
 
+	// C1: no permitir crear llaves de un colegio DESACTIVADO ("en reserva").
+	// LAN (sin school_id) no se afecta. Si no se pudo resolver el colegio
+	// (GetSchool falló), no bloqueamos — es best-effort.
+	if in.SchoolID != "" && hids.SchoolFound && !hids.SchoolActive {
+		writeJSON(w, http.StatusConflict, errorBody{Status: "error", Code: "SCHOOL_INACTIVE", Message: "el colegio está desactivado (en reserva): no se pueden crear llaves hasta reactivarlo"})
+		return
+	}
+
 	resp, err := p.cli.Keys.GenerateKey(r.Context(), &keysgrpcpb.GenerateKeyRequest{
 		Code:         in.Code,
 		ExamTypeId:   in.ExamTypeID,
@@ -209,6 +217,10 @@ type hubspotKeyIDs struct {
 	SchoolIntID    int32
 	AsesorEmail    string
 	AsesorIntID    int32
+	// C1: estado del colegio. SchoolFound distingue "no se pudo resolver"
+	// (no bloquear) de "colegio inactivo" (bloquear crear key).
+	SchoolFound  bool
+	SchoolActive bool
 }
 
 // resyncAllKeys — POST /api/admin/keys/resync-all (superadmin-only).
@@ -294,6 +306,8 @@ func (p *Proxy) resolveHubspotIDsForKey(ctx context.Context, schoolID, asesorUse
 			out.SchoolRecordID = s.GetHubspotRecordId()
 			out.SchoolName = s.GetName()
 			out.SchoolIntID = s.GetIntId()
+			out.SchoolFound = true
+			out.SchoolActive = s.GetActive()
 		}
 	}
 	if asesorUserID != "" {
