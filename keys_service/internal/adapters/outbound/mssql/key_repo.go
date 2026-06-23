@@ -121,6 +121,23 @@ func (r *KeyRepo) FindActiveLan(ctx context.Context) (*domain.Key, error) {
 	return scanKey(row)
 }
 
+// NextLanNumber: siguiente consecutivo para nombrar keys masivas "LAN N"
+// (cliente C14). MAX(N)+1 sobre las keys mode='lan' cuyo code es "LAN <int>",
+// o 1 si no hay ninguna. TRY_CONVERT ignora codes LAN no-numéricos (ej. las
+// demo "SI-..."). Cuando se importe el histórico de prod (LAN 70, 71, 72…),
+// el contador continúa solo desde ahí.
+func (r *KeyRepo) NextLanNumber(ctx context.Context) (int, error) {
+	var next int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT ISNULL(MAX(TRY_CONVERT(INT, LTRIM(RTRIM(SUBSTRING(code, 4, 64))))), 0) + 1
+		   FROM [key]
+		  WHERE mode = 'lan' AND code LIKE 'LAN%'`).Scan(&next)
+	if err != nil {
+		return 0, err
+	}
+	return next, nil
+}
+
 func (r *KeyRepo) SetActive(ctx context.Context, id domain.KeyID, active bool) error {
 	res, err := r.db.ExecContext(ctx,
 		`UPDATE [key] SET active = @p1 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p2)`,

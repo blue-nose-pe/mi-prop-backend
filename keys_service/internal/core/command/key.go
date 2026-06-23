@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base32"
+	"fmt"
 	"log"
 	"strings"
 	"time"
@@ -146,7 +147,17 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 
 	code := strings.TrimSpace(in.Code)
 	if code == "" {
-		code = autogenCode(in.ExamTypeID)
+		if in.Mode == domain.ModeLAN {
+			// Cliente C14: las keys masivas se nombran consecutivas "LAN N"
+			// (igual que producción), no con acrónimos aleatorios.
+			n, nerr := h.keys.NextLanNumber(ctx)
+			if nerr != nil {
+				return nil, nerr
+			}
+			code = fmt.Sprintf("LAN %d", n)
+		} else {
+			code = autogenCode(in.ExamTypeID)
+		}
 	}
 
 	k := &domain.Key{

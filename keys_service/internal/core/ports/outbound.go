@@ -19,6 +19,10 @@ type KeyRepository interface {
 	// activas, excepto exceptID. Garantiza la invariante "una sola LAN activa
 	// a la vez" (UCSP: un solo simulacro masivo por proceso de admision).
 	DeactivateOtherLans(ctx context.Context, exceptID domain.KeyID) error
+	// NextLanNumber: siguiente número consecutivo para nombrar keys masivas
+	// "LAN N" (cliente C14: nomenclatura consecutiva igual a producción).
+	// = MAX(N)+1 sobre las keys mode='lan' con code 'LAN %', o 1 si no hay.
+	NextLanNumber(ctx context.Context) (int, error)
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.Key, error)
 	ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.Key, error)
 	// ListAll — dump completo de la tabla key. Solo lo usa el endpoint
