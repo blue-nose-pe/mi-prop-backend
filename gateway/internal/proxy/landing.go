@@ -339,6 +339,29 @@ func (p *Proxy) createPublicLead(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 
+	// Auto-envío del acceso: si el lead nació con una LAN activa (acceso_key_code
+	// seteado por el INSERT), registramos al alumno y disparamos su correo de
+	// acceso — equivalente a "Enviar acceso" del panel, pero automático al
+	// inscribirse. RegisterStudentWithKey es público (jwtSkip) y manda el correo.
+	// Fire-and-forget: el lead ya quedó persistido y marcado; si falla solo se
+	// loguea (queda visible en el panel para reenviar). Para emails ya
+	// registrados en un colegio, RegisterStudentWithKey los ignora (no re-homea).
+	if in.Email != "" && resp.GetLead().GetAccesoKeyCode() != "" {
+		go func() {
+			bg, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+			defer cancel()
+			if _, rerr := p.cli.Auth.RegisterStudentWithKey(bg, &usersgrpcpb.RegisterStudentWithKeyRequest{
+				Email:          in.Email,
+				FirstName:      in.FirstName,
+				LastName:       in.LastName,
+				DocumentNumber: in.DNI,
+				Phone:          in.Phone,
+			}); rerr != nil {
+				log.Printf("[landing-autosend] register/send FAIL email=%s err=%v", in.Email, rerr)
+			}
+		}()
+	}
+
 	writeJSON(w, http.StatusCreated, map[string]any{"lead": protoLeadToJSON(resp.GetLead())})
 }
 
