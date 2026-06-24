@@ -58,6 +58,10 @@ type Key struct {
 	// hace GET /api/exams/{exam_id}/questions directo). Si "" cae al
 	// fallback legacy de buscar "primer exam publicado del exam_type_id".
 	ExamID string
+	// LandingConfig: JSON con el contenido editable de la landing "Preparate"
+	// para esta campaña LAN (hero_subtitle, fecha, hora, duracion, modalidad…).
+	// "" = la landing usa sus defaults. Solo relevante para Mode == lan.
+	LandingConfig string
 }
 
 // IsUsable retorna true si la key esta activa y dentro de su ventana

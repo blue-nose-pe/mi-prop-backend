@@ -62,6 +62,8 @@ type GenerateKeyInput struct {
 	// MaxAttemptsPerUser: cuantas veces UN MISMO alumno puede rendir la
 	// prueba. 0 → server normaliza a 1 en Generate. Default 1.
 	MaxAttemptsPerUser int32
+	// LandingConfig: JSON con el contenido editable de la landing (solo LAN).
+	LandingConfig string
 	// Pass-through al hubspot SyncKey. El gateway los resuelve antes de
 	// llamar a Generate; keys-service no los persiste en la DB local
 	// (solo los reenvia al syncer best-effort).
@@ -87,6 +89,8 @@ type UpdateKeyInput struct {
 	MaxAttemptsPerUser *int32
 	// Active opcional: nil = no tocar; true = reactivar; false = desactivar.
 	Active *bool
+	// LandingConfig opcional: nil = no tocar; *valor = setear (JSON o "").
+	LandingConfig *string
 }
 
 type IncrementUsageInput struct {

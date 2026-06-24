@@ -74,6 +74,10 @@ message Key {
   // Default 1. 0 = sin limite. exams_service.StartAttempt cuenta
   // attempts submitted del user y rechaza con MAX_ATTEMPTS_REACHED.
   int32  max_attempts_per_user = 17;
+  // landing_config: JSON con el contenido editable de la landing "Preparate"
+  // para esta campaña LAN (hero_subtitle, fecha, hora, duracion, modalidad...).
+  // Vacio = la landing usa sus defaults. Solo aplica a mode='lan'.
+  string landing_config = 18;
 }
 
 message GenerateKeyRequest {
@@ -110,6 +114,9 @@ message GenerateKeyRequest {
   // asesor_id (type number). El gateway los resuelve antes de Generate.
   int32  school_int_id    = 17;
   int32  asesor_int_id    = 18;
+  // landing_config opcional (JSON) para campañas LAN: contenido editable de la
+  // landing "Preparate" (fechas/textos). Solo relevante con mode='lan'.
+  string landing_config   = 19;
 }
 
 message UpdateKeyRequest {
@@ -127,6 +134,9 @@ message UpdateKeyRequest {
   // active opcional: nil = no tocar; true = reactivar; false = desactivar.
   // Es el camino para REACTIVAR una key apagada — DeactivateKey solo apaga.
   optional bool active = 8;
+  // landing_config opcional: nil = no tocar; "" o JSON = setear el contenido
+  // editable de la landing de la campaña. Solo relevante para mode='lan'.
+  optional string landing_config = 9;
 }
 
 message DeactivateKeyRequest { string id = 1; }

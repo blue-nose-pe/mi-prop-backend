@@ -176,6 +176,7 @@ func (h *KeyHandler) Generate(ctx context.Context, in ports.GenerateKeyInput) (*
 		// Normalizamos 0 → 1 (default). Si el asesor quiere ilimitado debe
 		// pasar un negativo via Update — el Generate publico fuerza 1 min.
 		MaxAttemptsPerUser: maxAttemptsDefault(in.MaxAttemptsPerUser),
+		LandingConfig:      in.LandingConfig,
 	}
 	id, err := h.keys.Save(ctx, k)
 	if err != nil {
@@ -232,6 +233,9 @@ func (h *KeyHandler) Update(ctx context.Context, in ports.UpdateKeyInput) (*doma
 	}
 	if in.Active != nil {
 		k.Active = *in.Active
+	}
+	if in.LandingConfig != nil {
+		k.LandingConfig = *in.LandingConfig
 	}
 	if k.ValidFrom != nil && k.ValidTo != nil && !k.ValidFrom.Before(*k.ValidTo) {
 		return nil, domain.ErrInvalidDateRange

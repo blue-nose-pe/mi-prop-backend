@@ -42,14 +42,15 @@ const keyCols = `CONVERT(NVARCHAR(36), id),
 		created_at,
 		updated_at,
 		ISNULL(CONVERT(NVARCHAR(36), exam_id), ''),
-		max_attempts_per_user`
+		max_attempts_per_user,
+		ISNULL(landing_config, '')`
 
 func (r *KeyRepo) Save(ctx context.Context, k *domain.Key) (domain.KeyID, error) {
 	const q = `
 		INSERT INTO [key] (code, exam_type_id, school_id, asesor_user_id,
 		                    mode, grade, section, valid_from, valid_to,
 		                    max_uses, current_uses, active, exam_id,
-		                    max_attempts_per_user)
+		                    max_attempts_per_user, landing_config)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1, @p2,
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)),
@@ -57,13 +58,13 @@ func (r *KeyRepo) Save(ctx context.Context, k *domain.Key) (domain.KeyID, error)
 		        @p5, NULLIF(@p6, ''), NULLIF(@p7, ''),
 		        @p8, @p9, @p10, 0, @p11,
 		        IIF(@p12 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p12)),
-		        @p13)`
+		        @p13, NULLIF(@p14, ''))`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		k.Code, k.ExamTypeID, string(k.SchoolID), string(k.AsesorUserID),
 		string(k.Mode), k.Grade, k.Section,
 		nullableTime(k.ValidFrom), nullableTime(k.ValidTo),
-		k.MaxUses, k.Active, k.ExamID, k.MaxAttemptsPerUser,
+		k.MaxUses, k.Active, k.ExamID, k.MaxAttemptsPerUser, k.LandingConfig,
 	).Scan(&id)
 	if err != nil {
 		return "", mapDuplicate(err)
@@ -80,12 +81,13 @@ func (r *KeyRepo) Update(ctx context.Context, k *domain.Key) error {
 		       valid_to              = @p4,
 		       max_uses              = @p5,
 		       max_attempts_per_user = @p6,
-		       active                = @p7
-		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p8)`
+		       active                = @p7,
+		       landing_config        = NULLIF(@p8, '')
+		 WHERE id = CONVERT(UNIQUEIDENTIFIER, @p9)`
 	res, err := r.db.ExecContext(ctx, q,
 		k.Grade, k.Section,
 		nullableTime(k.ValidFrom), nullableTime(k.ValidTo),
-		k.MaxUses, k.MaxAttemptsPerUser, k.Active, string(k.ID))
+		k.MaxUses, k.MaxAttemptsPerUser, k.Active, k.LandingConfig, string(k.ID))
 	if err != nil {
 		return err
 	}
@@ -353,6 +355,7 @@ func scanKey(s rowScanner) (*domain.Key, error) {
 		validTo   sql.NullTime
 		updatedAt sql.NullTime
 		examID    string
+		landingConfig string
 	)
 	err := s.Scan(
 		&idStr, &k.Code, &k.ExamTypeID, &schoolID, &asesorID,
@@ -360,7 +363,7 @@ func scanKey(s rowScanner) (*domain.Key, error) {
 		&validFrom, &validTo,
 		&k.MaxUses, &k.CurrentUses, &k.Active,
 		&k.CreatedAt, &updatedAt,
-		&examID, &k.MaxAttemptsPerUser,
+		&examID, &k.MaxAttemptsPerUser, &landingConfig,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrKeyNotFound
@@ -385,5 +388,6 @@ func scanKey(s rowScanner) (*domain.Key, error) {
 		k.UpdatedAt = &v
 	}
 	k.ExamID = examID
+	k.LandingConfig = landingConfig
 	return &k, nil
 }

@@ -36,6 +36,7 @@ func (h *KeyHandler) GenerateKey(ctx context.Context, req *pb.GenerateKeyRequest
 		MaxUses:      req.GetMaxUses(),
 		ExamID:       req.GetExamId(),
 		MaxAttemptsPerUser: req.GetMaxAttemptsPerUser(),
+		LandingConfig:      req.GetLandingConfig(),
 		AsesorRecordID:     req.GetAsesorRecordId(),
 		SchoolRecordID:     req.GetSchoolRecordId(),
 		SchoolName:         req.GetSchoolName(),
@@ -66,6 +67,7 @@ func (h *KeyHandler) UpdateKey(ctx context.Context, req *pb.UpdateKeyRequest) (*
 		MaxUses: req.MaxUses, // puntero: nil=no provisto, *=actualizar
 		MaxAttemptsPerUser: req.MaxAttemptsPerUser, // idem
 		Active: req.Active, // idem; permite reactivar una key desactivada
+		LandingConfig: req.LandingConfig, // idem; nil=no tocar, *=setear contenido landing
 	}
 	if t := req.GetValidFrom(); t != nil {
 		v := t.AsTime()
@@ -248,6 +250,7 @@ func toProto(k *domain.Key) *pb.Key {
 		CreatedAt:    timestamppb.New(k.CreatedAt),
 		ExamId:       k.ExamID,
 		MaxAttemptsPerUser: k.MaxAttemptsPerUser,
+		LandingConfig:      k.LandingConfig,
 	}
 	if k.ValidFrom != nil {
 		out.ValidFrom = timestamppb.New(*k.ValidFrom)

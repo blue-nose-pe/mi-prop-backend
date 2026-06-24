@@ -145,6 +145,9 @@ type generateKeyRequest struct {
 	// (ej 2, 3...). El back enforza este limite en StartAttempt antes de
 	// crear el attempt nuevo.
 	MaxAttemptsPerUser int32 `json:"max_attempts_per_user"`
+	// LandingConfig opcional (JSON) — contenido editable de la landing
+	// "Preparate" para campañas LAN (fechas/textos). Solo se usa si mode='lan'.
+	LandingConfig string `json:"landing_config"`
 }
 
 func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
@@ -195,6 +198,7 @@ func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
 		MaxUses:      in.MaxUses,
 		ExamId:       in.ExamID,
 		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
+		LandingConfig:      in.LandingConfig,
 		SchoolRecordId:     hids.SchoolRecordID,
 		SchoolName:         hids.SchoolName,
 		SchoolIntId:        hids.SchoolIntID,
@@ -355,6 +359,9 @@ type updateKeyRequest struct {
 	// Active opcional: nil = no tocar; true = reactivar; false = desactivar.
 	// El front lo usa para reactivar keys apagadas (DeactivateKey solo apaga).
 	Active *bool `json:"active"`
+	// LandingConfig opcional: nil = no tocar; *valor = setear el contenido
+	// editable de la landing de la campaña LAN (JSON con fechas/textos).
+	LandingConfig *string `json:"landing_config"`
 }
 
 func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
@@ -386,6 +393,7 @@ func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
 		MaxUses:   in.MaxUses, // *int32 → proto optional max_uses
 		MaxAttemptsPerUser: in.MaxAttemptsPerUser,
 		Active:    in.Active, // *bool → proto optional active
+		LandingConfig: in.LandingConfig, // *string → proto optional landing_config
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -536,5 +544,6 @@ func protoKeyToJSON(k *keysgrpcpb.Key) map[string]any {
 		"updated_at":     optionalTimestamp(k.GetUpdatedAt()),
 		"exam_id":        k.GetExamId(),
 		"max_attempts_per_user": k.GetMaxAttemptsPerUser(),
+		"landing_config":        k.GetLandingConfig(),
 	}
 }
