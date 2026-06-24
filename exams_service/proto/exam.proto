@@ -88,6 +88,10 @@ message Exam {
   double default_points           = 15;
   double default_points_incorrect = 16;
   double default_points_blank     = 17;
+  // Timer configurable (B5). NULL/unset = usar el default por tipo
+  // (simulacro UCSP 150, Nacional 180, voca/estilos 0). Si está seteado,
+  // ese valor (en minutos) manda; 0 explícito = sin límite.
+  optional int32 duration_minutes = 18;
 }
 
 message Question {
@@ -151,6 +155,8 @@ message CreateExamRequest {
   double default_points           = 8;
   double default_points_incorrect = 9;
   double default_points_blank     = 10;
+  // Timer configurable (B5). Unset = default por tipo.
+  optional int32 duration_minutes = 11;
 }
 message UpdateExamRequest {
   string id              = 1;
@@ -164,6 +170,8 @@ message UpdateExamRequest {
   optional double default_points           = 7;
   optional double default_points_incorrect = 8;
   optional double default_points_blank     = 9;
+  // Timer configurable (B5). Unset = no tocar; seteado = nuevo límite (min).
+  optional int32 duration_minutes = 10;
 }
 message GetExamRequest        { string id = 1; }
 message PublishExamRequest    { string id = 1; }

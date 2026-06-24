@@ -62,6 +62,14 @@ const answerGrace = 90 * time.Second
 // Nacional (code SIME-NAC-*) = 180; vocacional/estilos = 0 (sin límite, son
 // tests de tendencia sin presión de tiempo).
 func durationMinutesFor(e *domain.Exam) int32 {
+	// B5: si el examen tiene una duración configurada explícitamente, manda
+	// (incluido 0 = sin límite). nil = caer al default por tipo de abajo.
+	if e.DurationMinutes != nil {
+		if *e.DurationMinutes < 0 {
+			return 0
+		}
+		return *e.DurationMinutes
+	}
 	if e.ExamTypeID != 2 { // 2 = simulacro; 1=vocacional, 3=estilos no tienen timer
 		return 0
 	}

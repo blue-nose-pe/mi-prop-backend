@@ -36,18 +36,20 @@ const examCols = `CONVERT(NVARCHAR(36), id),
 		updated_at,
 			default_points,
 			default_points_incorrect,
-			default_points_blank`
+			default_points_blank,
+			duration_minutes`
 
 func (r *ExamRepo) Save(ctx context.Context, e *domain.Exam) (domain.ExamID, error) {
 	const q = `
 		INSERT INTO exam (exam_type_id, school_id, parent_exam_id, version, code,
 		                  name, start_at, end_at, max_participants, published, active,
-		                  default_points, default_points_incorrect, default_points_blank)
+		                  default_points, default_points_incorrect, default_points_blank,
+		                  duration_minutes)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (@p1,
 		        IIF(@p2 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p2)),
 		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)),
-		        @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14)`
+		        @p4, @p5, @p6, @p7, @p8, @p9, @p10, @p11, @p12, @p13, @p14, @p15)`
 	var id string
 	err := r.db.QueryRowContext(ctx, q,
 		e.ExamTypeID,
@@ -64,6 +66,7 @@ func (r *ExamRepo) Save(ctx context.Context, e *domain.Exam) (domain.ExamID, err
 		e.DefaultPoints,
 		e.DefaultPointsIncorrect,
 		e.DefaultPointsBlank,
+		e.DurationMinutes, // *int32, nil -> NULL
 	).Scan(&id)
 	if err != nil {
 		return "", err
@@ -76,10 +79,11 @@ func (r *ExamRepo) Update(ctx context.Context, e *domain.Exam) error {
 		UPDATE exam
 		   SET name = @p1, start_at = @p2, end_at = @p3,
 		       max_participants = @p4, code = @p5,
-		       default_points = @p6, default_points_incorrect = @p7, default_points_blank = @p8
-WHERE id = CONVERT(UNIQUEIDENTIFIER, @p9)`
+		       default_points = @p6, default_points_incorrect = @p7, default_points_blank = @p8,
+		       duration_minutes = @p9
+WHERE id = CONVERT(UNIQUEIDENTIFIER, @p10)`
 	res, err := r.db.ExecContext(ctx, q, e.Name, e.StartAt, e.EndAt, e.MaxParticipants, e.Code,
-		e.DefaultPoints, e.DefaultPointsIncorrect, e.DefaultPointsBlank, string(e.ID))
+		e.DefaultPoints, e.DefaultPointsIncorrect, e.DefaultPointsBlank, e.DurationMinutes, string(e.ID))
 	if err != nil {
 		return err
 	}
@@ -100,12 +104,14 @@ func (r *ExamRepo) FindByID(ctx context.Context, id domain.ExamID) (*domain.Exam
 		schoolID  string
 		parentID  string
 		updatedAt sql.NullTime
+		duration  sql.NullInt32
 	)
 	err := row.Scan(
 		&idStr, &e.ExamTypeID, &schoolID, &parentID, &e.Version, &e.Code,
 		&e.Name, &e.StartAt, &e.EndAt, &e.MaxParticipants,
 		&e.Published, &e.Active, &e.CreatedAt, &updatedAt,
 		&e.DefaultPoints, &e.DefaultPointsIncorrect, &e.DefaultPointsBlank,
+		&duration,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrExamNotFound
@@ -119,6 +125,10 @@ func (r *ExamRepo) FindByID(ctx context.Context, id domain.ExamID) (*domain.Exam
 	if updatedAt.Valid {
 		v := updatedAt.Time
 		e.UpdatedAt = &v
+	}
+	if duration.Valid { // B5: NULL = nil (usar default por tipo)
+		v := duration.Int32
+		e.DurationMinutes = &v
 	}
 	return &e, nil
 }

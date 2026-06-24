@@ -114,6 +114,8 @@ type createExamRequest struct {
 	DefaultPoints          float64 `json:"default_points"`
 	DefaultPointsIncorrect float64 `json:"default_points_incorrect"`
 	DefaultPointsBlank     float64 `json:"default_points_blank"`
+	// B5: timer configurable. nil = default por tipo.
+	DurationMinutes *int32 `json:"duration_minutes"`
 }
 
 // requireExamWrite gatea TODAS las rutas de escritura de exámenes/preguntas/
@@ -162,6 +164,7 @@ func (p *Proxy) createExam(w http.ResponseWriter, r *http.Request) {
 		DefaultPoints:          in.DefaultPoints,
 		DefaultPointsIncorrect: in.DefaultPointsIncorrect,
 		DefaultPointsBlank:     in.DefaultPointsBlank,
+		DurationMinutes:        in.DurationMinutes, // B5: timer configurable
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -194,6 +197,8 @@ type updateExamRequest struct {
 	DefaultPoints          *float64 `json:"default_points"`
 	DefaultPointsIncorrect *float64 `json:"default_points_incorrect"`
 	DefaultPointsBlank     *float64 `json:"default_points_blank"`
+	// B5: timer configurable. nil = no tocar; seteado = nuevo límite (min).
+	DurationMinutes *int32 `json:"duration_minutes"`
 }
 
 func (p *Proxy) updateExam(w http.ResponseWriter, r *http.Request) {
@@ -225,6 +230,7 @@ func (p *Proxy) updateExam(w http.ResponseWriter, r *http.Request) {
 		DefaultPoints:          in.DefaultPoints,
 		DefaultPointsIncorrect: in.DefaultPointsIncorrect,
 		DefaultPointsBlank:     in.DefaultPointsBlank,
+		DurationMinutes:        in.DurationMinutes, // B5: timer configurable
 	})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -903,7 +909,9 @@ func protoExamToJSON(e *examsgrpcpb.Exam) map[string]any {
 		"default_points":           e.GetDefaultPoints(),
 		"default_points_incorrect": e.GetDefaultPointsIncorrect(),
 		"default_points_blank":     e.GetDefaultPointsBlank(),
-		"created_at":               optionalTimestamp(e.GetCreatedAt()),
+		// B5: *int32 → null si no está configurado (usa default por tipo).
+		"duration_minutes": e.DurationMinutes,
+		"created_at":       optionalTimestamp(e.GetCreatedAt()),
 		"updated_at":               optionalTimestamp(e.GetUpdatedAt()),
 	}
 }

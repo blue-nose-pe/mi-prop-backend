@@ -44,7 +44,11 @@ type Exam struct {
 	DefaultPoints          float64
 	DefaultPointsIncorrect float64
 	DefaultPointsBlank     float64
-	Published              bool
+	// DurationMinutes — timer configurable (B5). nil = usar el default por
+	// tipo (ver durationMinutesFor). Si está seteado, ese valor manda en
+	// minutos; 0 explícito = sin límite.
+	DurationMinutes *int32
+	Published       bool
 	Active                 bool
 	CreatedAt              time.Time
 	UpdatedAt              *time.Time

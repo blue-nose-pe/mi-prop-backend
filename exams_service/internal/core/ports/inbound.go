@@ -42,6 +42,8 @@ type CreateExamInput struct {
 	DefaultPoints          float64
 	DefaultPointsIncorrect float64
 	DefaultPointsBlank     float64
+	// Timer configurable (B5). nil = usar el default por tipo.
+	DurationMinutes *int32
 }
 
 type UpdateExamInput struct {
@@ -55,6 +57,8 @@ type UpdateExamInput struct {
 	DefaultPoints          *float64
 	DefaultPointsIncorrect *float64
 	DefaultPointsBlank     *float64
+	// Timer configurable (B5). nil = no tocar.
+	DurationMinutes *int32
 }
 
 // =============== QUESTION (banco) ===============

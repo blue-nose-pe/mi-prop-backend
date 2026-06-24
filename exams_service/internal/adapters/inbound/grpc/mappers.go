@@ -32,6 +32,7 @@ func toProtoExam(e *domain.Exam) *pb.Exam {
 	if e.UpdatedAt != nil {
 		out.UpdatedAt = timestamppb.New(*e.UpdatedAt)
 	}
+	out.DurationMinutes = e.DurationMinutes // B5: *int32, nil = default por tipo
 	return out
 }
 

@@ -35,6 +35,7 @@ func (h *ExamHandler) CreateExam(ctx context.Context, req *pb.CreateExamRequest)
 		DefaultPoints:          req.GetDefaultPoints(),
 		DefaultPointsIncorrect: req.GetDefaultPointsIncorrect(),
 		DefaultPointsBlank:     req.GetDefaultPointsBlank(),
+		DurationMinutes:        req.DurationMinutes, // B5: *int32, nil = default por tipo
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
@@ -68,6 +69,7 @@ func (h *ExamHandler) UpdateExam(ctx context.Context, req *pb.UpdateExamRequest)
 		DefaultPoints:          req.DefaultPoints,
 		DefaultPointsIncorrect: req.DefaultPointsIncorrect,
 		DefaultPointsBlank:     req.DefaultPointsBlank,
+		DurationMinutes:        req.DurationMinutes, // B5: timer configurable
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

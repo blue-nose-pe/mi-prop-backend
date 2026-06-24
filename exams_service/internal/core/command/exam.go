@@ -147,6 +147,7 @@ func (h *ExamHandler) Create(ctx context.Context, in ports.CreateExamInput) (*do
 		DefaultPoints:          defPts,
 		DefaultPointsIncorrect: in.DefaultPointsIncorrect,
 		DefaultPointsBlank:     in.DefaultPointsBlank,
+		DurationMinutes:        in.DurationMinutes, // B5: nil = default por tipo
 		Version:                1,
 		Active:                 true,
 		Published:              false,
@@ -198,6 +199,13 @@ func (h *ExamHandler) Update(ctx context.Context, in ports.UpdateExamInput) (*do
 	}
 	if in.DefaultPointsBlank != nil {
 		e.DefaultPointsBlank = *in.DefaultPointsBlank
+	}
+	if in.DurationMinutes != nil { // B5: timer configurable (nil = no tocar)
+		if *in.DurationMinutes < 0 {
+			e.DurationMinutes = nil // negativo = resetear al default por tipo
+		} else {
+			e.DurationMinutes = in.DurationMinutes
+		}
 	}
 	if !e.StartAt.Before(e.EndAt) {
 		return nil, domain.ErrInvalidDateRange
@@ -278,6 +286,7 @@ func (h *ExamHandler) Clone(ctx context.Context, id domain.ExamID) (*domain.Exam
 		DefaultPoints:          src.DefaultPoints,
 		DefaultPointsIncorrect: src.DefaultPointsIncorrect,
 		DefaultPointsBlank:     src.DefaultPointsBlank,
+		DurationMinutes:        src.DurationMinutes, // B5: el clon hereda el timer del padre
 		Active:                 true,
 		Published:              false, // la nueva versión nace en draft
 	}
