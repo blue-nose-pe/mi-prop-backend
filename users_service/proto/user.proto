@@ -263,6 +263,9 @@ message School {
   string asesor_user_id    = 17;
   string asesor_name       = 18;
   string personal_a_cargo  = 19; // persona/contacto a cargo en el colegio ("" si no se cargo)
+  // Coordinadores vigentes del colegio (nombres "A, B, C"), many-to-many.
+  // Solo lo llena el listado. "" = colegio sin coordinadores.
+  string coordinadores_nombres = 20;
 }
 
 // ---------- Lead (landing publica "Preparate" / simulacro masivo) ----------

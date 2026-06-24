@@ -103,7 +103,12 @@ func (r *SchoolRepo) List(ctx context.Context, in ports.ListSchoolsInput) ([]dom
 	                       FROM assignment a JOIN users u ON u.id = a.source_user_id
 	                      WHERE a.target_user_id = school.user_id
 	                        AND a.kind = 'asesor_de_colegio'
-	                        AND a.valid_to IS NULL), '') AS asesor_name
+	                        AND a.valid_to IS NULL), '') AS asesor_name,
+	             ISNULL((SELECT STRING_AGG(LTRIM(RTRIM(ISNULL(u.first_name,'') + ' ' + ISNULL(u.last_name,''))), ', ')
+	                       FROM assignment a JOIN users u ON u.id = a.source_user_id
+	                      WHERE a.target_user_id = school.user_id
+	                        AND a.kind = 'coordinador_de_colegio'
+	                        AND a.valid_to IS NULL), '') AS coordinadores_nombres
 	        FROM school ` + where + `
 	       ORDER BY name ASC
 	      OFFSET @p` + strconv.Itoa(idx) + ` ROWS FETCH NEXT @p` + strconv.Itoa(idx+1) + ` ROWS ONLY`
@@ -124,7 +129,7 @@ func (r *SchoolRepo) List(ctx context.Context, in ports.ListSchoolsInput) ([]dom
 			updatedAt sql.NullTime
 			hubspotID string
 		)
-		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.PersonalACargo, &s.AsesorUserID, &s.AsesorName); err != nil {
+		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.PersonalACargo, &s.AsesorUserID, &s.AsesorName, &s.CoordinadoresNombres); err != nil {
 			return nil, 0, err
 		}
 		s.ID = domain.SchoolID(idStr)

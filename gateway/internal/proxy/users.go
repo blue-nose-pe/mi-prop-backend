@@ -313,7 +313,11 @@ func protoSchoolToJSON(s *usersgrpcpb.School) map[string]any {
 		"personal_a_cargo":  s.GetPersonalACargo(),
 		"asesor_user_id":    s.GetAsesorUserId(),
 		"asesor_name":       s.GetAsesorName(),
-		"active":            s.GetActive(),
+		// Coordinadores many-to-many (nombres "A, B, C"). `coordinador` es el
+		// campo que lee el card del listado.
+		"coordinador":           s.GetCoordinadoresNombres(),
+		"coordinadores_nombres": s.GetCoordinadoresNombres(),
+		"active":                s.GetActive(),
 		"hubspot_record_id": s.GetHubspotRecordId(),
 		"created_at":        optionalTimestamp(s.GetCreatedAt()),
 		"updated_at":        optionalTimestamp(s.GetUpdatedAt()),

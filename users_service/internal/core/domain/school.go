@@ -40,7 +40,10 @@ type School struct {
 	// la tabla school (es derivado).
 	AsesorUserID    string
 	AsesorName      string
-	Active          bool
+	// CoordinadoresNombres: nombres de los coordinadores vigentes del colegio,
+	// separados por ", " (many-to-many vía assignment). Solo lectura (List).
+	CoordinadoresNombres string
+	Active               bool
 	// ActiveRaw: solo escritura (Update). "" = no tocar; "true"/"false" =
 	// activar/desactivar el colegio (C1). No se hidrata al leer (usar Active).
 	ActiveRaw       string
