@@ -7,6 +7,7 @@ package domain
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -87,8 +88,8 @@ func (c Contact) ToProperties() map[string]string {
 type ExamResult struct {
 	DNI            string
 	ExamTypeCode   ExamTypeCode
-	Score          int32
-	MaxScore       int32
+	Score          float64 // float: preserva decimales (Nacional 1.25/pregunta)
+	MaxScore       float64
 	AttemptID      AttemptID
 	SubmittedAt    time.Time
 	ContactRecord  RecordID // opcional: si ya conocemos el record_id evita un search
@@ -98,10 +99,16 @@ type ExamResult struct {
 // escriben en el Contact (score_<modulo>, max_score_<modulo>, ultima_evaluacion).
 func (r ExamResult) ToProperties() map[string]string {
 	return map[string]string{
-		"score_" + string(r.ExamTypeCode):     intStr(r.Score),
-		"max_score_" + string(r.ExamTypeCode): intStr(r.MaxScore),
+		"score_" + string(r.ExamTypeCode):     FloatStr(r.Score),
+		"max_score_" + string(r.ExamTypeCode): FloatStr(r.MaxScore),
 		"ultima_evaluacion":                   r.SubmittedAt.UTC().Format(time.RFC3339),
 	}
+}
+
+// FloatStr formatea un puntaje float con el mínimo de decimales necesarios
+// (11.25 → "11.25", 100 → "100"). HubSpot acepta el string en props number.
+func FloatStr(n float64) string {
+	return strconv.FormatFloat(n, 'f', -1, 64)
 }
 
 // AsesorPayload — propiedades del custom object Asesor.

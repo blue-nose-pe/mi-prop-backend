@@ -158,8 +158,8 @@ message SyncKeyRequest {
 message SyncExamResultRequest {
   string dni                = 1;
   string exam_type_code     = 2; // vocacional | simulacro | habitos
-  int32  score              = 3;
-  int32  max_score          = 4;
+  double score              = 3; // float: el Nacional usa 1.25/pregunta (decimales)
+  double max_score          = 4;
   string attempt_id         = 5;
   string submitted_at       = 6; // RFC 3339
   string contact_record_id  = 7; // opcional: evita un search por DNI

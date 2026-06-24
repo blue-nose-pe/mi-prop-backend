@@ -712,13 +712,13 @@ type SyncExamResultRequest struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	Dni             string `protobuf:"bytes,1,opt,name=dni,proto3" json:"dni,omitempty"`
-	ExamTypeCode    string `protobuf:"bytes,2,opt,name=exam_type_code,json=examTypeCode,proto3" json:"exam_type_code,omitempty"` // vocacional | simulacro | habitos
-	Score           int32  `protobuf:"varint,3,opt,name=score,proto3" json:"score,omitempty"`
-	MaxScore        int32  `protobuf:"varint,4,opt,name=max_score,json=maxScore,proto3" json:"max_score,omitempty"`
-	AttemptId       string `protobuf:"bytes,5,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
-	SubmittedAt     string `protobuf:"bytes,6,opt,name=submitted_at,json=submittedAt,proto3" json:"submitted_at,omitempty"`               // RFC 3339
-	ContactRecordId string `protobuf:"bytes,7,opt,name=contact_record_id,json=contactRecordId,proto3" json:"contact_record_id,omitempty"` // opcional: evita un search por DNI
+	Dni             string  `protobuf:"bytes,1,opt,name=dni,proto3" json:"dni,omitempty"`
+	ExamTypeCode    string  `protobuf:"bytes,2,opt,name=exam_type_code,json=examTypeCode,proto3" json:"exam_type_code,omitempty"` // vocacional | simulacro | habitos
+	Score           float64 `protobuf:"fixed64,3,opt,name=score,proto3" json:"score,omitempty"`                                   // float: el Nacional usa 1.25/pregunta (decimales)
+	MaxScore        float64 `protobuf:"fixed64,4,opt,name=max_score,json=maxScore,proto3" json:"max_score,omitempty"`
+	AttemptId       string  `protobuf:"bytes,5,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
+	SubmittedAt     string  `protobuf:"bytes,6,opt,name=submitted_at,json=submittedAt,proto3" json:"submitted_at,omitempty"`               // RFC 3339
+	ContactRecordId string  `protobuf:"bytes,7,opt,name=contact_record_id,json=contactRecordId,proto3" json:"contact_record_id,omitempty"` // opcional: evita un search por DNI
 }
 
 func (x *SyncExamResultRequest) Reset() {
@@ -765,14 +765,14 @@ func (x *SyncExamResultRequest) GetExamTypeCode() string {
 	return ""
 }
 
-func (x *SyncExamResultRequest) GetScore() int32 {
+func (x *SyncExamResultRequest) GetScore() float64 {
 	if x != nil {
 		return x.Score
 	}
 	return 0
 }
 
-func (x *SyncExamResultRequest) GetMaxScore() int32 {
+func (x *SyncExamResultRequest) GetMaxScore() float64 {
 	if x != nil {
 		return x.MaxScore
 	}
@@ -1363,9 +1363,9 @@ var file_hubspot_proto_rawDesc = []byte{
 	0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x03, 0x64, 0x6e, 0x69, 0x12, 0x24, 0x0a, 0x0e, 0x65, 0x78,
 	0x61, 0x6d, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x5f, 0x63, 0x6f, 0x64, 0x65, 0x18, 0x02, 0x20, 0x01,
 	0x28, 0x09, 0x52, 0x0c, 0x65, 0x78, 0x61, 0x6d, 0x54, 0x79, 0x70, 0x65, 0x43, 0x6f, 0x64, 0x65,
-	0x12, 0x14, 0x0a, 0x05, 0x73, 0x63, 0x6f, 0x72, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x05, 0x52,
+	0x12, 0x14, 0x0a, 0x05, 0x73, 0x63, 0x6f, 0x72, 0x65, 0x18, 0x03, 0x20, 0x01, 0x28, 0x01, 0x52,
 	0x05, 0x73, 0x63, 0x6f, 0x72, 0x65, 0x12, 0x1b, 0x0a, 0x09, 0x6d, 0x61, 0x78, 0x5f, 0x73, 0x63,
-	0x6f, 0x72, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x05, 0x52, 0x08, 0x6d, 0x61, 0x78, 0x53, 0x63,
+	0x6f, 0x72, 0x65, 0x18, 0x04, 0x20, 0x01, 0x28, 0x01, 0x52, 0x08, 0x6d, 0x61, 0x78, 0x53, 0x63,
 	0x6f, 0x72, 0x65, 0x12, 0x1d, 0x0a, 0x0a, 0x61, 0x74, 0x74, 0x65, 0x6d, 0x70, 0x74, 0x5f, 0x69,
 	0x64, 0x18, 0x05, 0x20, 0x01, 0x28, 0x09, 0x52, 0x09, 0x61, 0x74, 0x74, 0x65, 0x6d, 0x70, 0x74,
 	0x49, 0x64, 0x12, 0x21, 0x0a, 0x0c, 0x73, 0x75, 0x62, 0x6d, 0x69, 0x74, 0x74, 0x65, 0x64, 0x5f,

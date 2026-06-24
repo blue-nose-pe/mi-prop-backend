@@ -698,13 +698,12 @@ func (p *Proxy) finishAttempt(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
-	// Sync de resultado de examen a HubSpot DESACTIVADO (2026-06-17): el equipo
-	// decidió NO llevar los scores a HubSpot. Las props score_*/max_score_*/
-	// ultima_evaluacion NUNCA se crearon en el portal 9013951 → el worker daba
-	// 400 INVALID_PROPERTY y los jobs caían al DLQ. Coincide con la decisión
-	// original de arquitectura ("no SyncExamResult — feature creep"). Si UCSP lo
-	// pide a futuro: crear las props en el portal + reactivar la línea de abajo.
-	//   go p.syncResultToHubspot(resp.GetAttempt(), r.Header.Get("Authorization"))
+	// Sync de resultado de examen a HubSpot RE-ACTIVADO (2026-06-23): UCSP pidió
+	// que los resultados SÍ viajen (reclamo O1). Ya se crearon las props
+	// score_*/max_score_*/ultima_evaluacion en el portal 9013951 y el proto se
+	// ensanchó a double (no trunca el Nacional 1.25/pregunta). Best-effort en
+	// goroutine: si falla, el examen ya quedó guardado localmente.
+	go p.syncResultToHubspot(resp.GetAttempt(), r.Header.Get("Authorization"))
 	writeJSON(w, http.StatusOK, map[string]any{"attempt": protoAttemptToJSON(resp.GetAttempt())})
 }
 
@@ -755,13 +754,10 @@ func (p *Proxy) syncResultToHubspot(a *examsgrpcpb.Attempt, authz string) {
 	if _, err := p.cli.Hubspot.SyncExamResult(ctx, &hubspotgrpcpb.SyncExamResultRequest{
 		Dni:          dni,
 		ExamTypeCode: examTypeCode,
-		// TODO(audit 2026-06-18, P1): Score/MaxScore son int32 en el proto de
-		// hubspot_service → truncan decimales (Nacional 11.25 → 11). Al RE-HABILITAR
-		// el sync (hoy desactivado, commit 1fce8cb) hay que ensanchar el campo del
-		// proto a double + regenerar hubspot_service + crear las props score_* en el
-		// portal 9013951 (no existen). Mientras tanto se mantiene int32.
-		Score:        int32(a.GetScore()),
-		MaxScore:     int32(a.GetMaxScore()),
+		// 2026-06-23: proto ensanchado a double + props score_* creadas en el
+		// portal 9013951 → ya NO se truncan los decimales (Nacional 1.25/pregunta).
+		Score:        a.GetScore(),
+		MaxScore:     a.GetMaxScore(),
 		AttemptId:    a.GetId(),
 		SubmittedAt:  submittedAt,
 	}); err != nil {

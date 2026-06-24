@@ -47,8 +47,8 @@ func handleSyncResult(deps WorkerDeps) asynq.HandlerFunc {
 			recordID = id
 		}
 		props := map[string]string{
-			"score_" + p.ExamTypeCode:     int32Str(p.Score),
-			"max_score_" + p.ExamTypeCode: int32Str(p.MaxScore),
+			"score_" + p.ExamTypeCode:     domain.FloatStr(p.Score),
+			"max_score_" + p.ExamTypeCode: domain.FloatStr(p.MaxScore),
 			"ultima_evaluacion":           p.SubmittedAt,
 		}
 		return deps.HSClient.UpdateContact(ctx, recordID, props)

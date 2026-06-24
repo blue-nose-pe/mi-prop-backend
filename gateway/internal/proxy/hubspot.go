@@ -98,11 +98,11 @@ func (p *Proxy) sendHubspotOTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type syncHubspotResultRequest struct {
-	DNI             string `json:"dni"`
-	ExamTypeCode    string `json:"exam_type_code"`
-	Score           int32  `json:"score"`
-	MaxScore        int32  `json:"max_score"`
-	AttemptID       string `json:"attempt_id"`
+	DNI             string  `json:"dni"`
+	ExamTypeCode    string  `json:"exam_type_code"`
+	Score           float64 `json:"score"`
+	MaxScore        float64 `json:"max_score"`
+	AttemptID       string  `json:"attempt_id"`
 	SubmittedAt     string `json:"submitted_at"`
 	ContactRecordID string `json:"contact_record_id"`
 }
