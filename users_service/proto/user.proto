@@ -48,6 +48,13 @@ service SchoolService {
   // y cierra la vigente anterior si existe (valid_to = NOW). Idempotente
   // si el asesor ya esta asignado.
   rpc AssignAsesor        (AssignAsesorRequest)        returns (EmptyResponse);
+  // Coordinadores MUCHOS-a-muchos (varios por colegio, reutilizables):
+  // assignment kind=coordinador_de_colegio. AssignCoordinador AGREGA (no cierra
+  // los otros), RevokeCoordinador quita uno, ListCoordinadoresBySchool lista los
+  // vigentes del colegio.
+  rpc AssignCoordinador          (AssignCoordinadorRequest)          returns (EmptyResponse);
+  rpc RevokeCoordinador          (RevokeCoordinadorRequest)          returns (EmptyResponse);
+  rpc ListCoordinadoresBySchool  (ListCoordinadoresBySchoolRequest)  returns (ListCoordinadoresResponse);
 }
 
 // LeadService — captacion de leads de la landing publica "Preparate"
@@ -176,6 +183,27 @@ message ListSchoolsByAsesorRequest {
 message AssignAsesorRequest {
   string school_id = 1;
   string user_id   = 2;  // user a asignar como asesor del colegio
+}
+
+message AssignCoordinadorRequest {
+  string school_id = 1;
+  string user_id   = 2;  // coordinador a AGREGAR al colegio
+}
+message RevokeCoordinadorRequest {
+  string school_id = 1;
+  string user_id   = 2;  // coordinador a quitar del colegio
+}
+message ListCoordinadoresBySchoolRequest {
+  string school_id = 1;
+}
+message CoordinadorInfo {
+  string id         = 1;
+  string first_name = 2;
+  string last_name  = 3;
+  string email      = 4;
+}
+message ListCoordinadoresResponse {
+  repeated CoordinadorInfo items = 1;
 }
 
 message CreateSchoolRequest {

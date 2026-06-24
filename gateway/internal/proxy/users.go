@@ -28,6 +28,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	hubspotpb "hubspot_service/proto/gen"
@@ -69,6 +70,10 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/schools/{id}", p.getSchool)
 	mux.HandleFunc("PATCH /api/schools/{id}", p.updateSchool)
 	mux.HandleFunc("POST /api/schools/{id}/asesores", p.assignAsesorToSchool)
+	// Coordinadores many-to-many (varios por colegio).
+	mux.HandleFunc("GET /api/schools/{id}/coordinadores", p.listCoordinadoresBySchool)
+	mux.HandleFunc("POST /api/schools/{id}/coordinadores", p.assignCoordinadorToSchool)
+	mux.HandleFunc("DELETE /api/schools/{id}/coordinadores/{userId}", p.revokeCoordinadorFromSchool)
 
 	// Atajos semánticos (rolean al endpoint de grupo subyacente con
 	// el id del grupo predefinido). Pensados para el front: más obvios
@@ -671,6 +676,64 @@ func (p *Proxy) assignAsesorToSchool(w http.ResponseWriter, r *http.Request) {
 	if _, err := p.cli.Schools.AssignAsesor(r.Context(), &usersgrpcpb.AssignAsesorRequest{
 		SchoolId: r.PathValue("id"),
 		UserId:   in.UserID,
+	}); err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// listCoordinadoresBySchool — GET /api/schools/{id}/coordinadores
+func (p *Proxy) listCoordinadoresBySchool(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Schools.ListCoordinadoresBySchool(r.Context(), &usersgrpcpb.ListCoordinadoresBySchoolRequest{
+		SchoolId: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, c := range resp.GetItems() {
+		nombre := strings.TrimSpace(c.GetFirstName() + " " + c.GetLastName())
+		items = append(items, map[string]any{
+			"id":                 c.GetId(),
+			"coordinador_id":     c.GetId(),
+			"coordinador_nombre": nombre,
+			"nombre":             nombre,
+			"email":              c.GetEmail(),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
+}
+
+// assignCoordinadorToSchool — POST /api/schools/{id}/coordinadores  Body: {user_id}
+func (p *Proxy) assignCoordinadorToSchool(w http.ResponseWriter, r *http.Request) {
+	var in struct {
+		UserID string `json:"user_id"`
+	}
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	if in.UserID == "" {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_USER_ID", Message: "user_id is required"})
+		return
+	}
+	if _, err := p.cli.Schools.AssignCoordinador(r.Context(), &usersgrpcpb.AssignCoordinadorRequest{
+		SchoolId: r.PathValue("id"),
+		UserId:   in.UserID,
+	}); err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// revokeCoordinadorFromSchool — DELETE /api/schools/{id}/coordinadores/{userId}
+func (p *Proxy) revokeCoordinadorFromSchool(w http.ResponseWriter, r *http.Request) {
+	if _, err := p.cli.Schools.RevokeCoordinador(r.Context(), &usersgrpcpb.RevokeCoordinadorRequest{
+		SchoolId: r.PathValue("id"),
+		UserId:   r.PathValue("userId"),
 	}); err != nil {
 		writeGRPCError(w, err)
 		return

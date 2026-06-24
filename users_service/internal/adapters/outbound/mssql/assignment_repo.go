@@ -62,6 +62,95 @@ func (r *AssignmentRepo) Reassign(
 	return tx.Commit()
 }
 
+// AddSource permite VARIOS source vigentes por target (many-to-many). Cierra
+// solo la vigente del PAR exacto (kind, source, target) — idempotente, evita
+// duplicar el mismo coordinador — e inserta una nueva. NO toca otros sources
+// del mismo target. Úsese para "varios coordinadores por colegio".
+func (r *AssignmentRepo) AddSource(
+	ctx context.Context,
+	kind ports.AssignmentKind,
+	source, target, by domain.UserID,
+) error {
+	if string(source) == "" {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	const closeQ = `
+		UPDATE assignment
+		   SET valid_to = SYSUTCDATETIME()
+		 WHERE kind = @p1
+		   AND source_user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		   AND target_user_id = CONVERT(UNIQUEIDENTIFIER, @p3)
+		   AND valid_to IS NULL`
+	if _, err := tx.ExecContext(ctx, closeQ, string(kind), string(source), string(target)); err != nil {
+		return err
+	}
+	const insertQ = `
+		INSERT INTO assignment (kind, source_user_id, target_user_id, created_by)
+		VALUES (@p1,
+		        CONVERT(UNIQUEIDENTIFIER, @p2),
+		        CONVERT(UNIQUEIDENTIFIER, @p3),
+		        IIF(@p4 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p4)))`
+	if _, err := tx.ExecContext(ctx, insertQ,
+		string(kind), string(source), string(target), string(by),
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// RevokeSource cierra la vigente del par exacto (kind, source, target). No falla
+// si no había (idempotente).
+func (r *AssignmentRepo) RevokeSource(
+	ctx context.Context,
+	kind ports.AssignmentKind,
+	source, target, by domain.UserID,
+) error {
+	const q = `
+		UPDATE assignment
+		   SET valid_to = SYSUTCDATETIME()
+		 WHERE kind = @p1
+		   AND source_user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		   AND target_user_id = CONVERT(UNIQUEIDENTIFIER, @p3)
+		   AND valid_to IS NULL`
+	_, err := r.db.ExecContext(ctx, q, string(kind), string(source), string(target))
+	return err
+}
+
+// ListSourcesByTarget retorna los source_user_id con asignación vigente para
+// (kind, target). Para "listar los coordinadores de un colegio".
+func (r *AssignmentRepo) ListSourcesByTarget(
+	ctx context.Context,
+	kind ports.AssignmentKind,
+	target domain.UserID,
+) ([]domain.UserID, error) {
+	const q = `
+		SELECT DISTINCT CONVERT(NVARCHAR(36), source_user_id)
+		  FROM assignment
+		 WHERE kind = @p1
+		   AND target_user_id = CONVERT(UNIQUEIDENTIFIER, @p2)
+		   AND valid_to IS NULL`
+	rows, err := r.db.QueryContext(ctx, q, string(kind), string(target))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.UserID, 0)
+	for rows.Next() {
+		var s string
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		out = append(out, domain.UserID(s))
+	}
+	return out, rows.Err()
+}
+
 func (r *AssignmentRepo) FindCurrent(
 	ctx context.Context,
 	kind ports.AssignmentKind,

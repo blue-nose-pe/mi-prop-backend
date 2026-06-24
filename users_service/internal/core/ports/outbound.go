@@ -116,6 +116,9 @@ type SchoolRepository interface {
 	// vigente (assignment kind=asesor_de_colegio, valid_to IS NULL). Una
 	// sola query con JOIN para evitar round-trips entre analytics y users.
 	ListByAsesor(ctx context.Context, asesorID domain.UserID) ([]domain.School, error)
+	// ListCoordinadores devuelve los usuarios coordinadores VIGENTES del colegio
+	// (assignment kind=coordinador_de_colegio, target=school.user_id). Many-to-many.
+	ListCoordinadores(ctx context.Context, schoolID domain.SchoolID) ([]domain.User, error)
 }
 
 // ListSchoolsInput: filtros del listado paginado de colegios.
@@ -286,6 +289,19 @@ type AssignmentRepository interface {
 	// ListHistory retorna todas las asignaciones (vigentes e históricas)
 	// para un (kind, target), ordenadas por valid_from DESC.
 	ListHistory(ctx context.Context, kind AssignmentKind, target domain.UserID) ([]AssignmentRecord, error)
+
+	// ---- Asignaciones MUCHOS-a-muchos (varios source por target) ----
+	// A diferencia de Reassign (que cierra TODA vigente del target = 1 por
+	// colegio), estos operan por PAR (source, target): permiten varios source
+	// vigentes para un mismo target. Se usan para "varios coordinadores por
+	// colegio".
+	//
+	// AddSource cierra la vigente del par exacto (idempotente, evita duplicados)
+	// e inserta una nueva. RevokeSource cierra la vigente del par.
+	AddSource(ctx context.Context, kind AssignmentKind, source, target, by domain.UserID) error
+	RevokeSource(ctx context.Context, kind AssignmentKind, source, target, by domain.UserID) error
+	// ListSourcesByTarget retorna los source_user_id vigentes para (kind, target).
+	ListSourcesByTarget(ctx context.Context, kind AssignmentKind, target domain.UserID) ([]domain.UserID, error)
 }
 
 // ---------- Visita ----------

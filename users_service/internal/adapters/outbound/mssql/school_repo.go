@@ -246,6 +246,15 @@ func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) (
 		            AND a.kind = 'asesor_de_colegio'
 		            AND a.valid_to IS NULL
 		       )
+		    -- Coordinador many-to-many: ve los colegios donde tiene una
+		    -- assignment vigente kind=coordinador_de_colegio (target=s.user_id).
+		    OR EXISTS (
+		         SELECT 1 FROM assignment a
+		          WHERE a.target_user_id = s.user_id
+		            AND a.source_user_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		            AND a.kind = 'coordinador_de_colegio'
+		            AND a.valid_to IS NULL
+		       )
 		 ORDER BY s.name`
 	rows, err := r.db.QueryContext(ctx, q, string(asesorID))
 	if err != nil {
@@ -276,6 +285,43 @@ func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) (
 			s.UpdatedAt = &t
 		}
 		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// ListCoordinadores devuelve los usuarios coordinadores vigentes del colegio
+// (assignment kind=coordinador_de_colegio, target = school.user_id). Many-to-many.
+func (r *SchoolRepo) ListCoordinadores(ctx context.Context, schoolID domain.SchoolID) ([]domain.User, error) {
+	const q = `
+		SELECT CONVERT(NVARCHAR(36), u.id),
+		       ISNULL(u.email, ''), ISNULL(u.first_name, ''), ISNULL(u.last_name, '')
+		  FROM users u
+		 WHERE u.id IN (
+		         SELECT a.source_user_id
+		           FROM assignment a
+		           JOIN school s ON s.user_id = a.target_user_id
+		          WHERE s.id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		            AND a.kind = 'coordinador_de_colegio'
+		            AND a.valid_to IS NULL
+		       )
+		 ORDER BY u.first_name, u.last_name`
+	rows, err := r.db.QueryContext(ctx, q, string(schoolID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]domain.User, 0)
+	for rows.Next() {
+		var u domain.User
+		var idStr, email, fn, ln string
+		if err := rows.Scan(&idStr, &email, &fn, &ln); err != nil {
+			return nil, err
+		}
+		u.ID = domain.UserID(idStr)
+		u.Email = domain.Email(email)
+		u.FirstName = fn
+		u.LastName = ln
+		out = append(out, u)
 	}
 	return out, rows.Err()
 }

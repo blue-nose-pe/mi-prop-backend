@@ -173,6 +173,105 @@ func (h *SchoolHandler) AssignAsesor(ctx context.Context, req *pb.AssignAsesorRe
 	return &pb.EmptyResponse{}, nil
 }
 
+// ctxIsSuperadmin: SOLO superadmin gestiona asignaciones (mismo criterio que
+// AssignAsesor — el grupo asesor incluye school.write y no debe poder tocar
+// coordinadores de colegios ajenos).
+func ctxIsSuperadmin(ctx context.Context) bool {
+	c := jwtmw.FromContext(ctx)
+	if c == nil {
+		return false
+	}
+	for _, r := range c.Roles {
+		if r == "superadmin" {
+			return true
+		}
+	}
+	return false
+}
+
+// AssignCoordinador AGREGA un coordinador al colegio (many-to-many: no cierra
+// los otros). assignment kind=coordinador_de_colegio, source=coordinador,
+// target=school.user_id (ancla). Idempotente para el mismo coordinador.
+func (h *SchoolHandler) AssignCoordinador(ctx context.Context, req *pb.AssignCoordinadorRequest) (*pb.EmptyResponse, error) {
+	if !ctxIsSuperadmin(ctx) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewPermissionDenied("ONLY_SUPERADMIN", "only superadmin can assign coordinadores"))
+	}
+	if req.GetSchoolId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_SCHOOL_ID", "school_id is required", "school_id"))
+	}
+	if req.GetUserId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_USER_ID", "user_id (coordinador) is required", "user_id"))
+	}
+	s, err := h.repo.FindByID(ctx, domain.SchoolID(req.GetSchoolId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	if s == nil || s.UserID == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("SCHOOL_NO_ANCHOR", "el colegio no tiene coordinador principal; contacta a soporte", "school_id"))
+	}
+	if err := h.assignments.AddSource(
+		ctx,
+		ports.AssignmentCoordinadorDeColegio,
+		domain.UserID(req.GetUserId()),
+		s.UserID,
+		domain.UserID(req.GetUserId()),
+	); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
+// RevokeCoordinador quita un coordinador del colegio (cierra su assignment vigente).
+func (h *SchoolHandler) RevokeCoordinador(ctx context.Context, req *pb.RevokeCoordinadorRequest) (*pb.EmptyResponse, error) {
+	if !ctxIsSuperadmin(ctx) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewPermissionDenied("ONLY_SUPERADMIN", "only superadmin can revoke coordinadores"))
+	}
+	if req.GetSchoolId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_SCHOOL_ID", "school_id is required", "school_id"))
+	}
+	if req.GetUserId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_USER_ID", "user_id (coordinador) is required", "user_id"))
+	}
+	s, err := h.repo.FindByID(ctx, domain.SchoolID(req.GetSchoolId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	if s == nil || s.UserID == "" {
+		return &pb.EmptyResponse{}, nil // nada que revocar
+	}
+	if err := h.assignments.RevokeSource(
+		ctx,
+		ports.AssignmentCoordinadorDeColegio,
+		domain.UserID(req.GetUserId()),
+		s.UserID,
+		domain.UserID(req.GetUserId()),
+	); err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.EmptyResponse{}, nil
+}
+
+// ListCoordinadoresBySchool lista los coordinadores vigentes del colegio.
+func (h *SchoolHandler) ListCoordinadoresBySchool(ctx context.Context, req *pb.ListCoordinadoresBySchoolRequest) (*pb.ListCoordinadoresResponse, error) {
+	if req.GetSchoolId() == "" {
+		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_SCHOOL_ID", "school_id is required", "school_id"))
+	}
+	users, err := h.repo.ListCoordinadores(ctx, domain.SchoolID(req.GetSchoolId()))
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	items := make([]*pb.CoordinadorInfo, 0, len(users))
+	for i := range users {
+		items = append(items, &pb.CoordinadorInfo{
+			Id:        string(users[i].ID),
+			FirstName: users[i].FirstName,
+			LastName:  users[i].LastName,
+			Email:     string(users[i].Email),
+		})
+	}
+	return &pb.ListCoordinadoresResponse{Items: items}, nil
+}
+
 func (h *SchoolHandler) ListSchools(ctx context.Context, req *pb.ListSchoolsRequest) (*pb.ListSchoolsResponse, error) {
 	items, total, err := h.repo.List(ctx, ports.ListSchoolsInput{
 		Search:     req.GetSearch(),

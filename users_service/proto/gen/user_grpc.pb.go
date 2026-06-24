@@ -628,12 +628,15 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	SchoolService_GetSchool_FullMethodName           = "/users.v1.SchoolService/GetSchool"
-	SchoolService_ListSchools_FullMethodName         = "/users.v1.SchoolService/ListSchools"
-	SchoolService_CreateSchool_FullMethodName        = "/users.v1.SchoolService/CreateSchool"
-	SchoolService_UpdateSchool_FullMethodName        = "/users.v1.SchoolService/UpdateSchool"
-	SchoolService_ListSchoolsByAsesor_FullMethodName = "/users.v1.SchoolService/ListSchoolsByAsesor"
-	SchoolService_AssignAsesor_FullMethodName        = "/users.v1.SchoolService/AssignAsesor"
+	SchoolService_GetSchool_FullMethodName                 = "/users.v1.SchoolService/GetSchool"
+	SchoolService_ListSchools_FullMethodName               = "/users.v1.SchoolService/ListSchools"
+	SchoolService_CreateSchool_FullMethodName              = "/users.v1.SchoolService/CreateSchool"
+	SchoolService_UpdateSchool_FullMethodName              = "/users.v1.SchoolService/UpdateSchool"
+	SchoolService_ListSchoolsByAsesor_FullMethodName       = "/users.v1.SchoolService/ListSchoolsByAsesor"
+	SchoolService_AssignAsesor_FullMethodName              = "/users.v1.SchoolService/AssignAsesor"
+	SchoolService_AssignCoordinador_FullMethodName         = "/users.v1.SchoolService/AssignCoordinador"
+	SchoolService_RevokeCoordinador_FullMethodName         = "/users.v1.SchoolService/RevokeCoordinador"
+	SchoolService_ListCoordinadoresBySchool_FullMethodName = "/users.v1.SchoolService/ListCoordinadoresBySchool"
 )
 
 // SchoolServiceClient is the client API for SchoolService service.
@@ -655,6 +658,13 @@ type SchoolServiceClient interface {
 	// y cierra la vigente anterior si existe (valid_to = NOW). Idempotente
 	// si el asesor ya esta asignado.
 	AssignAsesor(ctx context.Context, in *AssignAsesorRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// Coordinadores MUCHOS-a-muchos (varios por colegio, reutilizables):
+	// assignment kind=coordinador_de_colegio. AssignCoordinador AGREGA (no cierra
+	// los otros), RevokeCoordinador quita uno, ListCoordinadoresBySchool lista los
+	// vigentes del colegio.
+	AssignCoordinador(ctx context.Context, in *AssignCoordinadorRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	RevokeCoordinador(ctx context.Context, in *RevokeCoordinadorRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	ListCoordinadoresBySchool(ctx context.Context, in *ListCoordinadoresBySchoolRequest, opts ...grpc.CallOption) (*ListCoordinadoresResponse, error)
 }
 
 type schoolServiceClient struct {
@@ -725,6 +735,36 @@ func (c *schoolServiceClient) AssignAsesor(ctx context.Context, in *AssignAsesor
 	return out, nil
 }
 
+func (c *schoolServiceClient) AssignCoordinador(ctx context.Context, in *AssignCoordinadorRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, SchoolService_AssignCoordinador_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *schoolServiceClient) RevokeCoordinador(ctx context.Context, in *RevokeCoordinadorRequest, opts ...grpc.CallOption) (*EmptyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(EmptyResponse)
+	err := c.cc.Invoke(ctx, SchoolService_RevokeCoordinador_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *schoolServiceClient) ListCoordinadoresBySchool(ctx context.Context, in *ListCoordinadoresBySchoolRequest, opts ...grpc.CallOption) (*ListCoordinadoresResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListCoordinadoresResponse)
+	err := c.cc.Invoke(ctx, SchoolService_ListCoordinadoresBySchool_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // SchoolServiceServer is the server API for SchoolService service.
 // All implementations must embed UnimplementedSchoolServiceServer
 // for forward compatibility.
@@ -744,6 +784,13 @@ type SchoolServiceServer interface {
 	// y cierra la vigente anterior si existe (valid_to = NOW). Idempotente
 	// si el asesor ya esta asignado.
 	AssignAsesor(context.Context, *AssignAsesorRequest) (*EmptyResponse, error)
+	// Coordinadores MUCHOS-a-muchos (varios por colegio, reutilizables):
+	// assignment kind=coordinador_de_colegio. AssignCoordinador AGREGA (no cierra
+	// los otros), RevokeCoordinador quita uno, ListCoordinadoresBySchool lista los
+	// vigentes del colegio.
+	AssignCoordinador(context.Context, *AssignCoordinadorRequest) (*EmptyResponse, error)
+	RevokeCoordinador(context.Context, *RevokeCoordinadorRequest) (*EmptyResponse, error)
+	ListCoordinadoresBySchool(context.Context, *ListCoordinadoresBySchoolRequest) (*ListCoordinadoresResponse, error)
 	mustEmbedUnimplementedSchoolServiceServer()
 }
 
@@ -771,6 +818,15 @@ func (UnimplementedSchoolServiceServer) ListSchoolsByAsesor(context.Context, *Li
 }
 func (UnimplementedSchoolServiceServer) AssignAsesor(context.Context, *AssignAsesorRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AssignAsesor not implemented")
+}
+func (UnimplementedSchoolServiceServer) AssignCoordinador(context.Context, *AssignCoordinadorRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AssignCoordinador not implemented")
+}
+func (UnimplementedSchoolServiceServer) RevokeCoordinador(context.Context, *RevokeCoordinadorRequest) (*EmptyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method RevokeCoordinador not implemented")
+}
+func (UnimplementedSchoolServiceServer) ListCoordinadoresBySchool(context.Context, *ListCoordinadoresBySchoolRequest) (*ListCoordinadoresResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListCoordinadoresBySchool not implemented")
 }
 func (UnimplementedSchoolServiceServer) mustEmbedUnimplementedSchoolServiceServer() {}
 func (UnimplementedSchoolServiceServer) testEmbeddedByValue()                       {}
@@ -901,6 +957,60 @@ func _SchoolService_AssignAsesor_Handler(srv interface{}, ctx context.Context, d
 	return interceptor(ctx, in, info, handler)
 }
 
+func _SchoolService_AssignCoordinador_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AssignCoordinadorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchoolServiceServer).AssignCoordinador(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchoolService_AssignCoordinador_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchoolServiceServer).AssignCoordinador(ctx, req.(*AssignCoordinadorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SchoolService_RevokeCoordinador_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RevokeCoordinadorRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchoolServiceServer).RevokeCoordinador(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchoolService_RevokeCoordinador_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchoolServiceServer).RevokeCoordinador(ctx, req.(*RevokeCoordinadorRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _SchoolService_ListCoordinadoresBySchool_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListCoordinadoresBySchoolRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(SchoolServiceServer).ListCoordinadoresBySchool(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: SchoolService_ListCoordinadoresBySchool_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(SchoolServiceServer).ListCoordinadoresBySchool(ctx, req.(*ListCoordinadoresBySchoolRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // SchoolService_ServiceDesc is the grpc.ServiceDesc for SchoolService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -931,6 +1041,18 @@ var SchoolService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AssignAsesor",
 			Handler:    _SchoolService_AssignAsesor_Handler,
+		},
+		{
+			MethodName: "AssignCoordinador",
+			Handler:    _SchoolService_AssignCoordinador_Handler,
+		},
+		{
+			MethodName: "RevokeCoordinador",
+			Handler:    _SchoolService_RevokeCoordinador_Handler,
+		},
+		{
+			MethodName: "ListCoordinadoresBySchool",
+			Handler:    _SchoolService_ListCoordinadoresBySchool_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
