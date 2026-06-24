@@ -35,6 +35,11 @@ var (
 	// front, que en el masivo solo ofrece UCSP. Defense-in-depth.
 	ErrMasivoUCSPOnly = apperr.NewPermissionDenied("MASIVO_UCSP_ONLY", "la key masiva solo permite el examen UCSP, no el Nacional")
 	ErrAttemptAlreadyDone = apperr.NewConflict("ATTEMPT_ALREADY_SUBMITTED", "attempt was already submitted", "attempt_id")
+	// ErrTimeLimitExceeded: la respuesta llegó pasado el límite de tiempo del
+	// intento (started_at + duration_minutes + gracia). Hace el timer real
+	// (server-side), no solo del navegador. Solo aplica si el intento tiene
+	// duración > 0 (simulacro); voca/estilos no tienen límite.
+	ErrTimeLimitExceeded = apperr.NewConflict("TIME_LIMIT_EXCEEDED", "el tiempo del examen se agotó: ya no se aceptan más respuestas", "attempt_id")
 	// ErrMaxAttemptsReached: el alumno ya rindio key.MaxAttemptsPerUser
 	// veces este exam. El handler StartAttempt devuelve esto y el front
 	// redirige al alumno a /resultados con su attempt previo en lugar de

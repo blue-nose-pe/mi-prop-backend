@@ -138,6 +138,11 @@ type ExamAttempt struct {
 	MaxScore    *float64
 	StartedAt   time.Time
 	SubmittedAt *time.Time
+	// DurationMinutes: límite de tiempo del intento, LOCKEADO al iniciar
+	// (denormalizado desde el exam según tipo/código). 0 = sin límite (voca/
+	// estilos). El server rechaza respuestas que llegan pasado este límite
+	// (+ gracia) — el timer deja de ser solo del navegador.
+	DurationMinutes int32
 }
 
 // AttemptAnswer: respuesta de un attempt a una pregunta.

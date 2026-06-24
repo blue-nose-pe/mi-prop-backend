@@ -28,17 +28,19 @@ const attemptCols = `CONVERT(NVARCHAR(36), id),
 		score,
 		max_score,
 		started_at,
-		submitted_at`
+		submitted_at,
+		ISNULL(duration_minutes, 0)`
 
 func (r *AttemptRepo) Save(ctx context.Context, a *domain.ExamAttempt) (domain.AttemptID, error) {
 	const q = `
-		INSERT INTO exam_attempt (exam_id, user_id, key_id)
+		INSERT INTO exam_attempt (exam_id, user_id, key_id, duration_minutes)
 		OUTPUT CONVERT(NVARCHAR(36), INSERTED.id)
 		VALUES (CONVERT(UNIQUEIDENTIFIER, @p1),
 		        CONVERT(UNIQUEIDENTIFIER, @p2),
-		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)))`
+		        IIF(@p3 = '', NULL, CONVERT(UNIQUEIDENTIFIER, @p3)),
+		        @p4)`
 	var id string
-	if err := r.db.QueryRowContext(ctx, q, string(a.ExamID), string(a.UserID), string(a.KeyID)).Scan(&id); err != nil {
+	if err := r.db.QueryRowContext(ctx, q, string(a.ExamID), string(a.UserID), string(a.KeyID), a.DurationMinutes).Scan(&id); err != nil {
 		return "", mapAttemptInsertError(err)
 	}
 	return domain.AttemptID(id), nil
@@ -387,7 +389,7 @@ func scanAttempt(s rowScanner) (*domain.ExamAttempt, error) {
 		maxScore   sql.NullFloat64
 		submitted  sql.NullTime
 	)
-	err := s.Scan(&idStr, &examID, &userID, &keyID, &score, &maxScore, &a.StartedAt, &submitted)
+	err := s.Scan(&idStr, &examID, &userID, &keyID, &score, &maxScore, &a.StartedAt, &submitted, &a.DurationMinutes)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrAttemptNotFound
 	}

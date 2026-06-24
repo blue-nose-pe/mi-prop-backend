@@ -953,5 +953,6 @@ func protoAttemptToJSON(a *examsgrpcpb.Attempt) map[string]any {
 		"max_score":    a.GetMaxScore(),
 		"started_at":   optionalTimestamp(a.GetStartedAt()),
 		"submitted_at": optionalTimestamp(a.GetSubmittedAt()),
+		"duration_minutes": a.GetDurationMinutes(),
 	}
 }

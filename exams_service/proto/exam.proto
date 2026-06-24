@@ -129,6 +129,10 @@ message Attempt {
   double max_score    = 6;
   google.protobuf.Timestamp started_at   = 7;
   google.protobuf.Timestamp submitted_at = 8;
+  // duration_minutes: límite de tiempo del intento (timer server-side),
+  // lockeado al iniciar. 0 = sin límite (voca/estilos). El front lo usa para
+  // mostrar el reloj real y computar el tiempo restante desde started_at.
+  int32 duration_minutes = 9;
 }
 
 // ----- Exam requests -----

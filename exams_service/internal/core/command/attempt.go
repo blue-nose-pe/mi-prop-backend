@@ -52,6 +52,25 @@ func NewAttemptHandler(
 	}
 }
 
+// answerGrace tolera latencia de red y skew de reloj para no rechazar
+// respuestas legítimas de último segundo. El enforcement real bloquea a quien
+// sigue respondiendo MUCHO después del límite (cliente manipulado).
+const answerGrace = 90 * time.Second
+
+// durationMinutesFor devuelve el límite de tiempo (minutos) del intento según
+// el exam. Replica las duraciones de prod/front: simulacro UCSP = 150,
+// Nacional (code SIME-NAC-*) = 180; vocacional/estilos = 0 (sin límite, son
+// tests de tendencia sin presión de tiempo).
+func durationMinutesFor(e *domain.Exam) int32 {
+	if e.ExamTypeID != 2 { // 2 = simulacro; 1=vocacional, 3=estilos no tienen timer
+		return 0
+	}
+	if strings.HasPrefix(strings.ToUpper(e.Code), "SIME-NAC") {
+		return 180
+	}
+	return 150 // UCSP (default simulacro)
+}
+
 func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) (*ports.StartAttemptResult, error) {
 	// Idempotencia: si el user ya tiene un attempt sin submit para este
 	// exam, devolverlo en lugar de crear uno nuevo. Sin esto, un refresh
@@ -108,6 +127,8 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 		UserID:    in.UserID,
 		KeyID:     in.KeyID,
 		StartedAt: time.Now().UTC(),
+		// Timer server-side: lockeamos la duración del intento al iniciar.
+		DurationMinutes: durationMinutesFor(e),
 	}
 	id, err := h.attempts.Save(ctx, att)
 	if err != nil {
@@ -146,6 +167,19 @@ func (h *AttemptHandler) Answer(ctx context.Context, in ports.AnswerInput) error
 	}
 	if att.SubmittedAt != nil {
 		return domain.ErrAttemptAlreadyDone
+	}
+
+	// Timer server-side: si el intento tiene límite (simulacro), rechazar
+	// respuestas que llegan pasado started_at + duration + gracia. La gracia
+	// tolera latencia/skew para no rechazar respuestas legítimas de último
+	// segundo; un cliente manipulado que sigue respondiendo mucho después SÍ
+	// se bloquea. Finish NO se gatea: el alumno siempre puede enviar lo que ya
+	// tenga respondido (un corte de luz al final no debe perder el examen).
+	if att.DurationMinutes > 0 {
+		limit := att.StartedAt.Add(time.Duration(att.DurationMinutes)*time.Minute + answerGrace)
+		if time.Now().UTC().After(limit) {
+			return domain.ErrTimeLimitExceeded
+		}
 	}
 
 	// Resolver el set de option ids a persistir segun el shape del input

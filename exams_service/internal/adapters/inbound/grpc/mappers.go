@@ -76,6 +76,7 @@ func toProtoAttempt(a *domain.ExamAttempt) *pb.Attempt {
 		UserId:    string(a.UserID),
 		KeyId:     string(a.KeyID),
 		StartedAt: timestamppb.New(a.StartedAt),
+		DurationMinutes: a.DurationMinutes,
 	}
 	if a.Score != nil {
 		out.Score = *a.Score
