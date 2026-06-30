@@ -338,7 +338,18 @@ func buildVocacional(examTypeCode string, answers []ports.UpstreamEnrichedAnswer
 		}
 		return 0, 0, false
 	}
-	return buildInteresTIV(get), buildPersonalidadTIV(get), buildApoyoTIV(get), buildProyectoTIV(get)
+	// Todas las dimensiones presentes en las respuestas (orden estable). El
+	// reporte de Áreas de Interés es FLEXIBLE: agrega cualquier área que el
+	// admin haya definido en las preguntas, no solo las 10 del molde UCSP
+	// (igual que el reporte de estilos). Las dims reservadas por los otros 3
+	// módulos cerrados (personalidad/familiar/proyecto) se excluyen dentro de
+	// buildInteresTIV.
+	allDims := make([]string, 0, len(dims))
+	for d := range dims {
+		allDims = append(allDims, d)
+	}
+	sort.Strings(allDims)
+	return buildInteresTIV(get, allDims), buildPersonalidadTIV(get), buildApoyoTIV(get), buildProyectoTIV(get)
 }
 
 func splitCat(c string) (mod, dim string, ok bool) {
@@ -357,21 +368,52 @@ func pendiente(reason string) domain.ReportSection {
 // los ejes de Le Senne: EMOTIVO/ACTIVO/SECUNDARIO).
 func ratioHigh(p, m int32) bool { return m > 0 && float64(p) > float64(m)/2.0 }
 
-// buildInteresTIV: áreas de interés (módulo 3) + top 3 con carreras.
-func buildInteresTIV(get func(string) (int32, int32, bool)) domain.AreasInteresSection {
+// buildInteresTIV: áreas de interés + top 3 con carreras. FLEXIBLE: agrega
+// cualquier dimensión presente que NO pertenezca a los otros 3 módulos cerrados
+// (personalidad/familiar/proyecto). Así un examen vocacional con áreas propias
+// (no solo las 10 del molde UCSP) igual genera su ranking de áreas, igual que
+// el reporte de estilos. Las áreas del molde UCSP conservan etiqueta + carreras;
+// las personalizadas usan su propio código como etiqueta (fallback).
+func buildInteresTIV(get func(string) (int32, int32, bool), allDims []string) domain.AreasInteresSection {
+	// Dimensiones reservadas por los módulos con rúbrica cerrada.
+	notInteres := map[string]bool{"FAMILIAR": true}
+	for _, d := range vocPersonalidadDims {
+		notInteres[d] = true
+	}
+	for _, d := range vocProyectoDims {
+		notInteres[d] = true
+	}
+
 	scores := map[string]domain.CategoryStat{}
 	type rk struct {
-		code         string
-		points, max  int32
+		code        string
+		points, max int32
 	}
 	var ranks []rk
-	for _, d := range vocInteresDims {
+	seen := map[string]bool{}
+	add := func(d string) {
+		if seen[d] || notInteres[d] {
+			return
+		}
 		p, m, ok := get(d)
 		if !ok {
-			continue
+			return
 		}
-		scores[d] = domain.CategoryStat{Code: d, Label: vocDimLabel[d], Points: p, MaxPoints: m}
+		seen[d] = true
+		label := vocDimLabel[d]
+		if label == "" {
+			label = d // área personalizada: el código ES la etiqueta
+		}
+		scores[d] = domain.CategoryStat{Code: d, Label: label, Points: p, MaxPoints: m}
 		ranks = append(ranks, rk{d, p, m})
+	}
+	// Primero las 10 áreas del molde UCSP (orden estable + etiquetas/carreras
+	// ricas), luego cualquier área personalizada presente en las respuestas.
+	for _, d := range vocInteresDims {
+		add(d)
+	}
+	for _, d := range allDims {
+		add(d)
 	}
 	if len(ranks) == 0 {
 		return domain.AreasInteresSection{Available: false, Reason: "Sin respuestas del módulo de intereses."}
@@ -386,10 +428,14 @@ func buildInteresTIV(get func(string) (int32, int32, bool)) domain.AreasInteresS
 	for i := 0; i < len(ranks) && i < topAreasN; i++ {
 		r := ranks[i]
 		info := vocInteres[r.code]
+		label := vocDimLabel[r.code]
+		if label == "" {
+			label = r.code
+		}
 		top = append(top, domain.AreaInteresMatch{
 			Code:            r.code,
-			Label:           vocDimLabel[r.code],
-			AreaLabel:       strings.ToUpper(vocDimLabel[r.code]),
+			Label:           label,
+			AreaLabel:       strings.ToUpper(label),
 			Characteristics: info.characteristics,
 			Careers:         info.careers,
 			Points:          r.points,
