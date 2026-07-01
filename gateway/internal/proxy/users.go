@@ -681,16 +681,35 @@ func (p *Proxy) checkUserPermission(w http.ResponseWriter, r *http.Request) {
 // Lista los colegios donde el user es el asesor vigente (assignment SCD-2
 // con valid_to IS NULL). Vacío si el asesor no tiene asignaciones.
 func (p *Proxy) listColegiosByAsesor(w http.ResponseWriter, r *http.Request) {
+	asesorID := r.PathValue("id")
 	resp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{
-		AsesorId: r.PathValue("id"),
+		AsesorId: asesorID,
 	})
 	if err != nil {
 		writeGRPCError(w, err)
 		return
 	}
+	// Estos colegios son, por definicion del endpoint, los del asesor `asesorID`.
+	// El listado no denormaliza el NOMBRE del asesor (asesor_name viene vacio),
+	// asi que la card mostraba el generico "Asignado" en vez del nombre. Como
+	// TODOS los items comparten el mismo asesor, resolvemos su nombre una sola
+	// vez (self-access si el caller es el propio asesor; users.read si es admin)
+	// y lo estampamos. Best-effort: si falla, se deja como estaba.
+	asesorName := ""
+	if uresp, uerr := p.cli.Users.GetUser(r.Context(), &usersgrpcpb.GetUserRequest{Id: asesorID}); uerr == nil {
+		if u := uresp.GetUser(); u != nil {
+			asesorName = strings.TrimSpace(u.GetFirstName() + " " + u.GetLastName())
+		}
+	}
 	items := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, s := range resp.GetItems() {
-		items = append(items, protoSchoolToJSON(s))
+		m := protoSchoolToJSON(s)
+		if asesorName != "" {
+			if cur, _ := m["asesor_name"].(string); strings.TrimSpace(cur) == "" {
+				m["asesor_name"] = asesorName
+			}
+		}
+		items = append(items, m)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items,
