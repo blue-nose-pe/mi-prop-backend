@@ -104,3 +104,6 @@ todo.md
 # Archivos con caracteres raros o bytes random (suelen ser dumps de KV).
 BWd*
 ?[!a-zA-Z0-9_.-]?
+
+# Config local de Claude Code + memoria persistente (respaldada por OneDrive, NO en git)
+.claude/

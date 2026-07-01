@@ -241,7 +241,12 @@ func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) (
 		       ISNULL(s.hubspot_record_id, ''),
 		       ISNULL(s.email, ''), ISNULL(s.phone, ''),
 		       ISNULL(s.ruc, ''), ISNULL(s.poblacion, ''),
-		       ISNULL(s.personal_a_cargo, '')
+		       ISNULL(s.personal_a_cargo, ''),
+		       ISNULL((SELECT STRING_AGG(LTRIM(RTRIM(ISNULL(u.first_name,'') + ' ' + ISNULL(u.last_name,''))), ', ')
+		                 FROM assignment a JOIN users u ON u.id = a.source_user_id
+		                WHERE a.target_user_id = s.user_id
+		                  AND a.kind = 'coordinador_de_colegio'
+		                  AND a.valid_to IS NULL), '') AS coordinadores_nombres
 		  FROM school s
 		 WHERE s.user_id = CONVERT(UNIQUEIDENTIFIER, @p1)
 		    OR EXISTS (
@@ -275,7 +280,7 @@ func (r *SchoolRepo) ListByAsesor(ctx context.Context, asesorID domain.UserID) (
 			updatedAt sql.NullTime
 			hubspotID string
 		)
-		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.PersonalACargo); err != nil {
+		if err := rows.Scan(&idStr, &userIDStr, &s.Name, &s.City, &s.Category, &s.Code, &s.Penetration, &s.Active, &s.CreatedAt, &updatedAt, &hubspotID, &s.Email, &s.Phone, &s.Ruc, &s.Poblacion, &s.PersonalACargo, &s.CoordinadoresNombres); err != nil {
 			return nil, err
 		}
 		// Estos colegios son, por definicion del JOIN, los del asesor que
