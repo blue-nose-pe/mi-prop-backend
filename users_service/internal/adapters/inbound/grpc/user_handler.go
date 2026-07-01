@@ -75,6 +75,30 @@ func (h *UserHandler) UpdateUser(ctx context.Context, req *pb.UpdateUserRequest)
 	return &pb.UserResponse{User: toProtoUser(u)}, nil
 }
 
+// UpdateMe: el caller autenticado actualiza SU PROPIO perfil (datos de
+// contacto). Igual que Me/ChangeMyPassword no requiere db_users.users.write
+// (va sin mapear en permmw). El id sale SIEMPRE del JWT (Subject), nunca del
+// request, para que un alumno no pueda editar el registro de otro. school_id
+// no es editable por esta vía (lo fija la key del colegio). Los campos vacíos
+// no se tocan (Update es parcial), así que no borra DNI/school existentes.
+func (h *UserHandler) UpdateMe(ctx context.Context, req *pb.UpdateMeRequest) (*pb.UserResponse, error) {
+	caller := callerID(ctx)
+	if caller == "" {
+		return nil, apperr.ToGRPC(ctx, domain.ErrForbidden)
+	}
+	u, err := h.userCmds.Update(ctx, ports.UpdateUserInput{
+		ID:             caller,
+		FirstName:      req.GetFirstName(),
+		LastName:       req.GetLastName(),
+		DocumentNumber: req.GetDocumentNumber(),
+		Phone:          req.GetPhone(),
+	})
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	return &pb.UserResponse{User: toProtoUser(u)}, nil
+}
+
 func (h *UserHandler) DeactivateUser(ctx context.Context, req *pb.DeactivateUserRequest) (*pb.EmptyResponse, error) {
 	if err := h.userCmds.Deactivate(ctx, domain.UserID(req.GetId())); err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

@@ -28,6 +28,7 @@ const (
 	UserService_ReactivateUser_FullMethodName        = "/users.v1.UserService/ReactivateUser"
 	UserService_Me_FullMethodName                    = "/users.v1.UserService/Me"
 	UserService_ChangeMyPassword_FullMethodName      = "/users.v1.UserService/ChangeMyPassword"
+	UserService_UpdateMe_FullMethodName              = "/users.v1.UserService/UpdateMe"
 	UserService_ResetPassword_FullMethodName         = "/users.v1.UserService/ResetPassword"
 	UserService_SearchUsers_FullMethodName           = "/users.v1.UserService/SearchUsers"
 	UserService_AssignPermissionGroup_FullMethodName = "/users.v1.UserService/AssignPermissionGroup"
@@ -52,6 +53,10 @@ type UserServiceClient interface {
 	// Sobre el caller autenticado.
 	Me(ctx context.Context, in *EmptyRequest, opts ...grpc.CallOption) (*MeResponse, error)
 	ChangeMyPassword(ctx context.Context, in *ChangeMyPasswordRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
+	// Self-update del propio perfil (el alumno actualiza sus datos de contacto).
+	// NO exige db_users.users.write: va SIN mapear en permmw, igual que Me. El id
+	// sale del JWT (Subject), nunca del request, para que nadie edite a otro.
+	UpdateMe(ctx context.Context, in *UpdateMeRequest, opts ...grpc.CallOption) (*UserResponse, error)
 	// Solo superadmins.
 	ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*ResetPasswordResponse, error)
 	// HubSpot-style search: filterGroups (AND within, OR across) + properties + limit.
@@ -150,6 +155,16 @@ func (c *userServiceClient) ChangeMyPassword(ctx context.Context, in *ChangeMyPa
 	return out, nil
 }
 
+func (c *userServiceClient) UpdateMe(ctx context.Context, in *UpdateMeRequest, opts ...grpc.CallOption) (*UserResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UserResponse)
+	err := c.cc.Invoke(ctx, UserService_UpdateMe_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *userServiceClient) ResetPassword(ctx context.Context, in *ResetPasswordRequest, opts ...grpc.CallOption) (*ResetPasswordResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ResetPasswordResponse)
@@ -226,6 +241,10 @@ type UserServiceServer interface {
 	// Sobre el caller autenticado.
 	Me(context.Context, *EmptyRequest) (*MeResponse, error)
 	ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*EmptyResponse, error)
+	// Self-update del propio perfil (el alumno actualiza sus datos de contacto).
+	// NO exige db_users.users.write: va SIN mapear en permmw, igual que Me. El id
+	// sale del JWT (Subject), nunca del request, para que nadie edite a otro.
+	UpdateMe(context.Context, *UpdateMeRequest) (*UserResponse, error)
 	// Solo superadmins.
 	ResetPassword(context.Context, *ResetPasswordRequest) (*ResetPasswordResponse, error)
 	// HubSpot-style search: filterGroups (AND within, OR across) + properties + limit.
@@ -267,6 +286,9 @@ func (UnimplementedUserServiceServer) Me(context.Context, *EmptyRequest) (*MeRes
 }
 func (UnimplementedUserServiceServer) ChangeMyPassword(context.Context, *ChangeMyPasswordRequest) (*EmptyResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ChangeMyPassword not implemented")
+}
+func (UnimplementedUserServiceServer) UpdateMe(context.Context, *UpdateMeRequest) (*UserResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UpdateMe not implemented")
 }
 func (UnimplementedUserServiceServer) ResetPassword(context.Context, *ResetPasswordRequest) (*ResetPasswordResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ResetPassword not implemented")
@@ -451,6 +473,24 @@ func _UserService_ChangeMyPassword_Handler(srv interface{}, ctx context.Context,
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_UpdateMe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpdateMeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).UpdateMe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_UpdateMe_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).UpdateMe(ctx, req.(*UpdateMeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _UserService_ResetPassword_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ResetPasswordRequest)
 	if err := dec(in); err != nil {
@@ -597,6 +637,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ChangeMyPassword",
 			Handler:    _UserService_ChangeMyPassword_Handler,
+		},
+		{
+			MethodName: "UpdateMe",
+			Handler:    _UserService_UpdateMe_Handler,
 		},
 		{
 			MethodName: "ResetPassword",

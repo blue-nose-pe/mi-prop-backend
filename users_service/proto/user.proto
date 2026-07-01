@@ -20,6 +20,10 @@ service UserService {
   // Sobre el caller autenticado.
   rpc Me               (EmptyRequest)        returns (MeResponse);
   rpc ChangeMyPassword (ChangeMyPasswordRequest) returns (EmptyResponse);
+  // Self-update del propio perfil (el alumno actualiza sus datos de contacto).
+  // NO exige db_users.users.write: va SIN mapear en permmw, igual que Me. El id
+  // sale del JWT (Subject), nunca del request, para que nadie edite a otro.
+  rpc UpdateMe         (UpdateMeRequest)     returns (UserResponse);
 
   // Solo superadmins.
   rpc ResetPassword    (ResetPasswordRequest)    returns (ResetPasswordResponse);
@@ -538,6 +542,16 @@ message MeResponse {
 message ChangeMyPasswordRequest {
   string old_password = 1;
   string new_password = 2;
+}
+
+// Self-update de contacto: el caller edita SU propio perfil. El id NO viaja
+// (el server usa el Subject del JWT). Campos vacíos = no cambian. school_id
+// NO es editable aquí (lo fija la key del colegio).
+message UpdateMeRequest {
+  string first_name      = 1;
+  string last_name       = 2;
+  string document_number = 3;
+  string phone           = 4;
 }
 
 message ResetPasswordRequest {

@@ -49,6 +49,7 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/users/bulk/template.csv", p.bulkTemplateCSV)
 	mux.HandleFunc("GET /api/users/bulk/sample.csv", p.bulkSampleCSV)
 	mux.HandleFunc("GET /api/users/me", p.getMe)
+	mux.HandleFunc("PATCH /api/users/me", p.updateMe)
 	mux.HandleFunc("POST /api/users/me/change-password", p.changeMyPassword)
 	mux.HandleFunc("GET /api/users/by-email", p.getUserByEmail)
 	mux.HandleFunc("POST /api/users/search", p.searchUsers)
@@ -478,6 +479,42 @@ func (p *Proxy) getMe(w http.ResponseWriter, r *http.Request) {
 		"user":        protoUserToJSON(resp.GetUser()),
 		"permissions": perms,
 	})
+}
+
+// updateMeRequest — el alumno actualiza sus PROPIOS datos de contacto. No lleva
+// id: users-service usa el Subject del JWT del caller. school_id no editable.
+type updateMeRequest struct {
+	FirstName      string `json:"first_name"`
+	LastName       string `json:"last_name"`
+	DocumentNumber string `json:"document_number"`
+	Phone          string `json:"phone"`
+}
+
+// updateMe — PATCH /api/users/me. Cualquier autenticado (incl. alumno post-OTP)
+// edita su propio perfil. La autorización real la hace users-service atándolo
+// al Subject del JWT, así que aquí NO pasamos ningún id.
+func (p *Proxy) updateMe(w http.ResponseWriter, r *http.Request) {
+	var in updateMeRequest
+	if err := readJSON(r, &in); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	resp, err := p.cli.Users.UpdateMe(r.Context(), &usersgrpcpb.UpdateMeRequest{
+		FirstName:      in.FirstName,
+		LastName:       in.LastName,
+		DocumentNumber: in.DocumentNumber,
+		Phone:          in.Phone,
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	u := resp.GetUser()
+	if u == nil {
+		writeNotFound(w, "user")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": protoUserToJSON(u)})
 }
 
 type changeMyPasswordRequest struct {
