@@ -37,6 +37,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	examsgrpcpb "exams_service/proto/gen"
@@ -73,6 +74,11 @@ func (p *Proxy) RegisterExams(mux *http.ServeMux) {
 
 	// ExamQuestions
 	mux.HandleFunc("GET /api/exams/{id}/questions", p.listExamQuestions)
+	// Bulk: preguntas + detalle + opciones en UNA sola respuesta. El alumno
+	// abre el examen y antes hacia N+1 fetches (join + detalle + opciones por
+	// pregunta = ~160-180 requests, ~12s por el cap de 6 conexiones del
+	// browser). Aca el fan-out es server-side (goroutines, sin cap) → ~1s.
+	mux.HandleFunc("GET /api/exams/{id}/questions/full", p.listExamQuestionsFull)
 	mux.HandleFunc("POST /api/exams/{id}/questions", p.addExamQuestion)
 	mux.HandleFunc("DELETE /api/exams/{id}/questions/{question_id}", p.removeExamQuestion)
 	mux.HandleFunc("POST /api/exams/{id}/questions/reorder", p.reorderExamQuestions)
@@ -508,6 +514,71 @@ func (p *Proxy) listExamQuestions(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+// listExamQuestionsFull: devuelve las preguntas del examen CON su detalle
+// (texto/kind/categoria) y opciones, en UNA sola respuesta. El flujo del alumno
+// (simulacro/voca/eda) hacia antes ListByExam + N×(GetQuestion + ListOptions)
+// desde el browser (~160-180 requests, cuello por el limite de ~6 conexiones
+// concurrentes → ~10-12s abriendo el examen). Aca resolvemos el fan-out
+// server-side con goroutines (sin ese limite, misma red del cluster) → ~1s.
+// SEGURIDAD: igual que listQuestionOptions, is_correct SOLO va a staff
+// (exam.write / exam_attempt.read); al alumno se le elimina (no filtrar el
+// answer-key; la calificacion es server-side en finishAttempt).
+func (p *Proxy) listExamQuestionsFull(w http.ResponseWriter, r *http.Request) {
+	linkResp, err := p.cli.ExamQs.ListByExam(r.Context(), &examsgrpcpb.ListByExamRequest{ExamId: r.PathValue("id")})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	items := linkResp.GetItems()
+	staff := hasPermission(r, "db_exams.exam.write") || hasPermission(r, "db_exams.exam_attempt.read")
+
+	out := make([]map[string]any, len(items))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 16) // cap de concurrencia hacia exams_service
+	for i, it := range items {
+		i, it := i, it
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			j := map[string]any{
+				"question_id":      it.GetQuestionId(),
+				"points":           it.GetPoints(),
+				"sort_order":       it.GetSortOrder(),
+				"points_incorrect": it.GetPointsIncorrect(),
+				"points_blank":     it.GetPointsBlank(),
+			}
+			// Detalle de la pregunta (texto/kind/categoria).
+			if qr, qerr := p.cli.Questions.GetQuestion(r.Context(), &examsgrpcpb.GetQuestionRequest{Id: it.GetQuestionId()}); qerr == nil {
+				if qj := protoQuestionToJSON(qr.GetQuestion()); qj != nil {
+					j["text"] = qj["text"]
+					j["kind"] = qj["kind"]
+					j["category"] = qj["category"]
+				}
+			}
+			// Opciones (sin is_correct para no-staff).
+			if or, oerr := p.cli.Questions.ListOptions(r.Context(), &examsgrpcpb.ListOptionsRequest{QuestionId: it.GetQuestionId()}); oerr == nil {
+				opts := make([]map[string]any, 0, len(or.GetOptions()))
+				for _, o := range or.GetOptions() {
+					oj := protoQuestionOptionToJSON(o)
+					if !staff {
+						delete(oj, "is_correct")
+					}
+					opts = append(opts, oj)
+				}
+				j["options"] = opts
+			} else {
+				j["options"] = []map[string]any{}
+			}
+			out[i] = j
+		}()
+	}
+	wg.Wait()
+	writeJSON(w, http.StatusOK, map[string]any{"questions": out})
 }
 
 type addExamQuestionRequest struct {
