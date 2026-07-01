@@ -63,6 +63,7 @@ func (p *Proxy) RegisterUsers(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/users/{id}/permissions/groups", p.assignPermissionGroup)
 	mux.HandleFunc("DELETE /api/users/{id}/permissions/groups/{group_id}", p.revokePermissionGroup)
 	mux.HandleFunc("GET /api/users/{id}/permissions", p.listUserPermissions)
+	mux.HandleFunc("GET /api/users/{id}/groups", p.listUserGroups)
 	mux.HandleFunc("GET /api/users/{id}/permissions/check", p.checkUserPermission)
 
 	// Schools
@@ -656,6 +657,24 @@ func (p *Proxy) listUserPermissions(w http.ResponseWriter, r *http.Request) {
 		codes = []string{}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"codes": codes})
+}
+
+// listUserGroups — GET /api/users/{id}/groups. Grupos (perfiles de acceso) a
+// los que pertenece el usuario. Lo consume la ficha del asesor para mostrar el
+// grupo actual y permitir cambiarlo (assign/revoke).
+func (p *Proxy) listUserGroups(w http.ResponseWriter, r *http.Request) {
+	resp, err := p.cli.Users.ListUserGroups(r.Context(), &usersgrpcpb.ListPermsRequest{
+		UserId: r.PathValue("id"),
+	})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	out := make([]map[string]any, 0, len(resp.GetItems()))
+	for _, g := range resp.GetItems() {
+		out = append(out, permissionGroupToJSON(g))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
 }
 
 func (p *Proxy) checkUserPermission(w http.ResponseWriter, r *http.Request) {

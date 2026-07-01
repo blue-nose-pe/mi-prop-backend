@@ -464,6 +464,95 @@ func (r *PermissionRepo) ListGroups(ctx context.Context) ([]domain.PermissionGro
 	return groups, rows.Err()
 }
 
+// ListGroupsByUser devuelve los grupos (perfiles de acceso) a los que
+// pertenece un usuario (via user_permission_group), con sus permisos. Misma
+// forma que ListGroups pero acotado por user_id.
+func (r *PermissionRepo) ListGroupsByUser(ctx context.Context, userID domain.UserID) ([]domain.PermissionGroup, error) {
+	const q = `
+		SELECT g.id, g.code, g.name, ISNULL(g.description, ''), g.active,
+		       g.created_at, g.updated_at,
+		       p.id, p.scope, p.code, p.name, ISNULL(p.description, ''), p.active,
+		       p.created_at, p.updated_at
+		  FROM permission_group g
+		  JOIN user_permission_group upg ON upg.permission_group_id = g.id
+		                                 AND UPPER(CONVERT(NVARCHAR(36), upg.user_id)) = UPPER(@p1)
+		  LEFT JOIN permission_group_permission pgp ON pgp.permission_group_id = g.id
+		  LEFT JOIN permission p                    ON p.id = pgp.permission_id AND p.active = 1
+		 WHERE g.active = 1
+		 ORDER BY g.id, p.scope, p.code`
+	rows, err := r.db.QueryContext(ctx, q, string(userID))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	groups := make([]domain.PermissionGroup, 0, 4)
+	idx := make(map[uint32]int, 4)
+	for rows.Next() {
+		var (
+			gID                          int64
+			gCode, gName, gDescription   string
+			gActive                      bool
+			gCreatedAt                   sql.NullTime
+			gUpdatedAt                   sql.NullTime
+			pID                          sql.NullInt64
+			pScope, pCode, pName, pDescr sql.NullString
+			pActive                      sql.NullBool
+			pCreated                     sql.NullTime
+			pUpdated                     sql.NullTime
+		)
+		if err := rows.Scan(
+			&gID, &gCode, &gName, &gDescription, &gActive,
+			&gCreatedAt, &gUpdatedAt,
+			&pID, &pScope, &pCode, &pName, &pDescr, &pActive,
+			&pCreated, &pUpdated,
+		); err != nil {
+			return nil, err
+		}
+		gid := uint32(gID)
+		pos, ok := idx[gid]
+		if !ok {
+			g := domain.PermissionGroup{
+				ID:          gid,
+				Code:        gCode,
+				Name:        gName,
+				Description: gDescription,
+				Active:      gActive,
+				Permissions: []domain.Permission{},
+			}
+			if gCreatedAt.Valid {
+				g.CreatedAt = gCreatedAt.Time
+			}
+			if gUpdatedAt.Valid {
+				t := gUpdatedAt.Time
+				g.UpdatedAt = &t
+			}
+			groups = append(groups, g)
+			pos = len(groups) - 1
+			idx[gid] = pos
+		}
+		if pID.Valid {
+			perm := domain.Permission{
+				ID:          uint32(pID.Int64),
+				Scope:       pScope.String,
+				Code:        pCode.String,
+				Name:        pName.String,
+				Description: pDescr.String,
+				Active:      pActive.Bool,
+			}
+			if pCreated.Valid {
+				perm.CreatedAt = pCreated.Time
+			}
+			if pUpdated.Valid {
+				t := pUpdated.Time
+				perm.UpdatedAt = &t
+			}
+			groups[pos].Permissions = append(groups[pos].Permissions, perm)
+		}
+	}
+	return groups, rows.Err()
+}
+
 // AddPermissionToGroup asocia un permiso a un grupo (idempotente).
 // Validamos primero que ambos existan para devolver errores de dominio
 // específicos en lugar del FK genérico de SQL Server (547).

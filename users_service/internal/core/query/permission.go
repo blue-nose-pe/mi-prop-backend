@@ -37,6 +37,11 @@ func (h *PermissionHandler) ListUserPermissions(ctx context.Context, userID doma
 	return h.perms.FindCodesByUserID(ctx, userID)
 }
 
+// ListUserGroups devuelve los grupos (perfiles de acceso) del usuario.
+func (h *PermissionHandler) ListUserGroups(ctx context.Context, userID domain.UserID) ([]domain.PermissionGroup, error) {
+	return h.perms.ListGroupsByUser(ctx, userID)
+}
+
 func (h *PermissionHandler) HasPermission(ctx context.Context, userID domain.UserID, code string) (bool, error) {
 	u, err := h.users.FindByID(ctx, userID)
 	if err != nil {

@@ -34,6 +34,9 @@ service UserService {
   rpc AssignPermissionGroup (AssignGroupRequest)   returns (EmptyResponse);
   rpc RevokePermissionGroup (RevokeGroupRequest)   returns (EmptyResponse);
   rpc ListUserPermissions   (ListPermsRequest)     returns (ListPermsResponse);
+  // Grupos (perfiles de acceso) a los que pertenece un usuario. Reusa
+  // ListPermsRequest (trae user_id) y ListGroupsResponse (repeated PermissionGroup).
+  rpc ListUserGroups        (ListPermsRequest)     returns (ListGroupsResponse);
   rpc HasPermission         (HasPermissionRequest) returns (HasPermissionResponse);
 }
 

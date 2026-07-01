@@ -81,6 +81,8 @@ type PermissionRepository interface {
 	// de estudiantes para asignar el grupo correcto sin hard-codear ID.
 	FindGroupByCode(ctx context.Context, code string) (*domain.PermissionGroup, error)
 	ListGroups(ctx context.Context) ([]domain.PermissionGroup, error)
+	// ListGroupsByUser: grupos a los que pertenece un usuario (user_permission_group).
+	ListGroupsByUser(ctx context.Context, userID domain.UserID) ([]domain.PermissionGroup, error)
 
 	// Permisos por grupo.
 	AddPermissionToGroup(ctx context.Context, groupID, permissionID uint32) error

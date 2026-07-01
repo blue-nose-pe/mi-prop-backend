@@ -92,6 +92,8 @@ type PermissionCommands interface {
 type PermissionQueries interface {
 	ListUserPermissions(ctx context.Context, userID domain.UserID) ([]string, error)
 	HasPermission(ctx context.Context, userID domain.UserID, code string) (bool, error)
+	// ListUserGroups devuelve los grupos (perfiles de acceso) del usuario.
+	ListUserGroups(ctx context.Context, userID domain.UserID) ([]domain.PermissionGroup, error)
 }
 
 // =============== PERMISSION GROUP (administración de roles) ===============

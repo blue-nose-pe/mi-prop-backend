@@ -34,6 +34,7 @@ const (
 	UserService_AssignPermissionGroup_FullMethodName = "/users.v1.UserService/AssignPermissionGroup"
 	UserService_RevokePermissionGroup_FullMethodName = "/users.v1.UserService/RevokePermissionGroup"
 	UserService_ListUserPermissions_FullMethodName   = "/users.v1.UserService/ListUserPermissions"
+	UserService_ListUserGroups_FullMethodName        = "/users.v1.UserService/ListUserGroups"
 	UserService_HasPermission_FullMethodName         = "/users.v1.UserService/HasPermission"
 )
 
@@ -64,6 +65,9 @@ type UserServiceClient interface {
 	AssignPermissionGroup(ctx context.Context, in *AssignGroupRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	RevokePermissionGroup(ctx context.Context, in *RevokeGroupRequest, opts ...grpc.CallOption) (*EmptyResponse, error)
 	ListUserPermissions(ctx context.Context, in *ListPermsRequest, opts ...grpc.CallOption) (*ListPermsResponse, error)
+	// Grupos (perfiles de acceso) a los que pertenece un usuario. Reusa
+	// ListPermsRequest (trae user_id) y ListGroupsResponse (repeated PermissionGroup).
+	ListUserGroups(ctx context.Context, in *ListPermsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error)
 	HasPermission(ctx context.Context, in *HasPermissionRequest, opts ...grpc.CallOption) (*HasPermissionResponse, error)
 }
 
@@ -215,6 +219,16 @@ func (c *userServiceClient) ListUserPermissions(ctx context.Context, in *ListPer
 	return out, nil
 }
 
+func (c *userServiceClient) ListUserGroups(ctx context.Context, in *ListPermsRequest, opts ...grpc.CallOption) (*ListGroupsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListGroupsResponse)
+	err := c.cc.Invoke(ctx, UserService_ListUserGroups_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *userServiceClient) HasPermission(ctx context.Context, in *HasPermissionRequest, opts ...grpc.CallOption) (*HasPermissionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HasPermissionResponse)
@@ -252,6 +266,9 @@ type UserServiceServer interface {
 	AssignPermissionGroup(context.Context, *AssignGroupRequest) (*EmptyResponse, error)
 	RevokePermissionGroup(context.Context, *RevokeGroupRequest) (*EmptyResponse, error)
 	ListUserPermissions(context.Context, *ListPermsRequest) (*ListPermsResponse, error)
+	// Grupos (perfiles de acceso) a los que pertenece un usuario. Reusa
+	// ListPermsRequest (trae user_id) y ListGroupsResponse (repeated PermissionGroup).
+	ListUserGroups(context.Context, *ListPermsRequest) (*ListGroupsResponse, error)
 	HasPermission(context.Context, *HasPermissionRequest) (*HasPermissionResponse, error)
 	mustEmbedUnimplementedUserServiceServer()
 }
@@ -304,6 +321,9 @@ func (UnimplementedUserServiceServer) RevokePermissionGroup(context.Context, *Re
 }
 func (UnimplementedUserServiceServer) ListUserPermissions(context.Context, *ListPermsRequest) (*ListPermsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ListUserPermissions not implemented")
+}
+func (UnimplementedUserServiceServer) ListUserGroups(context.Context, *ListPermsRequest) (*ListGroupsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ListUserGroups not implemented")
 }
 func (UnimplementedUserServiceServer) HasPermission(context.Context, *HasPermissionRequest) (*HasPermissionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HasPermission not implemented")
@@ -581,6 +601,24 @@ func _UserService_ListUserPermissions_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _UserService_ListUserGroups_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListPermsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(UserServiceServer).ListUserGroups(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: UserService_ListUserGroups_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(UserServiceServer).ListUserGroups(ctx, req.(*ListPermsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _UserService_HasPermission_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HasPermissionRequest)
 	if err := dec(in); err != nil {
@@ -661,6 +699,10 @@ var UserService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ListUserPermissions",
 			Handler:    _UserService_ListUserPermissions_Handler,
+		},
+		{
+			MethodName: "ListUserGroups",
+			Handler:    _UserService_ListUserGroups_Handler,
 		},
 		{
 			MethodName: "HasPermission",

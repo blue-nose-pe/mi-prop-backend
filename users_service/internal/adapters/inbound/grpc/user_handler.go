@@ -206,6 +206,32 @@ func (h *UserHandler) ListUserPermissions(ctx context.Context, req *pb.ListPerms
 	return &pb.ListPermsResponse{Codes: codes}, nil
 }
 
+// ListUserGroups devuelve los grupos (perfiles de acceso) del usuario. Misma
+// autorización que ListUserPermissions: uno puede ver los suyos; para ver los
+// de OTRO se exige db_users.permission.read.
+func (h *UserHandler) ListUserGroups(ctx context.Context, req *pb.ListPermsRequest) (*pb.ListGroupsResponse, error) {
+	caller := callerID(ctx)
+	target := domain.UserID(req.GetUserId())
+	if caller == "" {
+		return nil, apperr.ToGRPC(ctx, domain.ErrForbidden)
+	}
+	if target != caller {
+		ok, perr := h.permQrys.HasPermission(ctx, caller, "db_users.permission.read")
+		if perr != nil || !ok {
+			return nil, apperr.ToGRPC(ctx, domain.ErrForbidden)
+		}
+	}
+	groups, err := h.permQrys.ListUserGroups(ctx, target)
+	if err != nil {
+		return nil, apperr.ToGRPC(ctx, err)
+	}
+	items := make([]*pb.PermissionGroup, 0, len(groups))
+	for i := range groups {
+		items = append(items, toProtoPermissionGroup(&groups[i]))
+	}
+	return &pb.ListGroupsResponse{Items: items}, nil
+}
+
 // HasPermission — misma logica de autorizacion que ListUserPermissions:
 // un user puede chequear sus propios permisos; para chequear los de otro
 // se exige `db_users.permission.read`.
