@@ -189,12 +189,45 @@ func ctxIsSuperadmin(ctx context.Context) bool {
 	return false
 }
 
+// ctxUserID: user_id del caller (JWT sub). "" si no hay claims.
+func ctxUserID(ctx context.Context) string {
+	c := jwtmw.FromContext(ctx)
+	if c == nil {
+		return ""
+	}
+	return c.Subject
+}
+
+// canManageCoordinador: quién puede asignar/revocar coordinadores de un colegio.
+// El PERMISO db_users.coordinador.write ya lo exige permmw (ver PermissionMap);
+// acá aplicamos el SCOPE: superadmin en cualquier colegio; un asesor SOLO en los
+// suyos (para que no toque coordinadores de colegios ajenos). Cliente L53.
+func (h *SchoolHandler) canManageCoordinador(ctx context.Context, schoolID domain.SchoolID) bool {
+	if ctxIsSuperadmin(ctx) {
+		return true
+	}
+	caller := ctxUserID(ctx)
+	if caller == "" {
+		return false
+	}
+	mine, err := h.repo.ListByAsesor(ctx, domain.UserID(caller))
+	if err != nil {
+		return false
+	}
+	for i := range mine {
+		if mine[i].ID == schoolID {
+			return true
+		}
+	}
+	return false
+}
+
 // AssignCoordinador AGREGA un coordinador al colegio (many-to-many: no cierra
 // los otros). assignment kind=coordinador_de_colegio, source=coordinador,
 // target=school.user_id (ancla). Idempotente para el mismo coordinador.
 func (h *SchoolHandler) AssignCoordinador(ctx context.Context, req *pb.AssignCoordinadorRequest) (*pb.EmptyResponse, error) {
-	if !ctxIsSuperadmin(ctx) {
-		return nil, apperr.ToGRPC(ctx, apperr.NewPermissionDenied("ONLY_SUPERADMIN", "only superadmin can assign coordinadores"))
+	if !h.canManageCoordinador(ctx, domain.SchoolID(req.GetSchoolId())) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewPermissionDenied("COORDINADOR_SCOPE", "solo el asesor del colegio (o superadmin) puede gestionar sus coordinadores"))
 	}
 	if req.GetSchoolId() == "" {
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_SCHOOL_ID", "school_id is required", "school_id"))
@@ -223,8 +256,8 @@ func (h *SchoolHandler) AssignCoordinador(ctx context.Context, req *pb.AssignCoo
 
 // RevokeCoordinador quita un coordinador del colegio (cierra su assignment vigente).
 func (h *SchoolHandler) RevokeCoordinador(ctx context.Context, req *pb.RevokeCoordinadorRequest) (*pb.EmptyResponse, error) {
-	if !ctxIsSuperadmin(ctx) {
-		return nil, apperr.ToGRPC(ctx, apperr.NewPermissionDenied("ONLY_SUPERADMIN", "only superadmin can revoke coordinadores"))
+	if !h.canManageCoordinador(ctx, domain.SchoolID(req.GetSchoolId())) {
+		return nil, apperr.ToGRPC(ctx, apperr.NewPermissionDenied("COORDINADOR_SCOPE", "solo el asesor del colegio (o superadmin) puede gestionar sus coordinadores"))
 	}
 	if req.GetSchoolId() == "" {
 		return nil, apperr.ToGRPC(ctx, apperr.NewValidation("MISSING_SCHOOL_ID", "school_id is required", "school_id"))

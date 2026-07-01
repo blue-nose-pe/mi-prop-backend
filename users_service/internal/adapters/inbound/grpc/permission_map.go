@@ -53,6 +53,12 @@ var PermissionMap = map[string]string{
 	// asesores. Bug encontrado en auditoria 2026-05-28. La misma permission
 	// que CreateSchool/UpdateSchool — la mutacion es del mismo nivel.
 	"/users.v1.SchoolService/AssignAsesor":          "db_users.school.write",
+	// Coordinadores (many-to-many): antes solo-superadmin hardcodeado. Ahora se
+	// gatean por db_users.coordinador.write (el superadmin lo asigna a los
+	// asesores que quiera). El handler ADEMAS scopea: el asesor solo toca
+	// coordinadores de SUS colegios (superadmin, todos).
+	"/users.v1.SchoolService/AssignCoordinador":     "db_users.coordinador.write",
+	"/users.v1.SchoolService/RevokeCoordinador":     "db_users.coordinador.write",
 
 	// leads (landing "Preparate" / simulacro masivo)
 	// CreateLead NO va aca: es publico (jwtmw skip-list lo maneja) — lo
