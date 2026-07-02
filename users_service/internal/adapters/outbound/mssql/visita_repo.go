@@ -161,9 +161,14 @@ func (r *VisitaRepo) List(ctx context.Context, in ports.ListVisitasInput) ([]dom
 		return nil, 0, err
 	}
 
+	// Ordenar por la fecha REAL de la visita: completed_at si existe (visita
+	// realizada), si no scheduled_at. Antes era solo scheduled_at, lo que hacía
+	// que el page de "completadas" se eligiera por fecha programada y el front
+	// (que ordena por completed_at) mostrara un orden inconsistente. COALESCE
+	// mantiene el orden por scheduled_at para las que aún no tienen completed_at.
 	q := `SELECT ` + visitaCols + `
 	        FROM visita ` + where + `
-	       ORDER BY scheduled_at DESC
+	       ORDER BY COALESCE(completed_at, scheduled_at) DESC
 	      OFFSET @p` + strconv.Itoa(idx) + ` ROWS FETCH NEXT @p` + strconv.Itoa(idx+1) + ` ROWS ONLY`
 	args = append(args, in.Offset, in.Limit)
 
