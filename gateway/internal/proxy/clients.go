@@ -58,9 +58,9 @@ type Addrs struct {
 // lo termina el Ingress NGINX.
 func Dial(a Addrs) (*Clients, error) {
 	keepaliveOpts := grpc.WithKeepaliveParams(keepalive.ClientParameters{
-		Time:                30 * time.Second,
+		Time:                60 * time.Second,
 		Timeout:             10 * time.Second,
-		PermitWithoutStream: true,
+		PermitWithoutStream: false,
 	})
 	creds := grpc.WithTransportCredentials(insecure.NewCredentials())
 

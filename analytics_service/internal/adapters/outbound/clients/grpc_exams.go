@@ -53,9 +53,9 @@ func NewGrpcExams(addr string) (*GrpcExams, error) {
 	conn, err := grpc.NewClient(addr,
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithKeepaliveParams(keepalive.ClientParameters{
-			Time:                30 * time.Second,
+			Time:                60 * time.Second,
 			Timeout:             10 * time.Second,
-			PermitWithoutStream: true,
+			PermitWithoutStream: false,
 		}),
 	)
 	if err != nil {
