@@ -206,6 +206,7 @@ func (p *Proxy) getAsesorDashboard(w http.ResponseWriter, r *http.Request) {
 		"affected_students": resp.GetAffectedStudents(),
 		"total_aforo":       resp.GetTotalAforo(),
 		"total_impactados":  resp.GetTotalImpactados(),
+		"total_students_rendered": resp.GetTotalStudentsRendered(),
 		"by_exam_type":      examTypeStatsToJSON(resp.GetByExamType()),
 		"generated_at":      optionalTimestamp(resp.GetGeneratedAt()),
 	})

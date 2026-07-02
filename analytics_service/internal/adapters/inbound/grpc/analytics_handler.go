@@ -38,6 +38,7 @@ func (h *AnalyticsHandler) GetAsesorDashboard(ctx context.Context, req *pb.GetAs
 		AffectedStudents: d.AffectedStudents,
 		TotalAforo:       d.TotalAforo,
 		TotalImpactados:  d.TotalImpactados,
+		TotalStudentsRendered: d.TotalStudentsRendered,
 		ByExamType:       toExamTypeStats(d.ByExamType),
 		GeneratedAt:      timestamppb.New(d.GeneratedAt),
 	}, nil

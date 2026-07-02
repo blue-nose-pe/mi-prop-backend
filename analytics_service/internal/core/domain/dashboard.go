@@ -31,6 +31,10 @@ type AsesorDashboard struct {
 	// current_uses (estudiantes que ya usaron una key).
 	TotalAforo       int32
 	TotalImpactados  int32
+	// Estudiantes DISTINTOS que rindieron (>=1 intento enviado). NO es la suma
+	// de intentos (un alumno con 3 intentos cuenta 1). Es el "estudiantes
+	// impactados" correcto para asesores sin aforo finito.
+	TotalStudentsRendered int32
 	ByExamType       map[string]ExamTypeStats // "vocacional" | "simulacro" | "habitos"
 	// Colegios asignados al asesor (assignment SCD-2 vigente). El export
 	// XLSX los renderiza en una hoja aparte "Colegios" — sin esta lista

@@ -61,6 +61,11 @@ message AsesorDashboardResponse {
   // una key (presentaron / se registraron).
   int32  total_aforo       = 12;
   int32  total_impactados  = 13;
+  // Estudiantes DISTINTOS que rindieron (>=1 intento enviado), NO la suma de
+  // intentos. Es el conteo correcto de "estudiantes impactados" cuando el asesor
+  // no tiene aforo finito (keys ilimitadas/registros directos); con aforo se usa
+  // total_impactados (current_uses, también por-estudiante y acotado al aforo).
+  int32  total_students_rendered = 14;
 }
 
 // ----- Colegio -----

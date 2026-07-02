@@ -55,6 +55,10 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 	// Acumular attempts cruzando los colegios.
 	stats := map[string]*domain.ExamTypeStats{}
 	totalAttempts := int32(0)
+	// Estudiantes DISTINTOS que rindieron (>=1 intento enviado), cross-colegio.
+	// Un alumno con varios intentos cuenta UNA vez → "estudiantes impactados"
+	// correcto (no la suma de intentos, que infla y "llena" el aforo).
+	renderedStudents := map[string]struct{}{}
 	for _, c := range colegios {
 		atts, err := h.exams.ListAttemptsByColegio(ctx, c.ID)
 		if err != nil {
@@ -63,6 +67,9 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 		for _, a := range atts {
 			if a.SubmittedAt == nil {
 				continue
+			}
+			if a.UserID != "" {
+				renderedStudents[string(a.UserID)] = struct{}{}
 			}
 			ex, err := h.exams.GetExam(ctx, a.ExamID)
 			if err != nil {
@@ -145,6 +152,7 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 		AffectedStudents: pendingAffected,
 		TotalAforo:       totalAforo,
 		TotalImpactados:  totalImpactados,
+		TotalStudentsRendered: int32(len(renderedStudents)),
 		ByExamType:       materialize(stats),
 		Colegios:         asesorColegios,
 		Keys:             asesorKeys,
