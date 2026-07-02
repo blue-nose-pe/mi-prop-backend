@@ -172,6 +172,12 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 // permite analizar una key vocacional/estilos/simulacro concreta). keyID
 // "" mantiene el comportamiento histórico (todos los attempts del periodo).
 func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID domain.SchoolID, period string, keyID string) (*domain.ColegioDashboard, error) {
+	// Normalizamos el key_id a MAYÚSCULAS: exam_attempt.key_id (CONVERT
+	// UNIQUEIDENTIFIER→NVARCHAR en SQL Server) siempre viene en MAYÚSCULAS, así
+	// que un caller que mande el UUID en minúsculas matchearía 0 attempts y el
+	// dashboard per-key saldría vacío en silencio. Normalizar aquí (y en el
+	// cacheKey) colapsa ambas cajas. Fix audit 2026-07-02.
+	keyID = strings.ToUpper(strings.TrimSpace(keyID))
 	cacheKey := "colegio:" + string(schoolID) + ":" + period + ":" + keyID
 	if h.cache != nil {
 		var cached domain.ColegioDashboard
@@ -222,6 +228,11 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 	}
 
 	attemptsInPeriod := int32(0)
+	// keyStudents: user_ids distintos con attempt que pasó el filtro (periodo +
+	// key). En la vista per-key sirve como denominador coherente (estudiantes de
+	// ESA key), evitando el shape engañoso de numerador-por-key / denominador-
+	// todo-el-colegio. Fix audit 2026-07-02.
+	keyStudents := map[string]struct{}{}
 	stats := map[string]*domain.ExamTypeStats{}
 	// Buckets de inclinaciones por exam_type_code (solo vocacional/estilos):
 	// examTypeCode -> categoria -> {points, maxPoints} agregado sobre TODOS
@@ -236,9 +247,13 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 			continue
 		}
 		// Filtro por key (portal del colegio): si se pidió una key concreta,
-		// ignoramos los attempts de otras keys. keyID "" = todas.
-		if keyID != "" && a.KeyID != keyID {
+		// ignoramos los attempts de otras keys. keyID "" = todas. EqualFold por
+		// robustez ante diferencias de caja (a.KeyID ya viene en MAYÚSCULAS).
+		if keyID != "" && !strings.EqualFold(a.KeyID, keyID) {
 			continue
+		}
+		if a.UserID != "" {
+			keyStudents[string(a.UserID)] = struct{}{}
 		}
 		attemptsInPeriod++
 		ex, err := h.exams.GetExam(ctx, a.ExamID)
@@ -291,10 +306,18 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 		})
 	}
 
+	// total_students: en la vista global = alumnos del colegio; en la vista
+	// per-key = estudiantes distintos que rindieron con ESA key (numerador y
+	// denominador en la misma escala). Fix audit 2026-07-02.
+	totalStudents := int32(len(students))
+	if keyID != "" {
+		totalStudents = int32(len(keyStudents))
+	}
+
 	out := &domain.ColegioDashboard{
 		SchoolID:      schoolID,
 		SchoolName:    school.Name,
-		TotalStudents: int32(len(students)),
+		TotalStudents: totalStudents,
 		TotalAttempts: attemptsInPeriod,
 		ByExamType:    materialize(stats),
 		Students:      studentRows,

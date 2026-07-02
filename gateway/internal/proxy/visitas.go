@@ -44,6 +44,17 @@ func (p *Proxy) createVisita(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
 		return
 	}
+	// Fix auditoría 2026-07-02 (IDOR/spoofing): un caller no-admin solo puede
+	// crear visitas ATRIBUIDAS A SÍ MISMO y sobre colegios de su scope. Antes se
+	// tomaba asesor_user_id/school_id del body sin validar → un caller con
+	// school.write ensuciaba la agenda de OTRO asesor / colegio ajeno.
+	// admin/superadmin conservan el on-behalf-of (enforceAsesorScope devuelve el
+	// valor pedido para el admin-marker).
+	in.AsesorUserID = enforceAsesorScope(r, in.AsesorUserID)
+	if !p.enforceColegioScope(r, in.SchoolID) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "COLEGIO_SCOPE", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	scheduledAt, err := parseRFC3339(in.ScheduledAt)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "scheduled_at: " + err.Error()})
@@ -83,6 +94,13 @@ type updateVisitaRequest struct {
 }
 
 func (p *Proxy) updateVisita(w http.ResponseWriter, r *http.Request) {
+	// Fix auditoría 2026-07-02 (IDOR): validar PROPIEDAD antes de mutar. Se carga
+	// la visita y se exige que el caller sea admin/superadmin, su dueño, o tenga
+	// el colegio en scope. Antes se mutaba por id sin verificar.
+	if !p.callerCanAccessVisita(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "VISITA_SCOPE", Message: "no tienes acceso a esta visita"})
+		return
+	}
 	var in updateVisitaRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -126,7 +144,44 @@ func (p *Proxy) getVisita(w http.ResponseWriter, r *http.Request) {
 		writeNotFound(w, "visita")
 		return
 	}
+	// Fix auditoría 2026-07-02 (IDOR): sin este gate, cualquier autenticado con
+	// db_users.school.read leía la visita (notas/colegio/fechas) de OTRO asesor
+	// por id. Igual que listVisitas fuerza enforceAsesorScope, aquí exigimos
+	// propiedad/scope sobre la visita concreta.
+	if !p.callerAllowedVisita(r, v) {
+		writeNotFound(w, "visita")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"visita": protoVisitaToJSON(v)})
+}
+
+// callerAllowedVisita: true si el caller puede ver/editar la visita v.
+// admin/superadmin (admin-marker) → siempre; el asesor dueño (asesor_user_id ==
+// caller) → sí; cualquiera con el colegio de la visita en su scope → sí.
+func (p *Proxy) callerAllowedVisita(r *http.Request, v *usersgrpcpb.Visita) bool {
+	if v == nil {
+		return false
+	}
+	if isSuperadminContext(r) || hasPermission(r, "db_users.permission_group.write") {
+		return true
+	}
+	if caller := userIDFromContext(r); caller != "" && caller == v.GetAsesorUserId() {
+		return true
+	}
+	return p.enforceColegioScope(r, v.GetSchoolId())
+}
+
+// callerCanAccessVisita: carga la visita por id y aplica callerAllowedVisita.
+// Best-effort: si no se puede leer, deniega (cerrado por defecto).
+func (p *Proxy) callerCanAccessVisita(r *http.Request, id string) bool {
+	if id == "" {
+		return false
+	}
+	resp, err := p.cli.Visitas.GetVisita(r.Context(), &usersgrpcpb.GetVisitaRequest{Id: id})
+	if err != nil {
+		return false
+	}
+	return p.callerAllowedVisita(r, resp.GetVisita())
 }
 
 func (p *Proxy) listVisitas(w http.ResponseWriter, r *http.Request) {

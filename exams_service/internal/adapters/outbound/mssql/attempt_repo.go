@@ -294,12 +294,16 @@ func (r *AttemptRepo) Finish(ctx context.Context, id domain.AttemptID, score, ma
 	return nil
 }
 
-// CountActiveByExam: cuenta attempts no descartados (una sola fila por
-// user/exam mientras submitted_at sea NULL o reciente).
+// CountActiveByExam: cuenta PARTICIPANTES ÚNICOS del exam (aforo a nivel exam,
+// solo path SIN key). Fix audit 2026-07-02: antes era COUNT(*) de TODAS las
+// filas, así que (a) cada reintento del mismo alumno inflaba el conteo y (b) los
+// attempts ya enviados/abandonados seguían ocupando plaza para siempre → el
+// aforo "se llenaba" aunque nadie estuviera rindiendo. COUNT(DISTINCT user_id)
+// refleja el aforo real de participantes (un alumno cuenta una sola vez).
 func (r *AttemptRepo) CountActiveByExam(ctx context.Context, examID domain.ExamID) (int32, error) {
 	var count int32
 	err := r.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM exam_attempt WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)`,
+		`SELECT COUNT(DISTINCT user_id) FROM exam_attempt WHERE exam_id = CONVERT(UNIQUEIDENTIFIER, @p1)`,
 		string(examID)).Scan(&count)
 	return count, err
 }

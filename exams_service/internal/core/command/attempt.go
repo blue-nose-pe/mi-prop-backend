@@ -118,8 +118,7 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 
 	// Aforo a nivel exam (e.MaxParticipants): solo aplica cuando NO hay
 	// key. Si hay key, el aforo lo dicta la key (keys_service.IncrementUsage
-	// es atomico y se valida antes de llamar a Start desde el handler gRPC),
-	// asi evitamos doble fuente de verdad inconsistente (Bug #3).
+	// es atomico), asi evitamos doble fuente de verdad inconsistente (Bug #3).
 	if in.KeyID == "" && e.MaxParticipants > 0 {
 		count, err := h.attempts.CountActiveByExam(ctx, e.ID)
 		if err != nil {
@@ -127,6 +126,17 @@ func (h *AttemptHandler) Start(ctx context.Context, in ports.StartAttemptInput) 
 		}
 		if count >= e.MaxParticipants {
 			return nil, domain.ErrExamClosed
+		}
+	}
+
+	// Consumo ATÓMICO del aforo de la key, como ÚLTIMA gate antes de crear el
+	// attempt. Fix audit 2026-07-02: se movió aquí (antes lo hacía el handler
+	// ANTES de Start) para que un fallo de validación (IsOpen/cross-type/masivo)
+	// no consuma una plaza sin crear attempt. Si falla (aforo lleno / key
+	// inválida), abortamos sin crear el attempt.
+	if in.ConsumeUsage != nil {
+		if err := in.ConsumeUsage(ctx); err != nil {
+			return nil, err
 		}
 	}
 

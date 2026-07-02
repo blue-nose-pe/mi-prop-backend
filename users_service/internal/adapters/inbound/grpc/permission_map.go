@@ -49,6 +49,11 @@ var PermissionMap = map[string]string{
 	"/users.v1.SchoolService/GetSchool":             "db_users.school.read",
 	"/users.v1.SchoolService/ListSchools":           "db_users.school.read",
 	"/users.v1.SchoolService/ListSchoolsByAsesor":   "db_users.school.read",
+	// ListCoordinadoresBySchool devuelve nombre+email (PII) de coordinadores.
+	// Sin esta entrada quedaba whitelist-by-default-PASS: cualquier autenticado
+	// (incluso un alumno) cosechaba el directorio. El gateway ADEMÁS scopea por
+	// colegio (listCoordinadoresBySchool → enforceColegioScope). Fix audit 2026-07-02.
+	"/users.v1.SchoolService/ListCoordinadoresBySchool": "db_users.school.read",
 	"/users.v1.SchoolService/CreateSchool":          "db_users.school.write",
 	"/users.v1.SchoolService/UpdateSchool":          "db_users.school.write",
 	// AssignAsesor: re-asigna el asesor responsable de un colegio (SCD-2).

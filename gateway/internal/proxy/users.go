@@ -221,6 +221,14 @@ type updateSchoolRequest struct {
 }
 
 func (p *Proxy) updateSchool(w http.ResponseWriter, r *http.Request) {
+	// Fix auditoría 2026-07-02 (BOLA/IDOR de escritura): igual que getSchool ya
+	// scopea la LECTURA, la ESCRITURA también debe hacerlo. Sin esto, cualquier
+	// grupo con db_users.school.write podía PATCH-ear CUALQUIER colegio ajeno
+	// (phone/email/RUC/hubspot_record_id/user_id/active). admin/superadmin pasan.
+	if !p.enforceColegioScope(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "COLEGIO_SCOPE", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	var in updateSchoolRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -817,6 +825,13 @@ func (p *Proxy) assignAsesorToSchool(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_USER_ID", Message: "user_id is required"})
 		return
 	}
+	// Fix auditoría 2026-07-02: escritura sobre un colegio exige tener ese colegio
+	// en scope (admin/superadmin pasan). Antes cualquier school.write reasignaba
+	// el asesor de CUALQUIER colegio.
+	if !p.enforceColegioScope(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "COLEGIO_SCOPE", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	if _, err := p.cli.Schools.AssignAsesor(r.Context(), &usersgrpcpb.AssignAsesorRequest{
 		SchoolId: r.PathValue("id"),
 		UserId:   in.UserID,
@@ -829,6 +844,15 @@ func (p *Proxy) assignAsesorToSchool(w http.ResponseWriter, r *http.Request) {
 
 // listCoordinadoresBySchool — GET /api/schools/{id}/coordinadores
 func (p *Proxy) listCoordinadoresBySchool(w http.ResponseWriter, r *http.Request) {
+	// Fix auditoría 2026-07-02 (IDOR/PII): sin este gate CUALQUIER autenticado
+	// (incluso un alumno) iteraba UUIDs de colegio y cosechaba nombre+email de los
+	// coordinadores de todos los colegios (ListCoordinadoresBySchool tampoco está
+	// en el permission_map → whitelist-by-default PASS). Igual que sus hermanos
+	// listStudentsByColegio / studentKeyInfoByColegio, exigimos scope por colegio.
+	if !p.enforceColegioScope(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "COLEGIO_SCOPE", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	resp, err := p.cli.Schools.ListCoordinadoresBySchool(r.Context(), &usersgrpcpb.ListCoordinadoresBySchoolRequest{
 		SchoolId: r.PathValue("id"),
 	})
@@ -863,6 +887,12 @@ func (p *Proxy) assignCoordinadorToSchool(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_USER_ID", Message: "user_id is required"})
 		return
 	}
+	// Fix auditoría 2026-07-02: el asesor (coordinador.write) solo asigna
+	// coordinadores a SUS colegios; admin/superadmin, a cualquiera.
+	if !p.enforceColegioScope(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "COLEGIO_SCOPE", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	// Validar que el coordinador exista ANTES de intentar el assignment: sin esto
 	// un user_id inexistente reventaba el AddSource con FK violation → 500
 	// INTERNAL_ERROR (audit permisos 2026-07-02). Ahora devuelve 404 limpio.
@@ -882,6 +912,12 @@ func (p *Proxy) assignCoordinadorToSchool(w http.ResponseWriter, r *http.Request
 
 // revokeCoordinadorFromSchool — DELETE /api/schools/{id}/coordinadores/{userId}
 func (p *Proxy) revokeCoordinadorFromSchool(w http.ResponseWriter, r *http.Request) {
+	// Fix auditoría 2026-07-02: revocar un coordinador exige tener el colegio en
+	// scope (admin/superadmin pasan).
+	if !p.enforceColegioScope(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "COLEGIO_SCOPE", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	if _, err := p.cli.Schools.RevokeCoordinador(r.Context(), &usersgrpcpb.RevokeCoordinadorRequest{
 		SchoolId: r.PathValue("id"),
 		UserId:   r.PathValue("userId"),

@@ -19,14 +19,35 @@ import (
 )
 
 func (p *Proxy) RegisterHubspot(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/hubspot/contacts", p.upsertHubspotContact)
-	mux.HandleFunc("GET /api/hubspot/contacts/by-dni/{dni}", p.getHubspotContactByDNI)
-	mux.HandleFunc("POST /api/hubspot/otp", p.sendHubspotOTP)
-	mux.HandleFunc("POST /api/hubspot/results", p.syncHubspotResult)
-	mux.HandleFunc("POST /api/hubspot/schools", p.upsertHubspotSchool)
-	mux.HandleFunc("POST /api/hubspot/asesores", p.upsertHubspotAsesor)
-	mux.HandleFunc("GET /api/hubspot/failed", p.listHubspotFailed)
-	mux.HandleFunc("POST /api/hubspot/retry", p.retryHubspotJob)
+	// Fix auditoría 2026-07-02: TODAS las rutas /api/hubspot/* son herramientas de
+	// ops/admin (el front NO las llama; el sync real post-examen/lead/alumno usa el
+	// gRPC interno p.cli.Hubspot desde exams.go/landing.go/users.go, no estas rutas
+	// HTTP). Antes NO tenían ningún gate de permiso y hubspot_service tampoco tiene
+	// permission_map → cualquier autenticado, incluso un alumno con token OTP, podía
+	// enviar OTPs arbitrarios (spam/phishing con identidad UCSP), leer syncs fallidos
+	// con PII, forjar resultados de examen en el CRM o escribir contactos/colegios.
+	// Se exige admin-marker en todas.
+	mux.HandleFunc("POST /api/hubspot/contacts", p.hubspotAdminOnly(p.upsertHubspotContact))
+	mux.HandleFunc("GET /api/hubspot/contacts/by-dni/{dni}", p.hubspotAdminOnly(p.getHubspotContactByDNI))
+	mux.HandleFunc("POST /api/hubspot/otp", p.hubspotAdminOnly(p.sendHubspotOTP))
+	mux.HandleFunc("POST /api/hubspot/results", p.hubspotAdminOnly(p.syncHubspotResult))
+	mux.HandleFunc("POST /api/hubspot/schools", p.hubspotAdminOnly(p.upsertHubspotSchool))
+	mux.HandleFunc("POST /api/hubspot/asesores", p.hubspotAdminOnly(p.upsertHubspotAsesor))
+	mux.HandleFunc("GET /api/hubspot/failed", p.hubspotAdminOnly(p.listHubspotFailed))
+	mux.HandleFunc("POST /api/hubspot/retry", p.hubspotAdminOnly(p.retryHubspotJob))
+}
+
+// hubspotAdminOnly gatea una ruta /api/hubspot/* a admin/superadmin (admin-marker
+// db_users.permission_group.write). El JWT ya lo valida jwtmw; esto añade la
+// autorización que faltaba por completo.
+func (p *Proxy) hubspotAdminOnly(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !isSuperadminContext(r) && !hasPermission(r, "db_users.permission_group.write") {
+			writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "FORBIDDEN", Message: "solo administradores pueden operar HubSpot"})
+			return
+		}
+		next(w, r)
+	}
 }
 
 type upsertHubspotContactRequest struct {

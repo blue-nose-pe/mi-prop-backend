@@ -74,43 +74,44 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 		maxAttemptsPerUser = validation.MaxAttemptsPerUser
 	}
 
-	// Bug #1 fix: el IncrementUsage de keys_service es la unica gate
-	// atomica contra el aforo (UPDATE con guard de current_uses<max_uses
-	// en una sola operacion SQL). Para que sea efectiva, hay que llamarla
-	// ANTES de crear el attempt y rechazar si devuelve error. El codigo
-	// anterior la llamaba despues con `_ = ...`, lo que permitia que mas
-	// alumnos de los del aforo crearan attempts validos (cada uno sin
-	// contarse en current_uses).
+	// Aforo (Bug #1): IncrementUsage es la única gate atómica contra el aforo
+	// (UPDATE con guard current_uses<max_uses). Idempotencia (Bug #2): si el user
+	// ya tiene un attempt activo, Start devuelve Reused y NO consume plaza.
 	//
-	// Idempotencia: si el user ya tiene un attempt activo para este exam,
-	// el core Start devuelve Reused=true y NO consumimos un uso adicional
-	// (el primer Start ya lo conto). Esto cierra el Bug #2 (refresh).
+	// Fix audit 2026-07-02: el consumo de aforo se pasa a Start como callback
+	// (ConsumeUsage) y Start lo invoca DESPUÉS de sus validaciones (IsOpen/
+	// cross-type/masivo) y justo antes de crear el attempt. Antes se llamaba
+	// IncrementUsage AQUÍ, ANTES de Start; si Start fallaba (examen cerrado/
+	// despublicado, key de otro tipo, candado masivo) la plaza se perdía sin
+	// crear attempt y sin compensación posible.
 	//
-	// Limite por usuario (key.MaxAttemptsPerUser): si > 0, contamos
-	// attempts SUBMITTED previos del user. Si llego al maximo, rechazamos
-	// con MAX_ATTEMPTS_REACHED ANTES de IncrementUsage (no consume plaza).
+	// Límite por usuario (key.MaxAttemptsPerUser): chequeo read-only ANTES de
+	// consumir plaza; si llegó al máximo, rechazamos con MAX_ATTEMPTS_REACHED.
+	var consumeUsage func(context.Context) error
 	if keyID != "" {
 		existing, err := h.qrys.GetActiveByExamUser(ctx, examID, userID)
 		if err != nil {
 			return nil, apperr.ToGRPC(ctx, err)
 		}
-		if existing == nil {
-			if maxAttemptsPerUser > 0 {
-				// Conteo POR KEY — no global del exam. Una key vieja del mismo
-				// alumno no debe bloquear keys nuevas que el asesor le entregue.
-				submittedCount, err := h.qrys.CountSubmittedByKeyUser(ctx, keyID, userID)
-				if err != nil {
-					return nil, apperr.ToGRPC(ctx, err)
-				}
-				if submittedCount >= maxAttemptsPerUser {
-					return nil, apperr.ToGRPC(ctx, domain.ErrMaxAttemptsReached)
-				}
+		if existing == nil && maxAttemptsPerUser > 0 {
+			// Conteo POR KEY — no global del exam. Una key vieja del mismo
+			// alumno no debe bloquear keys nuevas que el asesor le entregue.
+			submittedCount, err := h.qrys.CountSubmittedByKeyUser(ctx, keyID, userID)
+			if err != nil {
+				return nil, apperr.ToGRPC(ctx, err)
 			}
-			// Attempt nuevo → consumir uso atomico de la key.
-			if err := h.keys.IncrementUsage(ctx, keyID, "", userID); err != nil {
+			if submittedCount >= maxAttemptsPerUser {
+				return nil, apperr.ToGRPC(ctx, domain.ErrMaxAttemptsReached)
+			}
+		}
+		kid := keyID
+		uid := userID
+		consumeUsage = func(c context.Context) error {
+			if err := h.keys.IncrementUsage(c, kid, "", uid); err != nil {
 				// 0 filas afectadas → aforo lleno o key invalida.
-				return nil, apperr.ToGRPC(ctx, mapKeysClientError(err))
+				return mapKeysClientError(err)
 			}
+			return nil
 		}
 	}
 
@@ -121,7 +122,8 @@ func (h *AttemptHandler) StartAttempt(ctx context.Context, req *pb.StartAttemptR
 		ExpectedExamTypeID: expectedExamTypeID,
 		// Masivo = key LAN/masiva (con código pero sin colegio). Start usa
 		// esto para bloquear el Examen Nacional (el masivo es solo UCSP).
-		KeyIsMasivo: keyID != "" && keySchoolID == "",
+		KeyIsMasivo:  keyID != "" && keySchoolID == "",
+		ConsumeUsage: consumeUsage,
 	})
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)

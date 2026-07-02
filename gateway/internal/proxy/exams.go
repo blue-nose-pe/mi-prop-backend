@@ -43,6 +43,7 @@ import (
 	examsgrpcpb "exams_service/proto/gen"
 	examscommonpb "exams_service/proto/gen/common"
 	hubspotgrpcpb "hubspot_service/proto/gen"
+	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 
 	"google.golang.org/grpc/metadata"
@@ -875,7 +876,9 @@ func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {
 	// Self-scope por defecto: cualquier user ve sus propios attempts.
 	// Para listar attempts de OTRO user hace falta db_exams.exam_attempt.read.
 	targetID := r.PathValue("id")
-	if targetID != userIDFromContext(r) && !hasPermission(r, "db_exams.exam_attempt.read") {
+	unrestricted, allowedColegios, caller := p.callerColegioScope(r)
+	selfView := targetID == caller
+	if !selfView && !unrestricted && !hasPermission(r, "db_exams.exam_attempt.read") {
 		writeJSON(w, http.StatusForbidden, errorBody{
 			Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a los attempts de este user",
 		})
@@ -888,8 +891,31 @@ func (p *Proxy) listAttemptsByUser(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+	// Fix auditoría 2026-07-02 (IDOR): un staff scopeado (exam_attempt.read, no
+	// admin) viendo los attempts de OTRO alumno solo debe ver los de SUS colegios,
+	// igual que getEstudianteHistorico. Resolvemos el colegio de cada attempt vía
+	// su key. self/admin (needScope=false) ven todo; attempt sin key resoluble
+	// (LAN/masivo o key borrada) queda fuera para un rol scopeado.
+	needScope := !selfView && !unrestricted
+	schoolByKey := map[string]string{}
 	items := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, a := range resp.GetItems() {
+		if needScope {
+			keyID := a.GetKeyId()
+			if keyID == "" {
+				continue
+			}
+			school, ok := schoolByKey[keyID]
+			if !ok {
+				if kr, kerr := p.cli.Keys.GetKey(r.Context(), &keysgrpcpb.GetKeyRequest{Id: keyID}); kerr == nil && kr.GetKey() != nil {
+					school = kr.GetKey().GetSchoolId()
+				}
+				schoolByKey[keyID] = school
+			}
+			if !allowedColegios[school] {
+				continue
+			}
+		}
 		items = append(items, protoAttemptToJSON(a))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})

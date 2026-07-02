@@ -188,6 +188,14 @@ type StartAttemptInput struct {
 	// setea cuando validation.SchoolID == "". Start lo usa para bloquear el
 	// Examen Nacional en el masivo (la key masiva solo habilita UCSP).
 	KeyIsMasivo bool
+	// ConsumeUsage (opcional): consume el aforo de la key de forma ATÓMICA. Start
+	// lo invoca DESPUÉS de todas sus validaciones (IsOpen/cross-type/masivo) y
+	// JUSTO ANTES de crear el attempt. Así, si el examen está cerrado/despublicado
+	// o la key no matchea el tipo, NO se pierde una plaza (Fix audit 2026-07-02:
+	// antes el handler llamaba IncrementUsage ANTES de Start y un fallo de Start
+	// consumía aforo sin crear attempt, sin compensación posible). nil = sin key
+	// (modo admin / aforo a nivel exam). Si devuelve error, Start aborta sin crear.
+	ConsumeUsage func(context.Context) error
 }
 
 // AnswerInput modela la respuesta de un alumno a UNA pregunta. El shape
