@@ -167,8 +167,12 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 
 // ----- Colegio dashboard -----
 
-func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID domain.SchoolID, period string) (*domain.ColegioDashboard, error) {
-	cacheKey := "colegio:" + string(schoolID) + ":" + period
+// GetColegioDashboard agrega los attempts de un colegio. Si keyID != "",
+// filtra SOLO los attempts rendidos con esa key (el portal del colegio
+// permite analizar una key vocacional/estilos/simulacro concreta). keyID
+// "" mantiene el comportamiento histórico (todos los attempts del periodo).
+func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID domain.SchoolID, period string, keyID string) (*domain.ColegioDashboard, error) {
+	cacheKey := "colegio:" + string(schoolID) + ":" + period + ":" + keyID
 	if h.cache != nil {
 		var cached domain.ColegioDashboard
 		if hit, _ := h.cache.Get(ctx, cacheKey, &cached); hit {
@@ -229,6 +233,11 @@ func (h *DashboardHandler) GetColegioDashboard(ctx context.Context, schoolID dom
 			continue
 		}
 		if !inSelectedPeriod(*a.SubmittedAt) {
+			continue
+		}
+		// Filtro por key (portal del colegio): si se pidió una key concreta,
+		// ignoramos los attempts de otras keys. keyID "" = todas.
+		if keyID != "" && a.KeyID != keyID {
 			continue
 		}
 		attemptsInPeriod++

@@ -78,6 +78,7 @@ type UpstreamAttempt struct {
 	ID           domain.AttemptID
 	ExamID       domain.ExamID
 	UserID       domain.UserID
+	KeyID        string // key con la que se rindió (exam_attempt.key_id, migración 006)
 	Score        *float64
 	MaxScore     *float64
 	StartedAt    time.Time

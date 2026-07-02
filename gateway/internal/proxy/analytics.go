@@ -226,6 +226,9 @@ func (p *Proxy) getColegioDashboard(w http.ResponseWriter, r *http.Request) {
 		// doughnut/radar/detalle respeten el periodo elegido. Sin él = todo el
 		// histórico (el portal de colegio no lo manda).
 		Period: r.URL.Query().Get("period"),
+		// key_id (opcional): el portal del colegio lo pasa (?key_id=) para
+		// analizar promedio/inclinaciones de UNA key concreta. Sin él = todas.
+		KeyId: r.URL.Query().Get("key_id"),
 	})
 	if err != nil {
 		writeGRPCError(w, err)

@@ -45,7 +45,7 @@ func (h *AnalyticsHandler) GetAsesorDashboard(ctx context.Context, req *pb.GetAs
 }
 
 func (h *AnalyticsHandler) GetColegioDashboard(ctx context.Context, req *pb.GetColegioDashboardRequest) (*pb.ColegioDashboardResponse, error) {
-	d, err := h.qrys.GetColegioDashboard(ctx, domain.SchoolID(req.GetSchoolId()), req.GetPeriod())
+	d, err := h.qrys.GetColegioDashboard(ctx, domain.SchoolID(req.GetSchoolId()), req.GetPeriod(), req.GetKeyId())
 	if err != nil {
 		return nil, apperr.ToGRPC(ctx, err)
 	}

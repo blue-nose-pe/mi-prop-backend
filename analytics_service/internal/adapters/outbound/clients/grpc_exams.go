@@ -241,6 +241,7 @@ func mapAttempts(items []*examspb.Attempt) []ports.UpstreamAttempt {
 			ID:     domain.AttemptID(a.GetId()),
 			ExamID: domain.ExamID(a.GetExamId()),
 			UserID: domain.UserID(a.GetUserId()),
+			KeyID:  a.GetKeyId(),
 		}
 		// Score y MaxScore son escalares en el proto; los pasamos a *int32
 		// solo si vinieron != 0 para distinguir "no enviado" de "0 puntos".

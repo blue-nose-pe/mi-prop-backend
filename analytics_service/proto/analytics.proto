@@ -72,7 +72,9 @@ message AsesorDashboardResponse {
 // period (opcional): "" o "current" = todo (back-compat); "YYYY" = año;
 // "YYYY-QN" = quarter. Filtra los attempts del colegio a ese periodo para que
 // el doughnut/radar/detalle del comparativo respeten el periodo elegido.
-message GetColegioDashboardRequest { string school_id = 1; string period = 2; }
+// key_id (opcional): si != "", filtra SOLO attempts rendidos con esa key
+// (portal del colegio: analizar promedio/inclinaciones de una key concreta).
+message GetColegioDashboardRequest { string school_id = 1; string period = 2; string key_id = 3; }
 message ColegioDashboardResponse {
   string school_id       = 1;
   string school_name     = 2;
