@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -17,9 +18,27 @@ import (
 type Proxy struct {
 	cli *Clients
 	rdb *redis.Client
+
+	// Config del asistente IA (chatbot). Se setea con WithAssistant tras crear
+	// el Proxy. Si assistantEnabled es false o falta baseURL, /api/assistant/chat
+	// responde 503.
+	assistantEnabled bool
+	llmBaseURL       string
+	llmModel         string
+	llmAPIKey        string
 }
 
 func New(c *Clients) *Proxy { return &Proxy{cli: c} }
+
+// WithAssistant inyecta la config del chatbot (LLM). Devuelve el mismo Proxy
+// para encadenar. baseURL/model/apiKey vienen de config (env).
+func (p *Proxy) WithAssistant(enabled bool, baseURL, model, apiKey string) *Proxy {
+	p.assistantEnabled = enabled
+	p.llmBaseURL = strings.TrimRight(baseURL, "/")
+	p.llmModel = model
+	p.llmAPIKey = apiKey
+	return p
+}
 
 // NewWithRedis crea un Proxy con rate-limit per-endpoint habilitado.
 // Si rdb es nil cae a noop (igual que New).
@@ -59,6 +78,7 @@ func (p *Proxy) RegisterAll(mux *http.ServeMux) {
 	p.RegisterSurveys(mux)
 	p.RegisterAnalytics(mux)
 	p.RegisterHubspot(mux)
+	p.RegisterAssistant(mux)
 }
 
 // RegisterHealth expone /health para readiness/liveness del Ingress.

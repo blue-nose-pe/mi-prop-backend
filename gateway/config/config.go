@@ -22,6 +22,14 @@ type Config struct {
 	SatisfactionServiceAddr string
 	AnalyticsServiceAddr    string
 
+	// Asistente IA (chatbot del panel). Usa la API de chat-completions estilo
+	// OpenAI (funciona con OpenAI y con el endpoint /v1 de Ollama). Configurable
+	// por env para poder cambiar entre OpenAI y un modelo local sin recompilar.
+	AssistantEnabled bool
+	LLMBaseURL       string // ej. https://api.openai.com/v1  ó  http://miproposito-llm:11434/v1
+	LLMModel         string // ej. gpt-4o-mini  ó  qwen2.5:3b
+	LLMAPIKey        string // Bearer para el endpoint (OpenAI). Vacío para Ollama local.
+
 	// CORS.
 	CORSAllowedOrigins []string
 
@@ -45,6 +53,10 @@ func Load() *Config {
 		HubspotServiceAddr:      getEnv("HUBSPOT_SERVICE_ADDR", "hubspot-service:50054"),
 		SatisfactionServiceAddr: getEnv("SATISFACTION_SERVICE_ADDR", "satisfaction-service:50055"),
 		AnalyticsServiceAddr:    getEnv("ANALYTICS_SERVICE_ADDR", "analytics-service:50056"),
+		AssistantEnabled:        getEnvBool("ASSISTANT_ENABLED", true),
+		LLMBaseURL:              getEnv("LLM_BASE_URL", "https://api.openai.com/v1"),
+		LLMModel:                getEnv("LLM_MODEL", "gpt-4o-mini"),
+		LLMAPIKey:               getEnv("OPENAI_API_KEY", getEnv("LLM_API_KEY", "")),
 		CORSAllowedOrigins:      splitCSV(getEnv("CORS_ALLOWED_ORIGINS", "https://miproposito.ucsp.edu.pe")),
 		RateLimitEnabled:        getEnvBool("RATELIMIT_ENABLED", true),
 		RateLimitPerIPPerMinute: getEnvInt("RATELIMIT_PER_IP_PER_MIN", 600),

@@ -1,0 +1,80 @@
+# Asistente IA (chatbot del panel) — servidor de modelo local.
+#
+# Ollama sirve un modelo pequeño (Qwen2.5) en CPU para el asistente de solo
+# lectura del panel. El cluster es chico (2x 2vCPU/8GB), así que:
+#   - modelo pequeño (qwen2.5:3b, ~2GB) con límites de RAM estrictos para NO
+#     tumbar los otros pods (si no cabe, el pod queda Pending = seguro).
+#   - num_ctx acotado y 1 modelo/1 request en paralelo para memoria acotada.
+#   - PVC para no re-descargar el modelo en cada restart.
+#
+# El modelo se puede cambiar por env LLM_MODEL en el gateway (apuntar a 1.5b si
+# falta RAM, o a 7b/endpoint externo si se agrega un nodo con más recursos).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+  namespace: miproposito
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: managed-csi
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: miproposito-llm
+  namespace: miproposito
+  labels: { app: miproposito-llm }
+spec:
+  replicas: 1
+  strategy: { type: Recreate } # RWO PVC: no dos pods a la vez
+  selector:
+    matchLabels: { app: miproposito-llm }
+  template:
+    metadata:
+      labels: { app: miproposito-llm }
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          ports:
+            - name: http
+              containerPort: 11434
+          env:
+            - { name: OLLAMA_HOST, value: "0.0.0.0:11434" }
+            - { name: OLLAMA_KEEP_ALIVE, value: "10m" }      # descarga el modelo tras 10m ocioso → libera RAM
+            - { name: OLLAMA_MAX_LOADED_MODELS, value: "1" }
+            - { name: OLLAMA_NUM_PARALLEL, value: "1" }
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+          resources:
+            requests: { cpu: "500m", memory: "2560Mi" }
+            limits:   { cpu: "2",    memory: "4Gi" }
+          readinessProbe:
+            httpGet: { path: /, port: 11434 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet: { path: /, port: 11434 }
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: models
+          persistentVolumeClaim:
+            claimName: ollama-models
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: miproposito-llm
+  namespace: miproposito
+  labels: { app: miproposito-llm }
+spec:
+  selector: { app: miproposito-llm }
+  ports:
+    - name: http
+      port: 11434
+      targetPort: 11434
