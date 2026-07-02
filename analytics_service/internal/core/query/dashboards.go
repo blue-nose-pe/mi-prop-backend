@@ -390,7 +390,8 @@ func (h *DashboardHandler) GetColegioComparativo(ctx context.Context, examTypeCo
 			continue
 		}
 		var sumScore float64
-		var n int32
+		var n int32      // participación: TODOS los attempts enviados del tipo
+		var scored int32 // solo los que tienen puntaje (para el promedio)
 		// Resolvemos exam_type_code via cache local: una sola consulta
 		// GetExam por exam_id distinto encontrado entre los attempts del
 		// colegio. Evita N+1 cuando los attempts comparten exam.
@@ -407,19 +408,27 @@ func (h *DashboardHandler) GetColegioComparativo(ctx context.Context, examTypeCo
 			typeByExam[examID] = ex.ExamTypeCode
 			return ex.ExamTypeCode
 		}
+		// Fix audit 2026-07-02: contamos la PARTICIPACIÓN (n) de todo attempt
+		// enviado del tipo pedido, y el promedio SOLO sobre los que tienen
+		// puntaje. Antes se descartaba el attempt entero si no tenía score, así
+		// que vocacional/estilos (sin puntaje) reportaban attempts=0 para todos
+		// los colegios (inconsistente con GetColegioDashboard).
 		for _, a := range atts {
-			if a.SubmittedAt == nil || a.Score == nil || a.MaxScore == nil || *a.MaxScore == 0 {
+			if a.SubmittedAt == nil {
 				continue
 			}
 			if resolveType(a.ExamID) != examTypeCode {
 				continue
 			}
-			sumScore += float64(*a.Score) / float64(*a.MaxScore) * 100.0
 			n++
+			if a.Score != nil && a.MaxScore != nil && *a.MaxScore > 0 {
+				sumScore += float64(*a.Score) / float64(*a.MaxScore) * 100.0
+				scored++
+			}
 		}
 		avg := 0.0
-		if n > 0 {
-			avg = sumScore / float64(n)
+		if scored > 0 {
+			avg = sumScore / float64(scored)
 		}
 		items = append(items, domain.ColegioComparativoItem{
 			SchoolID:   s.ID,
