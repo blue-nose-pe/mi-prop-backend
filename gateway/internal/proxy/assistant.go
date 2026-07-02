@@ -20,6 +20,7 @@ import (
 	"io"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	analyticsgrpcpb "analytics_service/proto/gen"
@@ -128,6 +129,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 
 == DATOS DEL DOMINIO ==
 - Tipos de evaluación: "simulacro" tiene puntaje 0–100 (promediable). "vocacional" (áreas de interés: Sensibilidad Social, Cálculo, Artes, Verbal, Organización, etc.) y "estilos de aprendizaje" son PERFILES por área, NO promediables (se leen como % de inclinación). Las áreas vocacionales y los estilos de aprendizaje son cosas DISTINTAS: nunca reportes un área vocacional como si fuera un estilo de aprendizaje ni al revés.
+- Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
 - Para el PROMEDIO o gauge de un COLEGIO usa el resumen del colegio SIN filtrar por una llave; jamás reportes promedio 0 basándote en una sola llave sin exámenes rendidos.
 - Si el usuario es admin/superadmin, NO tiene "operación de asesor" (no es asesor de ningún colegio): para un panorama usa el listado de colegios y el comparativo, no los indicadores de asesor.
 - Sobre las llaves: el contador de accesos puede estar inflado y no refleja los exámenes realmente rendidos; para desempeño usa siempre los exámenes rendidos con resultados. Si te piden una llave que no tiene exámenes rendidos, dilo y ofrece proactivamente una llave del mismo colegio que sí tenga datos, o el resumen del colegio (indicando qué tipos de evaluación sí tienen resultados).`
@@ -248,6 +250,56 @@ func argStr(args map[string]any, k string) string {
 
 func round1(f float64) float64 { return math.Round(f*10) / 10 }
 
+// resolveColegioID resuelve un colegio a su ID real dentro del SCOPE del caller,
+// a partir de school_id y/o school_name. Es determinístico y evita que el LLM
+// invente un UUID inexistente (que hacía a analytics devolver Internal). Devuelve
+// "" si no hay match en el scope del usuario.
+func (p *Proxy) resolveColegioID(r *http.Request, args map[string]any) string {
+	sid := strings.TrimSpace(argStr(args, "school_id"))
+	name := strings.TrimSpace(argStr(args, "school_name"))
+	ctx := r.Context()
+	type sc struct{ id, nm string }
+	var list []sc
+	unrestricted, _, _ := p.callerColegioScope(r)
+	if unrestricted {
+		if resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000}); err == nil {
+			for _, s := range resp.GetItems() {
+				list = append(list, sc{s.GetId(), s.GetName()})
+			}
+		}
+	} else {
+		if resp, err := p.cli.Schools.ListSchoolsByAsesor(ctx, &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: userIDFromContext(r)}); err == nil {
+			for _, s := range resp.GetItems() {
+				list = append(list, sc{s.GetId(), s.GetName()})
+			}
+		}
+	}
+	// 1) match por id exacto dentro del scope.
+	if sid != "" {
+		for _, s := range list {
+			if strings.EqualFold(s.id, sid) {
+				return s.id
+			}
+		}
+	}
+	// 2) match por nombre (exacto, luego "contiene").
+	if name != "" {
+		nl := strings.ToLower(name)
+		for _, s := range list {
+			if strings.ToLower(s.nm) == nl {
+				return s.id
+			}
+		}
+		for _, s := range list {
+			snl := strings.ToLower(s.nm)
+			if strings.Contains(snl, nl) || strings.Contains(nl, snl) {
+				return s.id
+			}
+		}
+	}
+	return ""
+}
+
 func assistantExamTypeName(id int32) string {
 	switch id {
 	case 1:
@@ -266,14 +318,15 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		toolSchema("listar_colegios", "Lista los colegios que el usuario puede ver (nombre, ciudad, id). Úsala para saber qué colegios hay o para obtener el id de un colegio por su nombre.", map[string]any{
 			"type": "object", "properties": map[string]any{}, "required": []string{},
 		}),
-		toolSchema("dashboard_colegio", "Resumen de un colegio: intentos y promedio de simulacro, y perfil de áreas de vocacional/estilos. Adjunta gráficos (gauge de promedio, doughnut y radar de áreas). Acepta filtrar por periodo (año 'YYYY') y por key (key_id).", map[string]any{
+		toolSchema("dashboard_colegio", "Resumen de un colegio: intentos y promedio de simulacro, y perfil de áreas de vocacional/estilos. Adjunta gráficos (gauge de promedio, doughnut y radar de áreas). Pasa el NOMBRE del colegio en school_name (el sistema lo resuelve); no inventes IDs. Acepta filtrar por periodo (año 'YYYY') y por key (key_id).", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"school_id": map[string]any{"type": "string", "description": "id del colegio (usa listar_colegios para obtenerlo por nombre)"},
-				"period":    map[string]any{"type": "string", "description": "opcional, año 'YYYY'; vacío = todo el histórico"},
-				"key_id":    map[string]any{"type": "string", "description": "opcional, id de una llave para analizar solo ese grupo"},
+				"school_name": map[string]any{"type": "string", "description": "nombre del colegio (ej. 'Santa Maria'); se resuelve automáticamente"},
+				"school_id":   map[string]any{"type": "string", "description": "opcional: id del colegio si lo conoces con certeza; NO lo inventes"},
+				"period":      map[string]any{"type": "string", "description": "opcional, año 'YYYY'; vacío = todo el histórico"},
+				"key_id":      map[string]any{"type": "string", "description": "opcional, id de una llave para analizar solo ese grupo; NO lo uses para el promedio general del colegio"},
 			},
-			"required": []string{"school_id"},
+			"required": []string{},
 		}),
 		toolSchema("comparativo_colegios", "Ranking/comparación de los colegios del usuario en una evaluación. Adjunta un gráfico de barras. exam_type_code: 'simulacro' (por promedio) | 'vocacional' | 'habitos' (por participación).", map[string]any{
 			"type": "object",
@@ -289,12 +342,13 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
-		toolSchema("listar_llaves_colegio", "Lista las llaves (keys) de un colegio, ordenadas de la MÁS RECIENTE a la más antigua (la primera es 'la última key creada'). Cada llave trae: key_id, codigo, tipo, aforo, activa, creada (fecha), usos_registro (contador de accesos, NO confiable) y rendidos_reales (exámenes realmente rendidos con resultados). Usa esta herramienta para elegir una key con datos: si necesitas graficar, prefiere una con rendidos_reales > 0.", map[string]any{
+		toolSchema("listar_llaves_colegio", "Lista las llaves (keys) de un colegio, ordenadas de la MÁS RECIENTE a la más antigua (la primera es 'la última key creada'). Cada llave trae: key_id, codigo, tipo, aforo, activa, creada (fecha), usos_registro (contador de accesos, NO confiable) y rendidos_reales (exámenes realmente rendidos con resultados). Usa esta herramienta para elegir una key con datos: si necesitas graficar, prefiere una con rendidos_reales > 0. Pasa el NOMBRE del colegio en school_name; no inventes IDs.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"school_id": map[string]any{"type": "string", "description": "id del colegio"},
+				"school_name": map[string]any{"type": "string", "description": "nombre del colegio; se resuelve automáticamente"},
+				"school_id":   map[string]any{"type": "string", "description": "opcional: id del colegio si lo conoces; NO lo inventes"},
 			},
-			"required": []string{"school_id"},
+			"required": []string{},
 		}),
 	}
 	byName := map[string]assistantToolFn{
@@ -343,9 +397,9 @@ func toolListarColegios(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 }
 
 func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
-	sid := argStr(args, "school_id")
+	sid := p.resolveColegioID(r, args)
 	if sid == "" {
-		return map[string]any{"error": "falta school_id"}, nil, nil
+		return map[string]any{"error": "no encontré ese colegio entre los que puedes ver; revisa el nombre"}, nil, nil
 	}
 	if !p.enforceColegioScope(r, sid) {
 		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
@@ -505,9 +559,9 @@ func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, [
 }
 
 func toolListarLlavesColegio(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
-	sid := argStr(args, "school_id")
+	sid := p.resolveColegioID(r, args)
 	if sid == "" {
-		return map[string]any{"error": "falta school_id"}, nil, nil
+		return map[string]any{"error": "no encontré ese colegio entre los que puedes ver; revisa el nombre"}, nil, nil
 	}
 	if !p.enforceColegioScope(r, sid) {
 		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
