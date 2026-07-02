@@ -23,6 +23,7 @@ import (
 	"time"
 
 	analyticsgrpcpb "analytics_service/proto/gen"
+	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 )
@@ -110,7 +111,8 @@ REGLAS ESTRICTAS:
 - Los datos que devuelven las herramientas YA vienen filtrados por los permisos del usuario (su rol y sus colegios). No puedes ver nada fuera de su alcance; si una herramienta devuelve vacío o "sin acceso", explícalo sin inventar y sin sugerir que existe data oculta.
 - Eres de SOLO LECTURA: no puedes crear ni editar usuarios, colegios, permisos ni contraseñas. Si te lo piden, aclara que solo consultas información.
 - Tipos de evaluación: "simulacro" tiene puntaje de 0 a 100 (promediable). "vocacional" y "estilos de aprendizaje" (habitos) son PERFILES de inclinación por área (RIASEC / estilos): NO son promediables, se leen como distribución/porcentaje por área.
-- Ojo con las llaves (keys): el contador "usos" de una llave puede no coincidir con los exámenes realmente rendidos. Para desempeño usa siempre los intentos/promedios que devuelven las herramientas, no el contador de la llave.
+- Ojo con las llaves (keys): "usos_registro" es un contador de accesos que puede estar inflado; para saber si una llave tiene datos usa "rendidos_reales". Si te piden un gráfico "de una key" y esa key tiene rendidos_reales=0, NO afirmes que no hay datos del colegio: primero busca con listar_llaves_colegio una key con rendidos_reales>0, o usa dashboard_colegio SIN key_id (resumen de todo el colegio), y explica que esa llave puntual todavía no tiene exámenes rendidos.
+- Para "la última key creada": llama listar_llaves_colegio y toma la primera (vienen ordenadas de más reciente a más antigua); su campo es key_id.
 - Cuando muestres promedios, rankings o distribuciones, el panel adjunta gráficos automáticamente; puedes referirte a ellos.
 - Responde breve y directo. Menciona los colegios por su NOMBRE, nunca por su ID.
 
@@ -257,7 +259,7 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
-		toolSchema("listar_llaves_colegio", "Lista las llaves (keys) de un colegio: código, tipo de evaluación, usos, aforo y si está activa.", map[string]any{
+		toolSchema("listar_llaves_colegio", "Lista las llaves (keys) de un colegio, ordenadas de la MÁS RECIENTE a la más antigua (la primera es 'la última key creada'). Cada llave trae: key_id, codigo, tipo, aforo, activa, creada (fecha), usos_registro (contador de accesos, NO confiable) y rendidos_reales (exámenes realmente rendidos con resultados). Usa esta herramienta para elegir una key con datos: si necesitas graficar, prefiere una con rendidos_reales > 0.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"school_id": map[string]any{"type": "string", "description": "id del colegio"},
@@ -467,15 +469,39 @@ func toolListarLlavesColegio(p *Proxy, r *http.Request, args map[string]any) (an
 	if err != nil {
 		return nil, nil, err
 	}
+	// Exámenes REALMENTE rendidos (submitted) por key. El contador current_uses de
+	// la key es de accesos/registros y puede estar inflado (o poblado por seed sin
+	// exámenes); "rendidos_reales" es lo que sí tiene resultados y grafica el panel.
+	rendidosByKey := map[string]int{}
+	if att, aerr := p.cli.Attempts.ListByColegio(r.Context(), &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: sid}); aerr == nil {
+		for _, a := range att.GetItems() {
+			if a.GetSubmittedAt() != nil && a.GetKeyId() != "" {
+				rendidosByKey[a.GetKeyId()]++
+			}
+		}
+	}
 	out := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, k := range resp.GetItems() {
 		out = append(out, map[string]any{
-			"codigo": k.GetCode(),
-			"tipo":   assistantExamTypeName(k.GetExamTypeId()),
-			"usos":   k.GetCurrentUses(),
-			"aforo":  k.GetMaxUses(),
-			"activa": k.GetActive(),
+			"key_id":          k.GetId(),
+			"codigo":          k.GetCode(),
+			"tipo":            assistantExamTypeName(k.GetExamTypeId()),
+			"usos_registro":   k.GetCurrentUses(), // contador de accesos (NO confiable para desempeño)
+			"rendidos_reales": rendidosByKey[k.GetId()],
+			"aforo":           k.GetMaxUses(),
+			"activa":          k.GetActive(),
+			"creada":          optionalTimestamp(k.GetCreatedAt()),
 		})
 	}
-	return map[string]any{"llaves": out, "total": len(out)}, nil, nil
+	// Orden: más reciente primero (para "la última key creada").
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			ci, _ := out[i]["creada"].(string)
+			cj, _ := out[j]["creada"].(string)
+			if cj > ci {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	return map[string]any{"llaves": out, "total": len(out), "nota": "usos_registro es el contador de accesos (puede estar inflado); usa rendidos_reales para saber qué llaves tienen exámenes con resultados."}, nil, nil
 }
