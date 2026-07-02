@@ -21,8 +21,12 @@ var PermissionMap = map[string]string{
 	// users
 	"/users.v1.UserService/CreateUser":             "db_users.users.write",
 	"/users.v1.UserService/UpdateUser":             "db_users.users.write",
-	"/users.v1.UserService/DeactivateUser":         "db_users.users.write",
-	"/users.v1.UserService/ReactivateUser":         "db_users.users.write",
+	// Deactivate/Reactivate NO van en el map: el GATEWAY es el único punto de
+	// entrada y ya los gatea con precisión (admin; o no-admin solo sobre
+	// estudiantes de sus colegios; o asesor con coordinador.write sobre
+	// coordinadores de sus colegios — este último NO tiene users.write, por eso
+	// no puede ir gateado por users.write acá). Ver gateway proxy/users.go
+	// deactivateUser/reactivateUser (callerCanManageTargetUser / callerCanDeactivateCoordinador).
 	// GetUser NO va en el map: un user puede leer su PROPIO registro sin
 	// db_users.users.read (igual que ListUserPermissions/Me). Lo necesita el
 	// sync de resultados a HubSpot: tras finalizar un examen, el gateway

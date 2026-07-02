@@ -247,6 +247,34 @@ func (p *Proxy) callerCanManageTargetUser(r *http.Request, targetID string) bool
 	return p.enforceColegioScope(r, u.GetSchoolId())
 }
 
+// callerCanDeactivateCoordinador: un asesor con db_users.coordinador.write puede
+// DESACTIVAR (o reactivar) la cuenta de un COORDINADOR de UNO DE SUS COLEGIOS.
+// Al desactivarlo, el login lo bloquea (users.active=false) — igual que cuando el
+// admin desactiva a un asesor. Scope: los colegios del target como coordinador
+// (ListByAsesor incluye coordinador_de_colegio) deben intersecar los del caller.
+func (p *Proxy) callerCanDeactivateCoordinador(r *http.Request, targetID string) bool {
+	if callerIsUserAdmin(r) {
+		return true
+	}
+	if !hasPermission(r, "db_users.coordinador.write") || targetID == "" {
+		return false
+	}
+	unrestricted, allowed, _ := p.callerColegioScope(r)
+	if unrestricted {
+		return true
+	}
+	resp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: targetID})
+	if err != nil {
+		return false
+	}
+	for _, s := range resp.GetItems() {
+		if allowed[s.GetId()] {
+			return true
+		}
+	}
+	return false
+}
+
 // writeNotFound responde 404 con el envelope de error estandar cuando un
 // resource lookup devuelve gRPC OK pero con payload vacio (upstream que
 // no diferencia "ok+nil" de "not found"). Centraliza el shape del JSON.

@@ -481,8 +481,12 @@ func (p *Proxy) updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) deactivateUser(w http.ResponseWriter, r *http.Request) {
-	if !p.callerCanManageTargetUser(r, r.PathValue("id")) {
-		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "CANNOT_MODIFY_STAFF", Message: "solo puedes desactivar estudiantes de tus colegios"})
+	id := r.PathValue("id")
+	// Permitido: admin cualquiera; no-admin solo estudiantes de sus colegios O
+	// coordinadores de sus colegios (asesor con coordinador.write). Desactivar
+	// bloquea el login (users.active=false).
+	if !p.callerCanManageTargetUser(r, id) && !p.callerCanDeactivateCoordinador(r, id) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "CANNOT_MODIFY_STAFF", Message: "no tienes permiso para desactivar a este usuario"})
 		return
 	}
 	if _, err := p.cli.Users.DeactivateUser(r.Context(), &usersgrpcpb.DeactivateUserRequest{
@@ -495,8 +499,9 @@ func (p *Proxy) deactivateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) reactivateUser(w http.ResponseWriter, r *http.Request) {
-	if !p.callerCanManageTargetUser(r, r.PathValue("id")) {
-		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "CANNOT_MODIFY_STAFF", Message: "solo puedes reactivar estudiantes de tus colegios"})
+	id := r.PathValue("id")
+	if !p.callerCanManageTargetUser(r, id) && !p.callerCanDeactivateCoordinador(r, id) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "CANNOT_MODIFY_STAFF", Message: "no tienes permiso para reactivar a este usuario"})
 		return
 	}
 	resp, err := p.cli.Users.ReactivateUser(r.Context(), &usersgrpcpb.ReactivateUserRequest{
