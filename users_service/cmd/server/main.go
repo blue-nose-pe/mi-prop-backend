@@ -96,18 +96,19 @@ func main() {
 
 	// OTP sender + HubSpot sync.
 	//
-	// OTP_SENDER=resend  → correo directo via Resend HTTP. El sync de
-	//                      contacto a HubSpot se hace best-effort en
-	//                      goroutine usando hubspot_service.SyncStudentContact
-	//                      (no bloquea login si HubSpot esta caido).
+	// OTP_SENDER=smtp    → correo directo via SMTP (Gmail). Tras enviar, el
+	//                      sync de contacto a HubSpot se hace best-effort en
+	//                      goroutine (SyncStudentContact) sin bloquear login.
+	//                      ES EL ENVÍO DEFINITIVO EN PRODUCCIÓN.
 	// OTP_SENDER=hubspot → path antiguo: hubspot_service.SendOTP dispara
 	//                      el Workflow del portal que manda el email.
 	//
-	// Si HUBSPOT_SERVICE_ADDR esta vacio, el sender cae a NoOp salvo que
-	// OTP_SENDER=resend (en cuyo caso Resend funciona standalone).
+	// (El adapter Resend de terceros se retiró: código muerto — el envío
+	// definitivo es por Gmail SMTP. Ver git history si se necesita revivir.)
+	// Si HUBSPOT_SERVICE_ADDR esta vacio y OTP_SENDER!=smtp, el sender cae a NoOp.
 	var otpSender ports.OTPSender = noopOTPSender{}
 	var hubspotSync ports.HubspotSyncer
-	var hubspotGRPCCli hubspotpb.HubspotServiceClient // para inyectar al Resend adapter
+	var hubspotGRPCCli hubspotpb.HubspotServiceClient // para inyectar el sync al adapter SMTP
 	if cfg.HubspotServiceAddr != "" {
 		// Mantenemos los dos clientes del path antiguo porque
 		// hubspotSyncadapter (UpsertContact) lo usa el flujo de admin
@@ -132,14 +133,6 @@ func main() {
 		log.Printf("[hubspotsync] gRPC client → %s", cfg.HubspotServiceAddr)
 	} else {
 		log.Printf("[hubspotsync] disabled (HUBSPOT_SERVICE_ADDR vacío)")
-	}
-
-	if strings.EqualFold(cfg.OTPSender, "resend") {
-		if cfg.ResendAPIKey == "" {
-			log.Fatalf("OTP_SENDER=resend requiere RESEND_API_KEY")
-		}
-		otpSender = otpsenderadapter.NewResend(cfg.ResendAPIKey, cfg.ResendFromEmail, cfg.ResendReplyTo, hubspotGRPCCli)
-		log.Printf("[otpsender] resend from=%s hubspotSync=%v", cfg.ResendFromEmail, hubspotGRPCCli != nil)
 	}
 
 	if strings.EqualFold(cfg.OTPSender, "smtp") {

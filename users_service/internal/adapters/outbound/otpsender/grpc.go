@@ -53,8 +53,8 @@ func (g *Grpc) Close() error {
 }
 
 // Client expone el cliente gRPC subyacente para reutilizar la conexion
-// desde otro adapter (ej: Resend, que dispara SyncStudentContact
-// best-effort sin crear una segunda conexion al hubspot_service).
+// desde otro adapter (el SMTP, que dispara SyncStudentContact best-effort
+// tras enviar el OTP sin crear una segunda conexion al hubspot_service).
 func (g *Grpc) Client() hubspotpb.HubspotServiceClient {
 	if g == nil {
 		return nil

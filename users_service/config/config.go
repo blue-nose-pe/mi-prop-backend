@@ -42,16 +42,11 @@ type Config struct {
 	HubspotServiceAddr string
 
 	// OTPSender:
-	//   "resend"  → Resend HTTP API (requiere dominio verificado para
-	//               mandar a cualquier email; sino solo al owner).
-	//   "smtp"    → SMTP AUTH PLAIN sobre STARTTLS (Gmail/Outlook/etc).
-	//               Path rapido sin verificar dominio.
+	//   "smtp"    → SMTP AUTH PLAIN sobre STARTTLS (Gmail). ENVÍO DEFINITIVO.
 	//   "hubspot" → path antiguo: hubspot_service.SendOTP dispara Workflow.
 	//   vacio     → default "hubspot".
-	OTPSender       string
-	ResendAPIKey    string
-	ResendFromEmail string // "Mi Proposito UCSP <onboarding@resend.dev>"
-	ResendReplyTo   string // opcional
+	// (El proveedor de terceros "resend" se retiró — código muerto.)
+	OTPSender string
 
 	// SMTP (solo cuando OTP_SENDER=smtp). Gmail: smtp.gmail.com:587 +
 	// App Password de https://myaccount.google.com/apppasswords.
@@ -96,10 +91,7 @@ func Load() *Config {
 
 		HubspotServiceAddr: getEnv("HUBSPOT_SERVICE_ADDR", ""),
 
-		OTPSender:       getEnv("OTP_SENDER", "hubspot"),
-		ResendAPIKey:    getEnv("RESEND_API_KEY", ""),
-		ResendFromEmail: getEnv("RESEND_FROM", "Mi Proposito UCSP <onboarding@resend.dev>"),
-		ResendReplyTo:   getEnv("RESEND_REPLY_TO", ""),
+		OTPSender: getEnv("OTP_SENDER", "hubspot"),
 
 		SMTPHost:     getEnv("SMTP_HOST", ""),
 		SMTPPort:     getEnvInt("SMTP_PORT", 587),

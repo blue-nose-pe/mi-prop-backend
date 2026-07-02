@@ -10,7 +10,7 @@
 //
 // Gmail re-escribe FROM al email autenticado si difiere, asi que el alias
 // solo controla el display name. Si necesitan otro FROM, deben verificar
-// dominio en Resend (path correcto a futuro).
+// el dominio con el proveedor SMTP.
 package otpsender
 
 import (
@@ -197,5 +197,4 @@ func extractAddr(from string) string {
 	return strings.TrimSpace(from)
 }
 
-// buildOTPHTML vive en resend.go (mismo package) — lo reusamos para que
-// el template del correo sea identico via Resend o via SMTP.
+// buildOTPHTML y firstNonEmpty viven en otpmail.go (mismo package).
