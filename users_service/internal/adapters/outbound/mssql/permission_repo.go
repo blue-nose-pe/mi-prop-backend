@@ -674,7 +674,13 @@ func (r *PermissionRepo) ListUsersInGroup(ctx context.Context, in ports.ListUser
 		where += " AND u.active = 1"
 	}
 	if in.Search != "" {
-		where += fmt.Sprintf(" AND (u.email LIKE @p%d OR u.first_name LIKE @p%d OR u.last_name LIKE @p%d OR u.document_number LIKE @p%d)", idx, idx, idx, idx)
+		// Match por campo suelto Y por NOMBRE COMPLETO concatenado: sin esto,
+		// buscar "Nombre Apellido" (con espacio) no matcheaba (ningún campo
+		// suelto lo contiene). COLLATE ..._CI_AI = case/acento-insensible.
+		where += fmt.Sprintf(
+			" AND (u.email LIKE @p%d OR u.first_name LIKE @p%d OR u.last_name LIKE @p%d OR u.document_number LIKE @p%d"+
+				" OR ((u.first_name + ' ' + u.last_name) COLLATE Latin1_General_CI_AI) LIKE @p%d)",
+			idx, idx, idx, idx, idx)
 		args = append(args, "%"+in.Search+"%")
 		idx++
 	}

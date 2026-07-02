@@ -286,13 +286,22 @@ func (p *Proxy) listSchools(w http.ResponseWriter, r *http.Request) {
 		writeGRPCError(w, err)
 		return
 	}
+	// SCOPE por colegio (IDOR fix): un asesor/coordinador NO debe ver el
+	// directorio completo de colegios. Superadmin/admin (unrestricted) ven todo;
+	// el resto solo sus colegios (asesor_de_colegio + coordinador_de_colegio via
+	// callerColegioScope). Antes /api/schools devolvía TODOS a cualquier caller,
+	// filtrándose la lista de colegios en reportería (ej. reporte-colegios).
+	unrestricted, allowed, _ := p.callerColegioScope(r)
 	items := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, s := range resp.GetItems() {
+		if !unrestricted && !allowed[s.GetId()] {
+			continue
+		}
 		items = append(items, protoSchoolToJSON(s))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": items,
-		"total": resp.GetTotal(),
+		"total": int32(len(items)),
 	})
 }
 
