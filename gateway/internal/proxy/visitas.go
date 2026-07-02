@@ -49,10 +49,15 @@ func (p *Proxy) createVisita(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "scheduled_at: " + err.Error()})
 		return
 	}
-	completedAt, err := parseRFC3339(in.CompletedAt)
-	if err != nil {
-		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "completed_at: " + err.Error()})
-		return
+	// completed_at es OPCIONAL: una visita PROGRAMADA (scheduled) o NO ASISTIÓ
+	// (no_show) no tiene fecha de realización. Solo se parsea si viene.
+	var completedAt *timestamppb.Timestamp
+	if in.CompletedAt != "" {
+		completedAt, err = parseRFC3339(in.CompletedAt)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "completed_at: " + err.Error()})
+			return
+		}
 	}
 	req := &usersgrpcpb.CreateVisitaRequest{
 		AsesorUserId: in.AsesorUserID,
