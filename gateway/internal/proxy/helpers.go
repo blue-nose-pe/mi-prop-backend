@@ -192,6 +192,61 @@ func hasPermission(r *http.Request, code string) bool {
 	return false
 }
 
+// callerIsUserAdmin devuelve true si el caller puede administrar CUALQUIER
+// usuario (crear/editar asesores, coordinadores, admins). Es el "admin-marker":
+// superadmin o quien tenga db_users.permission_group.write (solo admin lo tiene).
+// Un caller que solo tiene db_users.users.write (ej. el coordinador, que lo
+// necesita para gestionar ESTUDIANTES) NO es admin: no debe poder fabricar ni
+// editar cuentas de staff (escalada de privilegios — audit permisos 2026-07-02).
+func callerIsUserAdmin(r *http.Request) bool {
+	return isSuperadminContext(r) || hasPermission(r, "db_users.permission_group.write")
+}
+
+// callerIsStudentLike detecta un token de ESTUDIANTE: es el único rol no-admin
+// con db_exams.exam_attempt.write (para enviar respuestas de examen); asesores y
+// coordinadores solo tienen exam_attempt.read. El admin también lo tiene pero se
+// excluye por el admin-marker. Se usa para restringir /api/users/search a que el
+// alumno solo se vea a SÍ MISMO (el auto-lookup del examen busca su propio email),
+// cerrando la enumeración de DNIs de compañeros (audit permisos 2026-07-02).
+func callerIsStudentLike(r *http.Request) bool {
+	return hasPermission(r, "db_exams.exam_attempt.write") && !callerIsUserAdmin(r)
+}
+
+// isStudentGroupID resuelve el grupo por id y confirma que su code sea
+// "student_permissions". Lo usa createUser para garantizar que un caller
+// no-admin solo pueda crear ESTUDIANTES (no asesores/coordinadores/admin).
+func (p *Proxy) isStudentGroupID(r *http.Request, groupID uint32) bool {
+	if groupID == 0 {
+		return false
+	}
+	resp, err := p.cli.PermGroups.GetGroup(r.Context(), &usersgrpcpb.GetGroupRequest{Id: groupID})
+	if err != nil || resp.GetGroup() == nil {
+		return false
+	}
+	return resp.GetGroup().GetCode() == "student_permissions"
+}
+
+// callerCanManageTargetUser: un caller no-admin (coordinador con users.write)
+// solo puede EDITAR/DESACTIVAR usuarios que sean estudiantes DENTRO de su
+// alcance de colegio. El staff (asesor/coordinador/admin) tiene school_id vacío
+// en users, así que un target con school_id=="" es staff y queda vedado a los
+// no-admin. Devuelve (permitido, status_si_deniega). Cierra el que un
+// coordinador editara/desactivara asesores u otros staff (audit 2026-07-02).
+func (p *Proxy) callerCanManageTargetUser(r *http.Request, targetID string) bool {
+	if callerIsUserAdmin(r) {
+		return true
+	}
+	resp, err := p.cli.Users.GetUser(r.Context(), &usersgrpcpb.GetUserRequest{Id: targetID})
+	if err != nil || resp.GetUser() == nil {
+		return false
+	}
+	u := resp.GetUser()
+	if u.GetSchoolId() == "" { // staff: fuera del alcance de un no-admin
+		return false
+	}
+	return p.enforceColegioScope(r, u.GetSchoolId())
+}
+
 // writeNotFound responde 404 con el envelope de error estandar cuando un
 // resource lookup devuelve gRPC OK pero con payload vacio (upstream que
 // no diferencia "ok+nil" de "not found"). Centraliza el shape del JSON.

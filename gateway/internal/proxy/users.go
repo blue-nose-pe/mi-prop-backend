@@ -265,6 +265,15 @@ func (p *Proxy) getSchool(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, errorBody{Status: "error", Code: "SCHOOL_NOT_FOUND", Message: "school not found"})
 		return
 	}
+	// SCOPE por colegio (audit permisos 2026-07-02, fuga PII): el LISTADO ya
+	// scopeaba, pero el registro individual GET /api/schools/{id} devolvía a
+	// cualquier asesor/coordinador el registro COMPLETO (RUC, población,
+	// hubspot_record_id, user_id) de un colegio AJENO. Ahora un no-admin solo
+	// puede leer sus propios colegios; superadmin/admin (unrestricted) ven todo.
+	if !p.enforceColegioScope(r, s.GetId()) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "COLEGIO_SCOPE", Message: "no tienes acceso a este colegio"})
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"school": protoSchoolToJSON(s)})
 }
 
@@ -367,6 +376,29 @@ func (p *Proxy) createUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
 		return
 	}
+	// ANTI-ESCALADA (audit permisos 2026-07-02, CRÍTICO): un caller no-admin con
+	// db_users.users.write (el coordinador, que lo tiene para gestionar ESTUDIANTES)
+	// podía POST /api/users con permission_group_id=asesor y fabricar cuentas de
+	// staff. Ahora un caller no-admin SOLO puede crear ESTUDIANTES, y dentro de su
+	// alcance de colegio. El admin (permission_group.write) sigue creando cualquiera.
+	if !callerIsUserAdmin(r) {
+		if !p.isStudentGroupID(r, in.PermissionGroupID) {
+			writeJSON(w, http.StatusForbidden, errorBody{
+				Status:  "error",
+				Code:    "CANNOT_CREATE_PRIVILEGED_USER",
+				Message: "solo puedes crear usuarios de tipo estudiante",
+			})
+			return
+		}
+		if in.SchoolID == "" || !p.enforceColegioScope(r, in.SchoolID) {
+			writeJSON(w, http.StatusForbidden, errorBody{
+				Status:  "error",
+				Code:    "COLEGIO_SCOPE",
+				Message: "solo puedes crear estudiantes en tus colegios",
+			})
+			return
+		}
+	}
 	resp, err := p.cli.Users.CreateUser(r.Context(), &usersgrpcpb.CreateUserRequest{
 		Email:             in.Email,
 		Password:          in.Password,
@@ -424,6 +456,10 @@ func (p *Proxy) updateUser(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
 		return
 	}
+	if !p.callerCanManageTargetUser(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "CANNOT_MODIFY_STAFF", Message: "solo puedes editar estudiantes de tus colegios"})
+		return
+	}
 	resp, err := p.cli.Users.UpdateUser(r.Context(), &usersgrpcpb.UpdateUserRequest{
 		Id:             r.PathValue("id"),
 		FirstName:      in.FirstName,
@@ -445,6 +481,10 @@ func (p *Proxy) updateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) deactivateUser(w http.ResponseWriter, r *http.Request) {
+	if !p.callerCanManageTargetUser(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "CANNOT_MODIFY_STAFF", Message: "solo puedes desactivar estudiantes de tus colegios"})
+		return
+	}
 	if _, err := p.cli.Users.DeactivateUser(r.Context(), &usersgrpcpb.DeactivateUserRequest{
 		Id: r.PathValue("id"),
 	}); err != nil {
@@ -455,6 +495,10 @@ func (p *Proxy) deactivateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) reactivateUser(w http.ResponseWriter, r *http.Request) {
+	if !p.callerCanManageTargetUser(r, r.PathValue("id")) {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "CANNOT_MODIFY_STAFF", Message: "solo puedes reactivar estudiantes de tus colegios"})
+		return
+	}
 	resp, err := p.cli.Users.ReactivateUser(r.Context(), &usersgrpcpb.ReactivateUserRequest{
 		Id: r.PathValue("id"),
 	})
@@ -593,6 +637,13 @@ func (p *Proxy) searchUsers(w http.ResponseWriter, r *http.Request) {
 	// específicas, forzamos school_id para poder filtrar; si pidió todas
 	// (properties vacío) ya viene incluida.
 	unrestricted, allowed, caller := p.callerColegioScope(r)
+	// Un estudiante solo puede verse a SÍ MISMO en la búsqueda (no al roster de
+	// su colegio): allowed vacío → scopeSearchResults solo conserva id==caller.
+	// El auto-lookup del flujo de examen busca su propio email y lo encuentra.
+	if callerIsStudentLike(r) {
+		unrestricted = false
+		allowed = map[string]bool{}
+	}
 	if !unrestricted && len(req.GetProperties()) > 0 {
 		req.Properties = append(req.Properties, "school_id")
 	}
@@ -805,6 +856,13 @@ func (p *Proxy) assignCoordinadorToSchool(w http.ResponseWriter, r *http.Request
 	}
 	if in.UserID == "" {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "MISSING_USER_ID", Message: "user_id is required"})
+		return
+	}
+	// Validar que el coordinador exista ANTES de intentar el assignment: sin esto
+	// un user_id inexistente reventaba el AddSource con FK violation → 500
+	// INTERNAL_ERROR (audit permisos 2026-07-02). Ahora devuelve 404 limpio.
+	if ur, err := p.cli.Users.GetUser(r.Context(), &usersgrpcpb.GetUserRequest{Id: in.UserID}); err != nil || ur.GetUser() == nil {
+		writeJSON(w, http.StatusNotFound, errorBody{Status: "error", Code: "USER_NOT_FOUND", Message: "el coordinador indicado no existe"})
 		return
 	}
 	if _, err := p.cli.Schools.AssignCoordinador(r.Context(), &usersgrpcpb.AssignCoordinadorRequest{
