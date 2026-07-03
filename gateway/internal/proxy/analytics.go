@@ -30,6 +30,7 @@ const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadshe
 
 func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/dashboard", p.getGlobalDashboard)
+	mux.HandleFunc("GET /api/analytics/asesores/keys-report", p.getAsesoresKeysReport)
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/dashboard", p.getAsesorDashboard)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/dashboard", p.getColegioDashboard)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/dashboard", p.getEstudianteDashboard)
@@ -43,6 +44,109 @@ func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/export.xlsx", p.exportColegioXLSX)
 	mux.HandleFunc("GET /api/analytics/comparativo/export.xlsx", p.exportComparativoXLSX)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/reporte.xlsx", p.exportReporteEstudianteXLSX)
+}
+
+// getAsesoresKeysReport — GET /api/analytics/asesores/keys-report
+//
+// Reporte de asesores POR LLAVE (pedido cliente 2026-07-03): "el corazón del
+// sistema son los exámenes que presentan los alumnos por keys" — el reporte
+// anterior mostraba números sueltos (impactados sin saber de qué llave, aforo
+// solo de las llaves CREADAS por el asesor). Este endpoint expone, por asesor,
+// TODAS las llaves de SUS COLEGIOS (sin importar quién las creó) con sus
+// exámenes rendidos y alumnos distintos reales. El front decide la vista:
+// por defecto solo llaves VIGENTES, filtro por tipo, e historial completo.
+//
+// Solo administración (mismo gate que el dashboard global). Cuentas y colegios
+// QA quedan fuera (isQAUser/isQAColegio).
+func (p *Proxy) getAsesoresKeysReport(w http.ResponseWriter, r *http.Request) {
+	if !hasPermission(r, "analytics.dashboard.read") {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso analytics.dashboard.read"})
+		return
+	}
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "el reporte de asesores es solo para administración"})
+		return
+	}
+	ctx := r.Context()
+	asesores, err := p.cli.PermGroups.ListGroupUsers(ctx, &usersgrpcpb.ListGroupUsersRequest{GroupId: 3, Limit: 1000, ActiveOnly: true})
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	// Cache por colegio: rendidos y alumnos DISTINTOS por llave (un colegio se
+	// procesa una sola vez aunque lo compartan asesores).
+	type schoolAtt struct {
+		rendidos map[string]int
+		alumnos  map[string]map[string]struct{}
+	}
+	attCache := map[string]*schoolAtt{}
+	attOf := func(schoolID string) *schoolAtt {
+		if sa, ok := attCache[schoolID]; ok {
+			return sa
+		}
+		sa := &schoolAtt{rendidos: map[string]int{}, alumnos: map[string]map[string]struct{}{}}
+		if at, aerr := p.cli.Attempts.ListByColegio(ctx, &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: schoolID}); aerr == nil {
+			for _, a := range at.GetItems() {
+				if a.GetSubmittedAt() == nil || a.GetKeyId() == "" {
+					continue
+				}
+				sa.rendidos[a.GetKeyId()]++
+				if sa.alumnos[a.GetKeyId()] == nil {
+					sa.alumnos[a.GetKeyId()] = map[string]struct{}{}
+				}
+				sa.alumnos[a.GetKeyId()][a.GetUserId()] = struct{}{}
+			}
+		}
+		attCache[schoolID] = sa
+		return sa
+	}
+	now := time.Now()
+	out := make([]map[string]any, 0, len(asesores.GetItems()))
+	for _, u := range asesores.GetItems() {
+		nombre := u.GetFirstName() + " " + u.GetLastName()
+		if isQAUser(u.GetEmail(), nombre) {
+			continue
+		}
+		schools, serr := p.cli.Schools.ListSchoolsByAsesor(ctx, &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: u.GetId()})
+		if serr != nil {
+			continue
+		}
+		keys := []map[string]any{}
+		totalColegios := 0
+		for _, s := range schools.GetItems() {
+			if isQAColegio(s.GetName()) {
+				continue
+			}
+			totalColegios++
+			kr, kerr := p.cli.Keys.ListByColegio(ctx, &keysgrpcpb.ListByColegioRequest{SchoolId: s.GetId()})
+			if kerr != nil {
+				continue
+			}
+			sa := attOf(s.GetId())
+			for _, k := range kr.GetItems() {
+				vigente := k.GetActive() && (k.GetValidTo() == nil || k.GetValidTo().AsTime().After(now))
+				keys = append(keys, map[string]any{
+					"code":      k.GetCode(),
+					"colegio":   s.GetName(),
+					"tipo":      toolRouteFromExamTypeId(k.GetExamTypeId()),
+					"activa":    k.GetActive(),
+					"vigente":   vigente,
+					"aforo":     k.GetMaxUses(),
+					"rendidos":  sa.rendidos[k.GetId()],
+					"alumnos":   len(sa.alumnos[k.GetId()]),
+					"creada_at": optionalTimestamp(k.GetCreatedAt()),
+				})
+			}
+		}
+		out = append(out, map[string]any{
+			"asesor_id":      u.GetId(),
+			"asesor":         nombre,
+			"email":          u.GetEmail(),
+			"total_colegios": totalColegios,
+			"keys":           keys,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"asesores": out})
 }
 
 // ---------- Global dashboard (admin) ----------
