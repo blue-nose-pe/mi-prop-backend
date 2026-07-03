@@ -73,8 +73,9 @@ LLM nunca pasa un UUID inventado. `grafico` por defecto = `ninguno`.
 | `dashboard_asesor` | asesor_id? (solo admin) | indicadores del asesor actual | ninguno |
 | `listar_llaves_colegio` | school_name | llaves: código, tipo, aforo, activa, creada, **rendidos_reales**, usos_registro, advertencia si 0 rendidos | ninguno |
 | `estudiantes_de_colegio` | school_name, filtro? | estudiantes (nombre, correo, documento) scopeados | ninguno |
-| `top_alumnos_llave` | school_name, key_code, orden?, cuantos? | alumnos con mejor/peor puntaje de una llave de **simulacro** (voca/estilos no tienen puntaje) | 1 barra + **botón** a la vista de resultado (PDF) |
-| `mejor_alumno_general` | colegio_nombre?, orden?, cuantos? | mejor/peor promedio de simulacro entre TODOS los colegios (o uno) | 1 barra + **botón** por alumno |
+| `top_alumnos_llave` | school_name, key_code, orden?, cuantos? | alumnos con mejor/peor puntaje de una llave de **simulacro** (voca/estilos no tienen puntaje) | 1 barra + **botón directo por alumno** (abre su modal, PDF a un clic) |
+| `mejor_alumno_general` | colegio_nombre?, orden?, cuantos? | mejor/peor promedio de simulacro entre TODOS los colegios (o uno) | 1 barra + **botón directo por alumno** |
+| `comparativo_inclinacion` | exam_type_code (vocacional\|habitos), area, period? | ranking de colegios por su INCLINACIÓN (%) hacia UN área (con alias: "numérica"→Cálculo); si el área no existe devuelve la lista de áreas disponibles | 1 barra |
 
 **Herramientas compuestas** (combinan varias APIs): `top_alumnos_llave` y
 `mejor_alumno_general` cruzan colegios + attempts + keys + users con la lógica
@@ -82,6 +83,15 @@ pesada en CÓDIGO (no en el prompt) — el modelo solo elige la herramienta y su
 parámetros simples. El PDF de resultados se genera en el navegador: estas tools NO
 adjuntan el archivo, devuelven un **botón** (campo `_links`) a la vista de resultado
 `/app/school/detail/{tool}/{schoolId}/{keyCode}` donde vive la descarga del PDF.
+
+**Deep-link al alumno (2026-07-03):** los botones por-alumno añaden
+`?alumno=<user_id>`. `school-detail` lee el query param y la tabla
+(`table.component`, input `autoOpenStudentId`) abre AUTOMÁTICAMENTE el modal de
+resultados de ese estudiante en cuanto su fila tiene resultados (reintenta ~10s
+por el enriquecimiento async; OnPush → `markForCheck()` tras abrir). Resultado:
+del botón del chat a la descarga del PDF hay UN clic — ya no hay que buscar al
+alumno a mano en la lista (pedido cliente: "más directo, que me muestre ya ya
+para descargar el pdf").
 
 **Semántica de datos crítica:**
 - `simulacro` = puntaje 0–100 (promediable). `vocacional`/`estilos` = perfiles por
@@ -216,3 +226,16 @@ pregunta habla de participación (`wantsParticipacion`). Antes, "gráfico del
 simulacro con más participación" narraba desde el comparativo (simulacro) y
 graficaba desde el resumen general (TODOS los tipos) → el #1 del texto ≠ el #1 del
 gráfico. Ahora texto y gráfico usan la misma métrica y tipo.
+
+**Filtro por AÑO en comparativos (2026-07-03):** `comparativo_colegios` y
+`comparativo_inclinacion` aceptan `period` ('YYYY'). El RPC del comparativo no
+filtra por año, así que con period el gateway computa el ranking colegio por
+colegio vía `GetColegioDashboard` (que SÍ filtra). El handler detecta un año en
+la pregunta (`yearFromText`, ignora rangos ambiguos) y lo fuerza. Bug que cierra:
+"mejor promedio en 2025" respondía el histórico total (76.3/36 int.) etiquetado
+como 2025 (real 2025: 75.7/8 int.). El título del gráfico lleva el año y el
+resultado lleva una nota para que el texto diga histórico vs año.
+
+**UI del chat (2026-07-03):** contenedor max-w-6xl, avatar del bot, burbujas con
+gradiente/sombra, indicador de escritura animado, gráficos en grid 2-col (xl)
+cuando hay varios, botones de enlace con ícono PDF, input con focus ring.
