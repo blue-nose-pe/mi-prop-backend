@@ -328,6 +328,31 @@ func asString(v any) string {
 	return ""
 }
 
+// isQAColegio detecta colegios de PRUEBA/QA por su nombre (permhunt-, E2E,
+// Verif, seed, o un timestamp de >=8 dígitos pegado al nombre). El asistente los
+// OCULTA de listas/rankings/panoramas para no mostrarle basura de QA al cliente
+// (no se borran de la BD: regla test≠prod, solo se filtran en el bot).
+func isQAColegio(name string) bool {
+	n := strings.ToLower(name)
+	for _, p := range []string{"permhunt", "e2e", "verif", "seed", "qa-", "prueba", "demo", " test"} {
+		if strings.Contains(n, p) {
+			return true
+		}
+	}
+	run := 0
+	for _, c := range n {
+		if c >= '0' && c <= '9' {
+			run++
+			if run >= 8 {
+				return true
+			}
+		} else {
+			run = 0
+		}
+	}
+	return false
+}
+
 // resolveColegioID resuelve un colegio a su ID real dentro del SCOPE del caller,
 // a partir de school_id y/o school_name. Es determinístico y evita que el LLM
 // invente un UUID inexistente (que hacía a analytics devolver Internal). Devuelve
@@ -462,12 +487,18 @@ func (p *Proxy) scopedColegios(r *http.Request) []struct{ ID, Nombre string } {
 	if unrestricted {
 		if resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000}); err == nil {
 			for _, s := range resp.GetItems() {
+				if isQAColegio(s.GetName()) {
+					continue
+				}
 				out = append(out, struct{ ID, Nombre string }{s.GetId(), s.GetName()})
 			}
 		}
 	} else {
 		if resp, err := p.cli.Schools.ListSchoolsByAsesor(ctx, &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: userIDFromContext(r)}); err == nil {
 			for _, s := range resp.GetItems() {
+				if isQAColegio(s.GetName()) {
+					continue
+				}
 				out = append(out, struct{ ID, Nombre string }{s.GetId(), s.GetName()})
 			}
 		}
@@ -576,6 +607,9 @@ func toolListarColegios(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 			return map[string]any{"error": "no se pudo obtener la informacion solicitada"}, nil, nil
 		}
 		for _, s := range resp.GetItems() {
+			if isQAColegio(s.GetName()) {
+				continue
+			}
 			out = append(out, map[string]any{"id": s.GetId(), "nombre": s.GetName(), "ciudad": s.GetCity()})
 		}
 	} else {
@@ -584,6 +618,9 @@ func toolListarColegios(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 			return map[string]any{"error": "no se pudo obtener la informacion solicitada"}, nil, nil
 		}
 		for _, s := range resp.GetItems() {
+			if isQAColegio(s.GetName()) {
+				continue
+			}
 			out = append(out, map[string]any{"id": s.GetId(), "nombre": s.GetName(), "ciudad": s.GetCity()})
 		}
 	}
@@ -689,6 +726,9 @@ func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (an
 	for _, it := range resp.GetItems() {
 		if !unrestricted && !allowed[it.GetSchoolId()] {
 			continue
+		}
+		if isQAColegio(it.GetSchoolName()) {
+			continue // no mostramos colegios de QA/prueba en rankings
 		}
 		rows = append(rows, row{it.GetSchoolName(), it.GetAvgScore(), it.GetAttempts()})
 	}
