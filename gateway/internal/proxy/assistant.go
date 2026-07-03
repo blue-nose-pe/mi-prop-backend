@@ -136,6 +136,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - PARTICIPACIÓN vs PROMEDIO (crítico para que texto y gráfico coincidan): si preguntan "cuál colegio tuvo MÁS PARTICIPACIÓN / más alumnos rindieron en {tipo}", usa el comparativo de ESE tipo con métrica de participación (ordena por intentos). NO uses el resumen general para esto (suma todos los tipos y el gráfico contradiría tu texto). El resumen general es solo para totales agregados de TODOS los tipos ("panorama", "cuántos han rendido en total"). El colegio que nombres como #1 DEBE ser el primero del gráfico.
 - AÑOS: si la pregunta menciona un año ("en 2025"), pasa period='YYYY' a la herramienta; las cifras sin period son del HISTÓRICO total y NUNCA debes presentarlas como si fueran de ese año.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
+- CATÁLOGO DE GRÁFICOS (elige el más demostrativo, como un analista senior): line/area = evolución en el tiempo; column/bar = comparación entre categorías; stacked = composición por categoría; pie/donut/treemap = distribución de un todo; radar = perfil multidimensión; scatter = relación entre dos variables; heatmap = matriz de intensidad (ej. colegios × áreas); gauge = un solo porcentaje; funnel = etapas/embudo. Si el usuario pide MEZCLAR temas en un gráfico (colegios con llaves, alumnos concretos, asesores, años), primero consigue TODOS los datos con las herramientas y luego compón UN gráfico a medida con la herramienta de gráfico personalizado — sus valores deben salir VERBATIM de los resultados de esta conversación, JAMÁS inventados. Una historia = un gráfico (no fragmentes en 4 gráficos lo que cabe en uno bien elegido).
 - Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
 - Para el PROMEDIO o gauge de un COLEGIO usa el resumen del colegio SIN filtrar por una llave; jamás reportes promedio 0 basándote en una sola llave sin exámenes rendidos.
 - Si el usuario es admin/superadmin, NO tiene "operación de asesor" (no es asesor de ningún colegio): para un panorama usa el listado de colegios y el comparativo, no los indicadores de asesor.
@@ -631,6 +632,35 @@ func normalizeCharts(charts []any) []any {
 		t, _ := m["title"].(string)
 		return t
 	}
+	// CUSTOM GANA: si el modelo compuso gráficos a medida (grafico_personalizado),
+	// esa composición es deliberada — se descartan los gráficos automáticos de
+	// las otras herramientas y NO se aplican los recortes anti-spam (solo dedup
+	// y tope total). El marcador _custom nunca sale al front.
+	custom := make([]any, 0, 2)
+	for _, c := range charts {
+		if m, ok := c.(map[string]any); ok {
+			if v, ok := m["_custom"].(bool); ok && v {
+				delete(m, "_custom")
+				custom = append(custom, m)
+			}
+		}
+	}
+	if len(custom) > 0 {
+		seen := map[string]bool{}
+		out := make([]any, 0, len(custom))
+		for _, c := range custom {
+			key := kindOf(c) + "|" + titleOf(c)
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, c)
+			if len(out) >= 4 {
+				break
+			}
+		}
+		return out
+	}
 	hasBar := false
 	for _, c := range charts {
 		if kindOf(c) == "bar" {
@@ -884,6 +914,20 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{"exam_type_code"},
 		}),
+		toolSchema("grafico_personalizado", "Construye UN gráfico A MEDIDA cuando ninguna herramienta trae el gráfico exacto que pide el usuario, o cuando quiere MEZCLAR temas en un solo gráfico (colegios × llaves × alumnos × asesores × años). REGLA DURA: los valores de 'series' deben salir VERBATIM de resultados de otras herramientas de ESTA conversación — primero consigue los datos, luego arma el gráfico; NUNCA inventes ni estimes valores. Elige el tipo más demostrativo: line/area=evolución en el tiempo; column/bar=comparación entre categorías (stacked=composición); pie/donut/treemap=distribución de un todo; radar=perfil multidimensión; scatter=relación x-y; heatmap=matriz de intensidad; gauge=un solo %; funnel=etapas. Si lo usas, este gráfico REEMPLAZA a los automáticos.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"kind":       map[string]any{"type": "string", "enum": []string{"line", "area", "bar", "column", "pie", "donut", "polar", "gauge", "radial", "radar", "scatter", "heatmap", "treemap", "funnel"}, "description": "tipo de gráfico"},
+				"title":      map[string]any{"type": "string", "description": "título descriptivo (di qué se compara y en qué unidad)"},
+				"labels":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "categorías del eje X (line/area/column/bar/heatmap/radar) o etiquetas de porción (pie/donut/polar/treemap/funnel/radial)"},
+				"series":     map[string]any{"description": "pie/donut/polar/treemap/funnel/radial: array de números (uno por label). line/area/column/bar/radar/heatmap: array de {name, data:[números]} (una serie por entidad comparada). scatter: [{name, data:[[x,y],...]}]", "type": "array", "items": map[string]any{}},
+				"value":      map[string]any{"type": "number", "description": "solo para gauge: el % (0-100)"},
+				"horizontal": map[string]any{"type": "boolean", "description": "bar/funnel horizontales (default true para bar)"},
+				"stacked":    map[string]any{"type": "boolean", "description": "apilar series (column/bar/area) para mostrar composición"},
+				"unit":       map[string]any{"type": "string", "description": "unidad de los valores ('%', 'intentos', 'pts'...) para los ejes/tooltips"},
+			},
+			"required": []string{"kind", "title", "series"},
+		}),
 		toolSchema("comparativo_inclinacion", "Ranking de colegios por su INCLINACIÓN (%) hacia UN área de vocacional (Cálculo, Verbal, Artes, Naturaleza, Investigación, Musical, Trabajo Manual, Organización, Sensibilidad Social, Gestión y Comunicación) o UN estilo de aprendizaje (Teórico, Pragmático, Activo, Kinestésico, Visual, Reflexivo, Auditivo). Úsala para '¿qué colegio tiene mayor inclinación numérica/artística/etc.?'. Adjunta un gráfico de barras. NO sirve para simulacro (eso es puntaje, usa el comparativo normal).", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -951,6 +995,7 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		"top_alumnos_llave":       toolTopAlumnosLlave,
 		"mejor_alumno_general":    toolMejorAlumnoGeneral,
 		"comparativo_inclinacion": toolComparativoInclinacion,
+		"grafico_personalizado":   toolGraficoPersonalizado,
 	}
 	return schemas, byName
 }
@@ -1444,6 +1489,149 @@ func containsStr(arr []string, s string) bool {
 		}
 	}
 	return false
+}
+
+// chartKinds: catálogo COMPLETO de gráficos que el front sabe renderizar
+// (ApexCharts). El modelo elige el más demostrativo para cada caso.
+var chartKinds = map[string]bool{
+	"line": true, "area": true, "bar": true, "column": true,
+	"pie": true, "donut": true, "doughnut": true, "polar": true,
+	"gauge": true, "radial": true, "radar": true, "scatter": true,
+	"heatmap": true, "treemap": true, "funnel": true,
+}
+
+// toolGraficoPersonalizado: el MODELO compone un gráfico a medida (mezclando
+// colegios × llaves × alumnos × asesores × años) eligiendo el tipo que mejor
+// cuente la historia. La VALIDACIÓN vive en código (tipos whitelisted, límites
+// de tamaño, números finitos) — el modelo decide QUÉ mostrar, nunca CÓMO se
+// renderiza. Regla dura (prompt + descripción): los valores deben salir
+// VERBATIM de resultados de otras herramientas de ESTA conversación.
+func toolGraficoPersonalizado(_ *Proxy, _ *http.Request, args map[string]any) (any, []any, error) {
+	kind := strings.ToLower(strings.TrimSpace(argStr(args, "kind")))
+	if !chartKinds[kind] {
+		return map[string]any{"error": "tipo de gráfico no soportado; usa uno de: line, area, bar, column, pie, donut, polar, gauge, radial, radar, scatter, heatmap, treemap, funnel"}, nil, nil
+	}
+	title := strings.TrimSpace(argStr(args, "title"))
+	if title == "" {
+		return map[string]any{"error": "el gráfico necesita un título descriptivo"}, nil, nil
+	}
+	if len(title) > 90 {
+		title = title[:90]
+	}
+	// labels: hasta 30, saneadas
+	labels := []string{}
+	if raw, ok := args["labels"].([]any); ok {
+		for _, v := range raw {
+			s := strings.TrimSpace(asString(v))
+			if s == "" {
+				continue
+			}
+			if len(s) > 60 {
+				s = s[:60]
+			}
+			labels = append(labels, s)
+			if len(labels) >= 30 {
+				break
+			}
+		}
+	}
+	sane := func(f float64) (float64, bool) {
+		if math.IsNaN(f) || math.IsInf(f, 0) {
+			return 0, false
+		}
+		return math.Round(f*100) / 100, true
+	}
+	chart := map[string]any{"kind": kind, "title": title, "_custom": true}
+	if len(labels) > 0 {
+		chart["labels"] = labels
+	}
+	if v, ok := args["value"].(float64); ok {
+		if f, ok2 := sane(v); ok2 {
+			chart["value"] = f
+		}
+	}
+	if b, ok := args["horizontal"].(bool); ok {
+		chart["horizontal"] = b
+	}
+	if b, ok := args["stacked"].(bool); ok {
+		chart["stacked"] = b
+	}
+	if u := strings.TrimSpace(argStr(args, "unit")); u != "" && len(u) <= 10 {
+		chart["unit"] = u
+	}
+	// series: []number (pie-family) o [{name,data:[]number}] (ejes) — máx 8
+	// series × 50 puntos. scatter acepta data como pares [x,y].
+	switch raw := args["series"].(type) {
+	case []any:
+		if len(raw) > 0 {
+			if _, isNum := raw[0].(float64); isNum {
+				nums := []float64{}
+				for _, v := range raw {
+					if f, ok := v.(float64); ok {
+						if s, ok2 := sane(f); ok2 {
+							nums = append(nums, s)
+						}
+					}
+					if len(nums) >= 50 {
+						break
+					}
+				}
+				chart["series"] = nums
+			} else {
+				series := []map[string]any{}
+				for _, sv := range raw {
+					sm, ok := sv.(map[string]any)
+					if !ok {
+						continue
+					}
+					name := strings.TrimSpace(asString(sm["name"]))
+					if len(name) > 60 {
+						name = name[:60]
+					}
+					data := []any{}
+					if dr, ok := sm["data"].([]any); ok {
+						for _, dv := range dr {
+							switch d := dv.(type) {
+							case float64:
+								if f, ok2 := sane(d); ok2 {
+									data = append(data, f)
+								}
+							case []any: // par [x,y] para scatter
+								if len(d) == 2 {
+									x, xo := d[0].(float64)
+									y, yo := d[1].(float64)
+									if xo && yo {
+										fx, ok1 := sane(x)
+										fy, ok2 := sane(y)
+										if ok1 && ok2 {
+											data = append(data, []float64{fx, fy})
+										}
+									}
+								}
+							}
+							if len(data) >= 50 {
+								break
+							}
+						}
+					}
+					if len(data) > 0 {
+						series = append(series, map[string]any{"name": name, "data": data})
+					}
+					if len(series) >= 8 {
+						break
+					}
+				}
+				chart["series"] = series
+			}
+		}
+	}
+	if chart["series"] == nil && chart["value"] == nil {
+		return map[string]any{"error": "el gráfico necesita 'series' con datos (o 'value' si es gauge)"}, nil, nil
+	}
+	return map[string]any{
+		"ok":       "gráfico '" + kind + "' construido y adjuntado",
+		"recuerda": "los valores del gráfico deben venir VERBATIM de resultados de herramientas de esta conversación; si te faltó un dato, llama la herramienta que lo trae y vuelve a armar el gráfico.",
+	}, []any{chart}, nil
 }
 
 func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {

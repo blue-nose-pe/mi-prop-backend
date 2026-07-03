@@ -76,6 +76,38 @@ LLM nunca pasa un UUID inventado. `grafico` por defecto = `ninguno`.
 | `top_alumnos_llave` | school_name, key_code, orden?, cuantos? | alumnos con mejor/peor puntaje de una llave de **simulacro** (voca/estilos no tienen puntaje) | 1 barra + **botón directo por alumno** (abre su modal, PDF a un clic) |
 | `mejor_alumno_general` | colegio_nombre?, orden?, cuantos? | mejor/peor promedio de simulacro entre TODOS los colegios (o uno) | 1 barra + **botón directo por alumno** |
 | `comparativo_inclinacion` | exam_type_code (vocacional\|habitos), area, period? | ranking de colegios por su INCLINACIÓN (%) hacia UN área (con alias: "numérica"→Cálculo); si el área no existe devuelve la lista de áreas disponibles | 1 barra |
+| `grafico_personalizado` | kind, title, labels, series, value?, horizontal?, stacked?, unit? | el MODELO compone un gráfico a medida mezclando temas (colegios × llaves × alumnos × asesores × años) con datos ya obtenidos por otras tools | el que el modelo elija del catálogo (§3.1) |
+
+### 3.1 Catálogo COMPLETO de gráficos (2026-07-03)
+
+El front (`asistente.component.toApexOptions`) renderiza TODOS los tipos útiles de
+ApexCharts; el back valida (whitelist `chartKinds` + límites: ≤8 series × ≤50
+puntos, ≤30 labels, números finitos, títulos saneados). El modelo elige "como un
+analista senior" cuál cuenta mejor la historia:
+
+| kind | Cuándo usarlo | series |
+|---|---|---|
+| `line` / `area` | evolución en el tiempo (años, meses); `area stacked` = composición temporal | `[{name,data}]` |
+| `column` / `bar` | comparación entre categorías (vertical/horizontal); `stacked` = composición | `[{name,data}]` |
+| `pie` / `donut` | distribución de un todo (pocas porciones) | `number[]` |
+| `treemap` | distribución con muchas categorías | `number[]` |
+| `polar` | distribución con dimensión radial | `number[]` |
+| `radar` | perfil multidimensión (áreas voca/estilos), soporta varias entidades | `[{name,data}]` |
+| `scatter` | relación entre dos variables (pares x,y) | `[{name,data:[[x,y]]}]` |
+| `heatmap` | matriz de intensidad (ej. colegios × áreas) | `[{name,data}]` + labels |
+| `gauge` | UN porcentaje | `value` |
+| `radial` | varios porcentajes concéntricos (ej. ocupación de llaves) | `number[]` |
+| `funnel` | etapas/embudo (ordena solo) | `number[]` + labels |
+
+**Reglas de solidez del gráfico personalizado (por código):**
+- Los charts custom llevan marcador interno `_custom`; si existen, `normalizeCharts`
+  descarta los automáticos de las otras tools (la composición deliberada GANA) y
+  solo aplica dedup + tope 4. El marcador nunca llega al front.
+- Regla dura del prompt: los valores deben salir VERBATIM de resultados de
+  herramientas de ESTA conversación — el modelo primero junta los datos (varias
+  tools si hace falta), luego compone. Nunca inventa/estima.
+- Validación en el back: kind whitelisted, si no → error con la lista de tipos;
+  sin series ni value → error pedagógico (el modelo reintenta).
 
 **Herramientas compuestas** (combinan varias APIs): `top_alumnos_llave` y
 `mejor_alumno_general` cruzan colegios + attempts + keys + users con la lógica
