@@ -18,12 +18,18 @@
 package proxy
 
 import (
+	"context"
+	"math"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	analyticsgrpcpb "analytics_service/proto/gen"
+	examsgrpcpb "exams_service/proto/gen"
+	keysgrpcpb "keys_service/proto/gen"
 	satisfactiongrpcpb "satisfaction_service/proto/gen"
 	satisfactioncommonpb "satisfaction_service/proto/gen/common"
 )
@@ -448,6 +454,191 @@ func (p *Proxy) getSurveyResponse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"response": protoSurveyResponseToJSON(sr)})
+}
+
+// getSatisfaccionReporte — GET /api/analytics/satisfaccion/reporte
+//
+// Reporte agregado de ENCUESTAS DE SATISFACCIÓN para el panel de Reportería.
+// Por encuesta publicada+activa: respuestas, CSAT (promedio de las preguntas de
+// escala 1-5), NPS (de las preguntas nps), tasa de respuesta con denominador
+// CORRECTO (los intentos de examen que califican para esa encuesta: los de su
+// llave si está atada a una, o los de su tipo de examen si es general) — NO el
+// conteo de "usuarios rol estudiante" que dejaba el dashboard en 0%. Filtros:
+// tipo (trigger_kind) y survey_code. Devuelve además el desglose por pregunta
+// (para los gráficos). SOLO administración.
+func (p *Proxy) getSatisfaccionReporte(w http.ResponseWriter, r *http.Request) {
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "el reporte de satisfacción es solo para administración"})
+		return
+	}
+	tipoFiltro := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("tipo")))
+	codeFiltro := strings.TrimSpace(r.URL.Query().Get("survey_code"))
+	resumen, encuestas, err := p.collectSatisfaccionReporte(r.Context(), tipoFiltro, codeFiltro)
+	if err != nil {
+		writeGRPCError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"resumen": resumen, "encuestas": encuestas})
+}
+
+// collectSatisfaccionReporte agrega las métricas de satisfacción por encuesta —
+// MISMA fuente para el panel de Reportería y para el Asistente IA (así el bot
+// nunca contradice la pantalla). Devuelve (resumen, encuestas).
+func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, codeFiltro string) (map[string]any, []map[string]any, error) {
+	sresp, err := p.cli.Surveys.Search(ctx, &satisfactioncommonpb.SearchRequest{
+		FilterGroups: []*satisfactioncommonpb.FilterGroup{{
+			Filters: []*satisfactioncommonpb.Filter{{PropertyName: "active", Operator: satisfactioncommonpb.FilterOperator_EQ, Values: []string{"true"}}},
+		}},
+		Properties: []string{"id", "code", "title", "trigger_kind", "key_id", "published"},
+		Limit:      200,
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Denominador por TIPO (intentos submitted de ese tipo, sumando colegios):
+	// se computa una vez por tipo con GetColegioComparativo. Cache.
+	tipoAttempts := map[string]int32{}
+	attemptsDeTipo := func(tipo string) int32 {
+		if v, ok := tipoAttempts[tipo]; ok {
+			return v
+		}
+		var total int32
+		if resp, e := p.cli.Analytics.GetColegioComparativo(ctx, &analyticsgrpcpb.GetColegioComparativoRequest{ExamTypeCode: tipo}); e == nil {
+			for _, it := range resp.GetItems() {
+				if isQAColegio(it.GetSchoolName()) {
+					continue
+				}
+				total += it.GetAttempts()
+			}
+		}
+		tipoAttempts[tipo] = total
+		return total
+	}
+	// Denominador por LLAVE (intentos submitted de esa key). Cache por colegio.
+	keyAttempts := func(keyID string) int32 {
+		if keyID == "" {
+			return 0
+		}
+		kr, e := p.cli.Keys.GetKey(ctx, &keysgrpcpb.GetKeyRequest{Id: keyID})
+		if e != nil || kr.GetKey() == nil {
+			return 0
+		}
+		var n int32
+		if at, e2 := p.cli.Attempts.ListByColegio(ctx, &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: kr.GetKey().GetSchoolId()}); e2 == nil {
+			for _, a := range at.GetItems() {
+				if a.GetSubmittedAt() != nil && strings.EqualFold(a.GetKeyId(), keyID) {
+					n++
+				}
+			}
+		}
+		return n
+	}
+
+	tipoLabel := map[string]string{"simulacro": "Simulacro", "vocacional": "Vocacional", "estilos": "Estilos", "habitos": "Estilos"}
+	out := make([]map[string]any, 0)
+	var totResp, totCSATw, totCSATn float64
+	npsSum, npsN := 0.0, 0.0
+	for _, res := range sresp.GetResults() {
+		props := map[string]any{}
+		if res.GetProperties() != nil {
+			props = res.GetProperties().AsMap()
+		}
+		published, _ := props["published"].(bool)
+		if !published { // solo publicadas para el reporte
+			continue
+		}
+		trigger := strings.ToLower(asString(props["trigger_kind"]))
+		code := asString(props["code"])
+		title := asString(props["title"])
+		keyID := asString(props["key_id"])
+		if tipoFiltro != "" && trigger != tipoFiltro {
+			continue
+		}
+		if codeFiltro != "" && !strings.EqualFold(code, codeFiltro) {
+			continue
+		}
+		m, merr := p.cli.Responses.GetMetrics(ctx, &satisfactiongrpcpb.GetMetricsRequest{SurveyId: res.GetId()})
+		if merr != nil {
+			continue
+		}
+		resp := int(m.GetTotalResponses())
+		// CSAT = promedio de las preguntas de escala (1-5). NPS = promedio de nps.
+		var scaleSum, scaleN float64
+		var npsSurvey, npsSurveyN float64
+		preguntas := []map[string]any{}
+		for _, q := range m.GetPerQuestion() {
+			pq := map[string]any{"kind": q.GetKind(), "count": q.GetCount()}
+			if q.GetHasAverage() {
+				pq["promedio"] = round1(float64(q.GetAverage()))
+				if q.GetKind() == "scale" {
+					scaleSum += float64(q.GetAverage())
+					scaleN++
+				}
+			}
+			if q.GetHasNps() {
+				pq["nps"] = q.GetNps()
+				npsSurvey += float64(q.GetNps())
+				npsSurveyN++
+			}
+			if d := q.GetDistribution(); len(d) > 0 {
+				pq["distribucion"] = d
+			}
+			preguntas = append(preguntas, pq)
+		}
+		row := map[string]any{
+			"code": code, "titulo": title, "tipo": tipoLabel[trigger], "trigger": trigger,
+			"atada_a_llave": keyID != "", "respuestas": resp, "preguntas": preguntas,
+		}
+		if scaleN > 0 {
+			csat := round1(scaleSum / scaleN)
+			row["csat_1a5"] = csat
+			row["csat_pct"] = math.Round((csat - 1) / 4 * 100)
+			totCSATw += csat * float64(resp)
+			totCSATn += float64(resp)
+		}
+		if npsSurveyN > 0 {
+			row["nps"] = math.Round(npsSurvey / npsSurveyN)
+			npsSum += npsSurvey / npsSurveyN
+			npsN++
+		}
+		// Tasa de respuesta con denominador correcto.
+		var elegibles int32
+		if keyID != "" {
+			elegibles = keyAttempts(keyID)
+		} else if trigger != "" {
+			elegibles = attemptsDeTipo(trigger)
+		}
+		if elegibles > 0 {
+			row["elegibles"] = elegibles
+			row["tasa_respuesta"] = math.Round(math.Min(100, float64(resp)/float64(elegibles)*100))
+		} else {
+			row["tasa_respuesta"] = nil
+		}
+		totResp += float64(resp)
+		out = append(out, row)
+	}
+	// Orden por respuestas desc.
+	for i := 0; i < len(out); i++ {
+		for j := i + 1; j < len(out); j++ {
+			ri, _ := out[i]["respuestas"].(int)
+			rj, _ := out[j]["respuestas"].(int)
+			if rj > ri {
+				out[i], out[j] = out[j], out[i]
+			}
+		}
+	}
+	resumen := map[string]any{
+		"encuestas_publicadas": len(out),
+		"total_respuestas":     int(totResp),
+	}
+	if totCSATn > 0 {
+		resumen["csat_promedio_1a5"] = round1(totCSATw / totCSATn)
+	}
+	if npsN > 0 {
+		resumen["nps_promedio"] = math.Round(npsSum / npsN)
+	}
+	return resumen, out, nil
 }
 
 func (p *Proxy) getSurveyMetrics(w http.ResponseWriter, r *http.Request) {

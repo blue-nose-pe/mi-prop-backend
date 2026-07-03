@@ -27,8 +27,6 @@ import (
 	analyticsgrpcpb "analytics_service/proto/gen"
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
-	satisfactiongrpcpb "satisfaction_service/proto/gen"
-	satisfactioncommonpb "satisfaction_service/proto/gen/common"
 	usersgrpcpb "users_service/proto/gen"
 	userscommonpb "users_service/proto/gen/common"
 )
@@ -141,7 +139,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - ENLACES: NUNCA escribas enlaces markdown [texto](url) ni "(#)". Los botones de "ver resultado / PDF" se adjuntan AUTOMÁTICAMENTE a tu respuesta; solo di "usa el botón de abajo".
 - MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
-- SATISFACCIÓN: para "¿qué tan satisfechos están los alumnos?" usa la herramienta de satisfacción de encuestas (promedio 1-5 por encuesta + total de respuestas). Las métricas son GLOBALES por encuesta, NO por colegio: si preguntan por un colegio concreto, da el promedio global y aclara que no se desglosa por colegio.
+- SATISFACCIÓN: para "¿qué tan satisfechos están los alumnos?" usa la herramienta de satisfacción de encuestas (CSAT 1-5 y %, NPS, tasa de respuesta real y desglose por pregunta; acepta filtro por tipo de examen). Sus cifras son las MISMAS del panel Reportería → Reporte de satisfacción. Las métricas son por ENCUESTA, NO por colegio: si preguntan por un colegio concreto, dalo y aclara que no se desglosa por colegio.
 - REPORTE DE ASESORES POR LLAVE: si la pregunta de asesores menciona LLAVES, AÑO, tipo de evaluación, aforo/ocupación o historial ("asesores con más alumnos en 2025", "llaves de María Torres", "aforo vigente en 2027"), usa reporte_asesores_llaves (misma fuente que la pantalla del panel; sus números SIEMPRE coinciden con ella). Las llaves vencidas se llaman "Caducas". Para el HISTORIAL de un asesor: reporte_asesores_llaves con asesor='<nombre>' y solo_activas=false (así entran las Caducas). Si el usuario es ADMIN, JAMÁS le respondas "solo puedo mostrar tu propia operación" — el admin ve a todos los asesores.
 - RANKING DE ASESORES ("qué asesor tiene más impactos/alumnos/colegios/visitas"): usa el comparativo de asesores — el ADMINISTRADOR SÍ puede verlo (no lo rechaces si el usuario es admin); un asesor recibirá el aviso de que solo ve su propia operación. "Impactos" = alumnos impactados (alumnos distintos que rindieron con llaves del asesor).
 - PANEL EJECUTIVO / varios gráficos pedidos EXPLÍCITAMENTE: compón CADA gráfico solicitado con la herramienta de gráfico personalizado (hasta 4) — la regla "una historia = un gráfico" aplica cuando piden UNA cosa, no cuando piden un panel. La participación por tipo GLOBAL sale de por_tipo_total del resumen general.
@@ -1100,10 +1098,12 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
-		toolSchema("satisfaccion_encuestas", "Métricas de las ENCUESTAS DE SATISFACCIÓN (las que el alumno responde al terminar un examen): promedio 1-5 por encuesta, total de respuestas y promedio global. Adjunta un gráfico de barras. IMPORTANTE: las métricas son por ENCUESTA y GLOBALES (todas las respuestas), NO se desglosan por colegio — si preguntan por la satisfacción de UN colegio, da estas cifras y aclara que el promedio es global (igual que la tarjeta del panel).", map[string]any{
-			"type":       "object",
-			"properties": map[string]any{},
-			"required":   []string{},
+		toolSchema("satisfaccion_encuestas", "REPORTE DE SATISFACCIÓN (mismas cifras que Reportería → Reporte de satisfacción): por encuesta publicada, respuestas, CSAT (promedio escala 1-5 y %), NPS y TASA DE RESPUESTA real (respuestas ÷ intentos de examen que califican para la encuesta). Con desglose por pregunta (promedios/distribuciones). Adjunta gráfico de barras del CSAT. Filtro opcional por tipo de examen. IMPORTANTE: las métricas son por ENCUESTA (no por colegio).", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tipo": map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "estilos"}, "description": "opcional: solo encuestas de este tipo de examen"},
+			},
+			"required": []string{},
 		}),
 		toolSchema("listar_llaves_colegio", "Lista las llaves (keys) de un colegio, ordenadas de la MÁS RECIENTE a la más antigua (la primera es 'la última key creada'). Cada llave trae: key_id, codigo, tipo, aforo, activa, creada (fecha), usos_registro (contador de accesos, NO confiable) y rendidos_reales (exámenes realmente rendidos con resultados). Usa esta herramienta para elegir una key con datos: si necesitas graficar, prefiere una con rendidos_reales > 0. Pasa el NOMBRE del colegio en school_name; no inventes IDs.", map[string]any{
 			"type": "object",
@@ -2119,84 +2119,40 @@ func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, [
 // → promedio ponderado de las preguntas de ESCALA (1-5) + total de respuestas.
 // OJO: las métricas son POR ENCUESTA y GLOBALES (todas las respuestas), no por
 // colegio — la tarjeta del panel muestra lo mismo en la ficha de cada colegio.
-func toolSatisfaccionEncuestas(p *Proxy, r *http.Request, _ map[string]any) (any, []any, error) {
-	sresp, err := p.cli.Surveys.Search(r.Context(), &satisfactioncommonpb.SearchRequest{
-		FilterGroups: []*satisfactioncommonpb.FilterGroup{{
-			Filters: []*satisfactioncommonpb.Filter{{PropertyName: "active", Operator: satisfactioncommonpb.FilterOperator_EQ, Values: []string{"true"}}},
-		}},
-		Properties: []string{"id", "code", "title"},
-		Limit:      50,
-	})
+func toolSatisfaccionEncuestas(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	// MISMA fuente que el panel de Reportería de Satisfacción (el bot nunca
+	// contradice la pantalla): respuestas, CSAT (1-5), NPS y tasa de respuesta
+	// con denominador correcto. Filtro opcional por tipo.
+	tipo := strings.ToLower(strings.TrimSpace(argStr(args, "tipo")))
+	if tipo == "habitos" {
+		tipo = "estilos"
+	}
+	resumen, encuestas, err := p.collectSatisfaccionReporte(r.Context(), tipo, "")
 	if err != nil {
 		return map[string]any{"error": "no se pudieron obtener las encuestas de satisfacción"}, nil, nil
 	}
-	type srow struct {
-		titulo     string
-		respuestas int32
-		avg        float64
-		hasAvg     bool
+	if len(encuestas) == 0 {
+		return map[string]any{"nota": "no hay encuestas de satisfacción publicadas con respuestas para ese filtro."}, nil, nil
 	}
-	rows := []srow{}
-	var sumW, cntW float64
-	var totalResp int32
-	for _, res := range sresp.GetResults() {
-		title := res.GetId()
-		if props := res.GetProperties(); props != nil {
-			if v, ok := props.AsMap()["title"].(string); ok && strings.TrimSpace(v) != "" {
-				title = v
-			}
+	// Gráfico de barras: CSAT (%) por encuesta con respuestas.
+	labels := []string{}
+	data := []float64{}
+	for _, e := range encuestas {
+		resp, _ := e["respuestas"].(int)
+		if pct, ok := e["csat_pct"].(float64); ok && resp > 0 {
+			labels = append(labels, asString(e["titulo"]))
+			data = append(data, pct)
 		}
-		m, merr := p.cli.Responses.GetMetrics(r.Context(), &satisfactiongrpcpb.GetMetricsRequest{SurveyId: res.GetId()})
-		if merr != nil {
-			continue
-		}
-		var qSum, qCnt float64
-		for _, q := range m.GetPerQuestion() {
-			if q.GetHasAverage() && q.GetKind() == "scale" && q.GetCount() > 0 {
-				qSum += q.GetAverage() * float64(q.GetCount())
-				qCnt += float64(q.GetCount())
-			}
-		}
-		row := srow{titulo: title, respuestas: m.GetTotalResponses()}
-		if qCnt > 0 {
-			row.avg = math.Round(qSum/qCnt*10) / 10
-			row.hasAvg = true
-			sumW += qSum
-			cntW += qCnt
-		}
-		totalResp += m.GetTotalResponses()
-		if m.GetTotalResponses() > 0 {
-			rows = append(rows, row)
-		}
-	}
-	if len(rows) == 0 {
-		return map[string]any{"nota": "todavía no hay respuestas de encuestas de satisfacción."}, nil, nil
-	}
-	items := make([]map[string]any, 0, len(rows))
-	labels := make([]string, 0, len(rows))
-	data := make([]float64, 0, len(rows))
-	for _, rw := range rows {
-		it := map[string]any{"encuesta": rw.titulo, "respuestas": rw.respuestas}
-		if rw.hasAvg {
-			it["promedio_1_a_5"] = rw.avg
-			labels = append(labels, rw.titulo)
-			data = append(data, rw.avg)
-		}
-		items = append(items, it)
-	}
-	res := map[string]any{
-		"encuestas":         items,
-		"total_respuestas":  totalResp,
-		"nota":              "métricas POR ENCUESTA y GLOBALES (todas las respuestas de todos los colegios) — la satisfacción NO se desglosa por colegio; si preguntan por un colegio concreto, acláralo (la tarjeta del panel muestra este mismo promedio global).",
-	}
-	if cntW > 0 {
-		res["promedio_global_1_a_5"] = math.Round(sumW/cntW*10) / 10
 	}
 	var charts []any
 	if len(labels) > 0 {
-		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": "Satisfacción promedio por encuesta (escala 1-5)", "labels": labels, "series": []map[string]any{{"name": "Promedio (1-5)", "data": data}}})
+		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": "Satisfacción (CSAT %) por encuesta", "labels": labels, "series": []map[string]any{{"name": "Satisfacción %", "data": data}}, "unit": "%"})
 	}
-	return res, charts, nil
+	return map[string]any{
+		"resumen":   resumen,
+		"encuestas": encuestas,
+		"nota":      "mismas cifras que el panel Reportería → Reporte de satisfacción. CSAT = promedio de escala 1-5; NPS de las preguntas nps; tasa de respuesta = respuestas ÷ intentos de examen que califican. Las métricas NO se desglosan por colegio.",
+	}, charts, nil
 }
 
 // keyJuegaEnAnio replica la regla del Reporte de Asesores: una llave "juega"

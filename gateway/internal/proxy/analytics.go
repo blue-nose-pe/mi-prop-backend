@@ -33,6 +33,7 @@ const xlsxContentType = "application/vnd.openxmlformats-officedocument.spreadshe
 func (p *Proxy) RegisterAnalytics(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/analytics/dashboard", p.getGlobalDashboard)
 	mux.HandleFunc("GET /api/analytics/asesores/keys-report", p.getAsesoresKeysReport)
+	mux.HandleFunc("GET /api/analytics/satisfaccion/reporte", p.getSatisfaccionReporte)
 	mux.HandleFunc("GET /api/analytics/asesor/{id}/dashboard", p.getAsesorDashboard)
 	mux.HandleFunc("GET /api/analytics/colegio/{id}/dashboard", p.getColegioDashboard)
 	mux.HandleFunc("GET /api/analytics/estudiante/{id}/dashboard", p.getEstudianteDashboard)
