@@ -328,6 +328,16 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 				}
 				args["periods"] = ps
 			}
+			// "líneas / evolución / tendencia" + multi-año → estilo línea
+			// (eje X = años, una línea por colegio) en vez de columnas.
+			if tc.Function.Name == "comparativo_colegios" && strings.TrimSpace(argStr(args, "chart_style")) == "" {
+				for _, kw := range []string{"linea", "línea", "evolucion", "evolución", "tendencia"} {
+					if strings.Contains(lastUser, kw) {
+						args["chart_style"] = "line"
+						break
+					}
+				}
+			}
 			// "top 3" pedido → recorta el ranking (texto y gráfico iguales).
 			if topForzado > 0 && tc.Function.Name == "comparativo_colegios" && args["top"] == nil {
 				args["top"] = float64(topForzado)
@@ -985,6 +995,7 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 				"period":         map[string]any{"type": "string", "description": "opcional, año 'YYYY'; vacío = histórico total"},
 				"periods":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "para COMPARAR 2-3 años en UN gráfico ('2025 vs 2026'): pasa los años y la herramienta construye las columnas agrupadas por año + el campo 'mejora' por colegio. Úsalo SIEMPRE que el usuario compare años; NO llames dos veces con period."},
 				"top":            map[string]any{"type": "number", "description": "opcional: quedarse solo con los N primeros del ranking ('top 3')"},
+				"chart_style":    map[string]any{"type": "string", "enum": []string{"column", "line"}, "description": "con periods: 'line' si el usuario pidió líneas/evolución/tendencia (eje X = años, una línea por colegio); default columnas agrupadas"},
 			},
 			"required": []string{"exam_type_code"},
 		}),
@@ -1334,9 +1345,11 @@ func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, 
 }
 
 // comparativoMultiAnio: ranking de colegios comparando 2-3 AÑOS en un solo
-// gráfico de columnas agrupadas (una serie por año) + 'mejora' por colegio
-// (último año - primero). Determinístico: el modelo no arma nada a mano.
-func (p *Proxy) comparativoMultiAnio(r *http.Request, exam, metric string, years []string, topN int) (any, []any, error) {
+// gráfico + 'mejora' por colegio (último año - primero). Determinístico: el
+// modelo no arma nada a mano. style="line" → líneas de evolución (eje X = años,
+// una línea por colegio); default → columnas agrupadas (eje X = colegios, una
+// serie por año).
+func (p *Proxy) comparativoMultiAnio(r *http.Request, exam, metric string, years []string, topN int, style string) (any, []any, error) {
 	scored := exam == "simulacro" && metric != "participacion"
 	type prow struct {
 		name string
@@ -1409,23 +1422,39 @@ func (p *Proxy) comparativoMultiAnio(r *http.Request, exam, metric string, years
 		items = append(items, it)
 		labels = append(labels, rw.name)
 	}
-	series := make([]map[string]any, 0, len(years))
-	for _, y := range years {
-		data := make([]float64, 0, len(rows))
-		for _, rw := range rows {
-			data = append(data, rw.vals[y]) // 0 si no hay dato ese año
-		}
-		series = append(series, map[string]any{"name": y, "data": data})
-	}
 	nombreTipo := map[string]string{"simulacro": "simulacro", "vocacional": "vocacional", "habitos": "estilos de aprendizaje"}[exam]
 	if nombreTipo == "" {
 		nombreTipo = exam
 	}
-	title := "Promedio de " + nombreTipo + " por colegio — " + strings.Join(years, " vs ")
+	metricaTxt := "Promedio de "
 	if !scored {
-		title = "Participación en " + nombreTipo + " por colegio — " + strings.Join(years, " vs ")
+		metricaTxt = "Participación en "
 	}
-	charts := []any{map[string]any{"kind": "column", "title": title, "labels": labels, "series": series, "unit": unit}}
+	var chart map[string]any
+	if style == "line" {
+		// Evolución: eje X = años, una LÍNEA por colegio.
+		series := make([]map[string]any, 0, len(rows))
+		for _, rw := range rows {
+			data := make([]float64, 0, len(years))
+			for _, y := range years {
+				data = append(data, rw.vals[y])
+			}
+			series = append(series, map[string]any{"name": rw.name, "data": data})
+		}
+		chart = map[string]any{"kind": "line", "title": metricaTxt + nombreTipo + " — evolución " + strings.Join(years, " a "), "labels": years, "series": series, "unit": unit}
+	} else {
+		// Columnas agrupadas: eje X = colegios, una serie por año.
+		series := make([]map[string]any, 0, len(years))
+		for _, y := range years {
+			data := make([]float64, 0, len(rows))
+			for _, rw := range rows {
+				data = append(data, rw.vals[y]) // 0 si no hay dato ese año
+			}
+			series = append(series, map[string]any{"name": y, "data": data})
+		}
+		chart = map[string]any{"kind": "column", "title": metricaTxt + nombreTipo + " por colegio — " + strings.Join(years, " vs "), "labels": labels, "series": series, "unit": unit}
+	}
+	charts := []any{chart}
 	return map[string]any{
 		"evaluacion": nombreTipo,
 		"anios":      years,
@@ -1457,7 +1486,7 @@ func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (an
 			}
 		}
 		if len(years) >= 2 {
-			return p.comparativoMultiAnio(r, exam, metricArg, years, topN)
+			return p.comparativoMultiAnio(r, exam, metricArg, years, topN, strings.ToLower(argStr(args, "chart_style")))
 		}
 	}
 	period := strings.TrimSpace(argStr(args, "period"))
@@ -1821,6 +1850,48 @@ func toolGraficoPersonalizado(_ *Proxy, _ *http.Request, args map[string]any) (a
 					}
 				}
 				chart["series"] = series
+			}
+		}
+	}
+	// Defensa: los tipos "de porciones" (pie/donut/polar/treemap/funnel/radial)
+	// necesitan números PLANOS. Si el modelo mandó formato eje ([{name,data}]),
+	// aplanamos la primera serie — si no, ApexCharts pinta un lienzo VACÍO
+	// (bug visto en verificación visual: treemap/polar/radial/funnel en blanco).
+	pieFamily := map[string]bool{"pie": true, "donut": true, "doughnut": true, "polar": true, "treemap": true, "funnel": true, "radial": true}
+	if pieFamily[kind] {
+		if sl, ok := chart["series"].([]map[string]any); ok && len(sl) > 0 {
+			nums := []float64{}
+			names := []string{}
+			if len(sl) == 1 {
+				// una serie con N puntos → esos N valores son las porciones
+				if data, ok := sl[0]["data"].([]any); ok {
+					for _, v := range data {
+						if f, ok := v.(float64); ok {
+							nums = append(nums, math.Round(f*100)/100)
+						}
+					}
+				}
+			} else {
+				// N series de 1 punto (una por entidad) → valor = 1er punto de
+				// cada una y las ETIQUETAS salen del nombre de la serie (bug
+				// visto: treemap con una sola loseta / funnel vacío sin labels).
+				for _, s := range sl {
+					if data, ok := s["data"].([]any); ok && len(data) > 0 {
+						if f, ok := data[0].(float64); ok {
+							nums = append(nums, math.Round(f*100)/100)
+							names = append(names, strings.TrimSpace(asString(s["name"])))
+						}
+					}
+				}
+			}
+			if len(nums) > 0 {
+				chart["series"] = nums
+				if len(names) == len(nums) {
+					lb, hasLb := chart["labels"].([]string)
+					if !hasLb || len(lb) != len(nums) {
+						chart["labels"] = names
+					}
+				}
 			}
 		}
 	}
