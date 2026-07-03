@@ -143,6 +143,8 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - UNA sola herramienta por intención: si la pregunta es de RANKING / comparación / "cuál colegio" / participación / panorama, usa SOLO la herramienta de resumen general o la de comparación (que ya traen su único gráfico de barras); NO llames además al resumen de un colegio individual, para no mezclar un gauge suelto e irrelevante con el ranking. Un gauge de un colegio es solo para cuando preguntan el promedio de ESE colegio puntual.
 - Conoces a fondo la plataforma (roles, secciones, conceptos, flujos). Si te preguntan cómo hacer algo o dónde está, guíalos con precisión (nombre del menú y para qué sirve). Si algo requiere un permiso que su rol no tiene, acláralo.
 - Si una pregunta es de DATOS, usa las herramientas. Si es de CÓMO FUNCIONA / AYUDA, usa la Guía. Puedes combinar (explicar y además mostrar datos).
+- ALUMNOS TOP/BOTTOM: para "el/los alumno(s) con mejor/peor resultado de una LLAVE" usa top_alumnos_llave (requiere el código de la llave; solo simulacro tiene puntaje). Para "el alumno con mayor/menor promedio de TODOS los colegios" usa mejor_alumno_general. Ambas ya devuelven el gráfico y un botón para ver el resultado del alumno.
+- PDF DE RESULTADOS: el PDF se descarga desde la vista de resultado del alumno. Tú NO adjuntas el archivo; las herramientas devuelven un botón/enlace a esa vista (aparece automáticamente en el panel). Cuando el usuario pida "el PDF de un alumno", dale sus datos y menciona que puede descargarlo desde el botón de resultados; nunca afirmes que adjuntaste un archivo.
 
 == GUÍA DEL SISTEMA "Mi Propósito" (UCSP) ==
 Qué es: plataforma de la Universidad Católica San Pablo (UCSP) para ORIENTACIÓN VOCACIONAL en colegios. Los colegios aplican a sus alumnos tres evaluaciones mediante "llaves de acceso", y los asesores comerciales de UCSP gestionan los colegios y su seguimiento.
@@ -240,6 +242,7 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 
 	toolSchemas, toolByName := assistantTools()
 	var charts []any
+	var links []any // botones "Ver/descargar resultado" que emiten las tools (campo _links)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
@@ -253,12 +256,13 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, map[string]any{
 				"answer": "La consulta tardó demasiado o el asistente no está disponible en este momento. Intenta reformularla de forma más simple o vuelve a intentar en unos segundos.",
 				"charts": capCharts(charts),
+				"links":  capLinks(links),
 			})
 			return
 		}
 		m := resp.Choices[0].Message
 		if len(m.ToolCalls) == 0 {
-			writeJSON(w, http.StatusOK, map[string]any{"answer": m.Content, "charts": capCharts(charts)})
+			writeJSON(w, http.StatusOK, map[string]any{"answer": m.Content, "charts": capCharts(charts), "links": capLinks(links)})
 			return
 		}
 		// Adjuntamos el mensaje del assistant que pidió las herramientas...
@@ -293,6 +297,15 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 					res = map[string]any{"error": terr.Error()}
 				}
 				charts = append(charts, ch...)
+				// Las tools emiten botones de enlace en el campo "_links" de su
+				// resultado; los sacamos para devolverlos aparte y NO exponer URLs
+				// crudas al modelo (que las escribiría como texto).
+				if mp, ok := res.(map[string]any); ok {
+					if lk, ok := mp["_links"].([]any); ok {
+						links = append(links, lk...)
+						delete(mp, "_links")
+					}
+				}
 				b, _ := json.Marshal(res)
 				resultJSON = string(b)
 			} else {
@@ -310,6 +323,7 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]any{
 			"answer": final.Choices[0].Message.Content,
 			"charts": capCharts(charts),
+			"links":  capLinks(links),
 		})
 		return
 	}
@@ -318,6 +332,248 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 		"answer": "No pude completar la consulta. ¿Puedes reformularla de forma más simple?",
 		"charts": nil,
 	})
+}
+
+// ---------- Herramientas COMPUESTAS (combinan APIs) ----------
+
+func argInt(args map[string]any, k string, def int) int {
+	if v, ok := args[k].(float64); ok {
+		return int(v)
+	}
+	return def
+}
+
+// toolRouteFromExamTypeId → segmento :tool de la ruta /app/school/detail/:tool/:id/:key
+func toolRouteFromExamTypeId(id int32) string {
+	switch id {
+	case 1:
+		return "vocacional"
+	case 2:
+		return "simulacro"
+	case 3:
+		return "habitos"
+	}
+	return "simulacro"
+}
+
+// resultLink arma un botón que abre la vista de resultados del colegio para esa
+// llave (donde vive el PDF descargable de cada alumno). El PDF se genera en el
+// front, por eso enlazamos en vez de adjuntar el archivo.
+func resultLink(routeTool, schoolID, keyCode, label string) map[string]any {
+	return map[string]any{"label": label, "url": "/app/school/detail/" + routeTool + "/" + schoolID + "/" + keyCode}
+}
+
+// userName resuelve el nombre de un alumno por id (para las tools de top/bottom).
+func (p *Proxy) userName(r *http.Request, userID string) string {
+	if userID == "" {
+		return "Alumno"
+	}
+	if ur, err := p.cli.Users.GetUser(r.Context(), &usersgrpcpb.GetUserRequest{Id: userID}); err == nil && ur.GetUser() != nil {
+		n := strings.TrimSpace(ur.GetUser().GetFirstName() + " " + ur.GetUser().GetLastName())
+		if n != "" {
+			return n
+		}
+	}
+	return "Alumno"
+}
+
+// toolTopAlumnosLlave: los alumnos con mejor/peor puntaje de una llave de SIMULACRO
+// (voca/estilos no tienen puntaje). Devuelve nombres + puntaje + gráfico + un botón
+// para ver sus resultados (con PDF). Combina keys + attempts + users.
+func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	sid := p.resolveColegioID(r, args)
+	if sid == "" {
+		return map[string]any{"error": "no encontré ese colegio entre los que puedes ver; revisa el nombre"}, nil, nil
+	}
+	if !p.enforceColegioScope(r, sid) {
+		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
+	}
+	keyCode := strings.ToUpper(strings.TrimSpace(argStr(args, "key_code")))
+	if keyCode == "" {
+		return map[string]any{"error": "indica el código de la llave (ej. SI-000012)"}, nil, nil
+	}
+	mayor := strings.ToLower(strings.TrimSpace(argStr(args, "orden"))) != "menor"
+	cuantos := argInt(args, "cuantos", 3)
+	if cuantos < 1 {
+		cuantos = 1
+	}
+	if cuantos > 10 {
+		cuantos = 10
+	}
+	var keyID, codeReal string
+	var examType int32
+	if kr, err := p.cli.Keys.ListByColegio(r.Context(), &keysgrpcpb.ListByColegioRequest{SchoolId: sid}); err == nil {
+		for _, k := range kr.GetItems() {
+			if strings.EqualFold(k.GetCode(), keyCode) {
+				keyID, codeReal, examType = k.GetId(), k.GetCode(), k.GetExamTypeId()
+				break
+			}
+		}
+	}
+	if keyID == "" {
+		return map[string]any{"error": "no encontré la llave " + keyCode + " en ese colegio"}, nil, nil
+	}
+	routeTool := toolRouteFromExamTypeId(examType)
+	if examType != 2 {
+		return map[string]any{"nota": "la llave " + codeReal + " es de " + routeTool + ", que NO tiene puntaje; no se puede rankear por 'más alto/bajo' (es un perfil por área)."}, nil, nil
+	}
+	best := map[string]float64{}
+	if at, err := p.cli.Attempts.ListByColegio(r.Context(), &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: sid}); err == nil {
+		for _, a := range at.GetItems() {
+			if a.GetSubmittedAt() == nil || a.GetKeyId() != keyID || a.GetMaxScore() <= 0 {
+				continue
+			}
+			pct := a.GetScore() / a.GetMaxScore() * 100
+			if v, ok := best[a.GetUserId()]; !ok || pct > v {
+				best[a.GetUserId()] = pct
+			}
+		}
+	}
+	if len(best) == 0 {
+		return map[string]any{"nota": "la llave " + codeReal + " todavía no tiene exámenes rendidos con resultados."}, nil, nil
+	}
+	type row struct {
+		user string
+		pct  float64
+	}
+	rows := make([]row, 0, len(best))
+	for u, pct := range best {
+		rows = append(rows, row{u, pct})
+	}
+	for i := 0; i < len(rows); i++ {
+		for j := i + 1; j < len(rows); j++ {
+			if (mayor && rows[j].pct > rows[i].pct) || (!mayor && rows[j].pct < rows[i].pct) {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
+		}
+	}
+	if cuantos > len(rows) {
+		cuantos = len(rows)
+	}
+	rows = rows[:cuantos]
+	alumnos := []map[string]any{}
+	labels := []string{}
+	data := []float64{}
+	for _, rw := range rows {
+		nombre := p.userName(r, rw.user)
+		alumnos = append(alumnos, map[string]any{"alumno": nombre, "puntaje": round1(rw.pct)})
+		labels = append(labels, nombre)
+		data = append(data, round1(rw.pct))
+	}
+	charts := []any{map[string]any{"kind": "bar", "horizontal": true, "title": "Puntaje de simulacro — llave " + codeReal, "labels": labels, "series": []map[string]any{{"name": "Puntaje %", "data": data}}}}
+	links := []any{resultLink(routeTool, sid, codeReal, "Ver resultados de la llave "+codeReal+" (con descarga de PDF)")}
+	ordenTxt := "más alto"
+	if !mayor {
+		ordenTxt = "más bajo"
+	}
+	return map[string]any{"llave": codeReal, "orden": ordenTxt, "alumnos": alumnos, "_links": links}, charts, nil
+}
+
+// toolMejorAlumnoGeneral: el/los alumno(s) con mejor/peor promedio de SIMULACRO
+// entre TODOS los colegios del usuario (o uno si se indica). Combina colegios +
+// attempts + keys + users. Scopeado (solo colegios visibles).
+func toolMejorAlumnoGeneral(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	mayor := strings.ToLower(strings.TrimSpace(argStr(args, "orden"))) != "menor"
+	cuantos := argInt(args, "cuantos", 3)
+	if cuantos < 1 {
+		cuantos = 1
+	}
+	if cuantos > 10 {
+		cuantos = 10
+	}
+	colFilter := strings.ToLower(strings.TrimSpace(argStr(args, "colegio_nombre")))
+	type best struct {
+		pct     float64
+		keyID   string
+		sid     string
+		colegio string
+	}
+	bestByUser := map[string]best{}
+	for _, c := range p.scopedColegios(r) {
+		if colFilter != "" && !strings.Contains(strings.ToLower(c.Nombre), colFilter) {
+			continue
+		}
+		at, err := p.cli.Attempts.ListByColegio(r.Context(), &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: c.ID})
+		if err != nil {
+			continue
+		}
+		for _, a := range at.GetItems() {
+			if a.GetSubmittedAt() == nil || a.GetMaxScore() <= 0 {
+				continue // MaxScore>0 = simulacro (voca/estilos no tienen puntaje)
+			}
+			pct := a.GetScore() / a.GetMaxScore() * 100
+			if v, ok := bestByUser[a.GetUserId()]; !ok || pct > v.pct {
+				bestByUser[a.GetUserId()] = best{pct, a.GetKeyId(), c.ID, c.Nombre}
+			}
+		}
+	}
+	if len(bestByUser) == 0 {
+		return map[string]any{"nota": "no hay exámenes de simulacro rendidos con resultados en tus colegios."}, nil, nil
+	}
+	type row struct {
+		user string
+		b    best
+	}
+	rows := make([]row, 0, len(bestByUser))
+	for u, b := range bestByUser {
+		rows = append(rows, row{u, b})
+	}
+	for i := 0; i < len(rows); i++ {
+		for j := i + 1; j < len(rows); j++ {
+			if (mayor && rows[j].b.pct > rows[i].b.pct) || (!mayor && rows[j].b.pct < rows[i].b.pct) {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
+		}
+	}
+	if cuantos > len(rows) {
+		cuantos = len(rows)
+	}
+	rows = rows[:cuantos]
+	alumnos := []map[string]any{}
+	labels := []string{}
+	data := []float64{}
+	links := []any{}
+	for _, rw := range rows {
+		nombre := p.userName(r, rw.user)
+		alumnos = append(alumnos, map[string]any{"alumno": nombre, "colegio": rw.b.colegio, "puntaje": round1(rw.b.pct)})
+		labels = append(labels, nombre)
+		data = append(data, round1(rw.b.pct))
+		// link: resolver el código de la llave del mejor intento para abrir su resultado
+		if rw.b.keyID != "" {
+			if kr, err := p.cli.Keys.GetKey(r.Context(), &keysgrpcpb.GetKeyRequest{Id: rw.b.keyID}); err == nil && kr.GetKey() != nil {
+				code := kr.GetKey().GetCode()
+				links = append(links, resultLink("simulacro", rw.b.sid, code, "Ver resultado de "+nombre+" ("+rw.b.colegio+")"))
+			}
+		}
+	}
+	charts := []any{map[string]any{"kind": "bar", "horizontal": true, "title": "Mejores puntajes de simulacro (todos los colegios)", "labels": labels, "series": []map[string]any{{"name": "Puntaje %", "data": data}}}}
+	ordenTxt := "mejor"
+	if !mayor {
+		ordenTxt = "peor"
+	}
+	return map[string]any{"orden": ordenTxt, "alumnos": alumnos, "_links": links}, charts, nil
+}
+
+// capLinks dedup + limita los botones de enlace (máx 6).
+func capLinks(links []any) []any {
+	if len(links) == 0 {
+		return links
+	}
+	seen := map[string]bool{}
+	out := make([]any, 0, len(links))
+	for _, l := range links {
+		m, _ := l.(map[string]any)
+		u, _ := m["url"].(string)
+		if u == "" || seen[u] {
+			continue
+		}
+		seen[u] = true
+		out = append(out, l)
+		if len(out) >= 6 {
+			break
+		}
+	}
+	return out
 }
 
 // capCharts / normalizeCharts imponen la POLÍTICA de presentación de gráficos en
@@ -579,6 +835,25 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		toolSchema("resumen_general", "Totales AGREGADOS y ESTABLES de TODOS los colegios que el usuario puede ver: total de intentos rendidos, promedio global de simulacro, y el desglose por colegio (solo los que tienen actividad). Úsala para preguntas de panorama/totales ('cuántos han rendido en total', 'cómo van mis colegios', 'resumen general') en vez de sumar colegio por colegio.", map[string]any{
 			"type": "object", "properties": map[string]any{}, "required": []string{},
 		}),
+		toolSchema("top_alumnos_llave", "Alumnos con el puntaje MÁS ALTO o MÁS BAJO de una llave de SIMULACRO concreta (vocacional/estilos no tienen puntaje). Devuelve nombres + puntaje, un gráfico, y un botón para ver sus resultados (con descarga de PDF). Úsala para 'de la llave X, el/los alumno(s) con mejor/peor resultado'.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"school_name": map[string]any{"type": "string", "description": "nombre del colegio de la llave"},
+				"key_code":    map[string]any{"type": "string", "description": "código de la llave (ej. SI-000012)"},
+				"orden":       map[string]any{"type": "string", "enum": []string{"mayor", "menor"}, "description": "'mayor' = más alto (default), 'menor' = más bajo"},
+				"cuantos":     map[string]any{"type": "integer", "description": "cuántos alumnos (default 3; ej. 1 para solo el mejor)"},
+			},
+			"required": []string{"school_name", "key_code"},
+		}),
+		toolSchema("mejor_alumno_general", "El/los alumno(s) con MEJOR o PEOR promedio de SIMULACRO entre TODOS los colegios que el usuario puede ver (o de un colegio si se indica). Devuelve nombre + colegio + puntaje, un gráfico, y un botón para ver su resultado. Úsala para 'el alumno con mayor/menor promedio de todos los colegios'.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"colegio_nombre": map[string]any{"type": "string", "description": "opcional: limitar a un colegio; vacío = todos los del usuario"},
+				"orden":          map[string]any{"type": "string", "enum": []string{"mayor", "menor"}, "description": "'mayor' = mejor (default), 'menor' = peor"},
+				"cuantos":        map[string]any{"type": "integer", "description": "cuántos alumnos (default 3)"},
+			},
+			"required": []string{},
+		}),
 	}
 	byName := map[string]assistantToolFn{
 		"listar_colegios":        toolListarColegios,
@@ -588,6 +863,8 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		"listar_llaves_colegio":  toolListarLlavesColegio,
 		"estudiantes_de_colegio": toolEstudiantesDeColegio,
 		"resumen_general":        toolResumenGeneral,
+		"top_alumnos_llave":      toolTopAlumnosLlave,
+		"mejor_alumno_general":   toolMejorAlumnoGeneral,
 	}
 	return schemas, byName
 }

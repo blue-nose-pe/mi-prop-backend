@@ -73,6 +73,15 @@ LLM nunca pasa un UUID inventado. `grafico` por defecto = `ninguno`.
 | `dashboard_asesor` | asesor_id? (solo admin) | indicadores del asesor actual | ninguno |
 | `listar_llaves_colegio` | school_name | llaves: código, tipo, aforo, activa, creada, **rendidos_reales**, usos_registro, advertencia si 0 rendidos | ninguno |
 | `estudiantes_de_colegio` | school_name, filtro? | estudiantes (nombre, correo, documento) scopeados | ninguno |
+| `top_alumnos_llave` | school_name, key_code, orden?, cuantos? | alumnos con mejor/peor puntaje de una llave de **simulacro** (voca/estilos no tienen puntaje) | 1 barra + **botón** a la vista de resultado (PDF) |
+| `mejor_alumno_general` | colegio_nombre?, orden?, cuantos? | mejor/peor promedio de simulacro entre TODOS los colegios (o uno) | 1 barra + **botón** por alumno |
+
+**Herramientas compuestas** (combinan varias APIs): `top_alumnos_llave` y
+`mejor_alumno_general` cruzan colegios + attempts + keys + users con la lógica
+pesada en CÓDIGO (no en el prompt) — el modelo solo elige la herramienta y sus
+parámetros simples. El PDF de resultados se genera en el navegador: estas tools NO
+adjuntan el archivo, devuelven un **botón** (campo `_links`) a la vista de resultado
+`/app/school/detail/{tool}/{schoolId}/{keyCode}` donde vive la descarga del PDF.
 
 **Semántica de datos crítica:**
 - `simulacro` = puntaje 0–100 (promediable). `vocacional`/`estilos` = perfiles por
@@ -91,10 +100,14 @@ LLM nunca pasa un UUID inventado. `grafico` por defecto = `ninguno`.
 ```json
 {
   "answer": "<texto en español; markdown básico permitido>",
-  "charts": [ { "kind": "gauge|doughnut|radar|bar", "title": "...", "value|labels|series": ... } ]
+  "charts": [ { "kind": "gauge|doughnut|radar|bar", "title": "...", "value|labels|series": ... } ],
+  "links":  [ { "label": "Ver resultado de X", "url": "/app/school/detail/simulacro/<sid>/<code>" } ]
 }
 ```
-El front convierte cada `chart` a opciones ApexCharts. `charts` puede ir vacío.
+El front convierte cada `chart` a opciones ApexCharts y cada `link` a un botón que
+navega dentro del panel. `charts`/`links` pueden ir vacíos. Las tools emiten los
+enlaces en `_links` dentro de su resultado; el handler los saca (para no exponer
+URLs crudas al modelo) y los devuelve en `links`.
 
 ---
 
