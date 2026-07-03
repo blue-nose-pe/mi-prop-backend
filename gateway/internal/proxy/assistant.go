@@ -134,7 +134,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
 - Para el PROMEDIO o gauge de un COLEGIO usa el resumen del colegio SIN filtrar por una llave; jamás reportes promedio 0 basándote en una sola llave sin exámenes rendidos.
 - Si el usuario es admin/superadmin, NO tiene "operación de asesor" (no es asesor de ningún colegio): para un panorama usa el listado de colegios y el comparativo, no los indicadores de asesor.
-- Sobre las llaves: el contador de accesos puede estar inflado y no refleja los exámenes realmente rendidos; para desempeño usa siempre los exámenes rendidos con resultados. Si te piden una llave que no tiene exámenes rendidos, dilo y ofrece proactivamente una llave del mismo colegio que sí tenga datos, o el resumen del colegio (indicando qué tipos de evaluación sí tienen resultados).
+- Sobre las llaves: el contador de accesos ("usos") puede estar inflado por datos de prueba y NO refleja los exámenes realmente rendidos. NUNCA presentes los "usos" como participación ni como exámenes rendidos. Para participación/desempeño usa SIEMPRE los exámenes rendidos con resultados. Al describir una llave, di sus exámenes rendidos reales; si son 0, dilo explícitamente ("esta llave todavía no tiene exámenes rendidos con resultados") aunque su contador de usos muestre un número. La "participación de un colegio" es el total de exámenes rendidos del colegio (todas sus llaves); una llave individual puede tener 0 rendidos aunque el colegio tenga muchos — no confundas ambas cosas. Si te piden una llave sin exámenes rendidos, dilo y ofrece una llave del mismo colegio que sí tenga datos, o el resumen del colegio.
 
 == CÓMO RESPONDES ==
 - No todo necesita gráfico. Usa gráficos SOLO cuando reflejan datos (promedios, rankings, distribuciones). Para preguntas de "cómo funciona", "dónde encuentro X", "qué significa Y", "para qué sirve este botón", responde en TEXTO claro con la Guía del sistema de abajo, sin gráficos.
@@ -887,16 +887,21 @@ func toolListarLlavesColegio(p *Proxy, r *http.Request, args map[string]any) (an
 	}
 	out := make([]map[string]any, 0, len(resp.GetItems()))
 	for _, k := range resp.GetItems() {
-		out = append(out, map[string]any{
+		rendidos := rendidosByKey[k.GetId()]
+		row := map[string]any{
 			"key_id":          k.GetId(),
 			"codigo":          k.GetCode(),
 			"tipo":            assistantExamTypeName(k.GetExamTypeId()),
 			"usos_registro":   k.GetCurrentUses(), // contador de accesos (NO confiable para desempeño)
-			"rendidos_reales": rendidosByKey[k.GetId()],
+			"rendidos_reales": rendidos,
 			"aforo":           k.GetMaxUses(),
 			"activa":          k.GetActive(),
 			"creada":          optionalTimestamp(k.GetCreatedAt()),
-		})
+		}
+		if rendidos == 0 {
+			row["advertencia"] = "esta llave NO tiene exámenes rendidos con resultados; su contador de usos puede reflejar datos de prueba. No la presentes como participación."
+		}
+		out = append(out, row)
 	}
 	// Orden: más reciente primero (para "la última key creada").
 	for i := 0; i < len(out); i++ {
