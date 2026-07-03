@@ -160,6 +160,8 @@ func (p *Proxy) getAsesoresKeysReport(w http.ResponseWriter, r *http.Request) {
 					"alumnos":           len(sa.alumnos[k.GetId()]),
 					"rendidos_por_anio": sa.rendidosAnio[k.GetId()],
 					"alumnos_por_anio":  alumnosAnio,
+					"valid_from":        optionalTimestamp(k.GetValidFrom()),
+					"valid_to":          optionalTimestamp(k.GetValidTo()),
 					"creada_at":         optionalTimestamp(k.GetCreatedAt()),
 				})
 			}
