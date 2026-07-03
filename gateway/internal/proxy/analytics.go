@@ -16,6 +16,8 @@
 package proxy
 
 import (
+	"context"
+
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	"net/http"
@@ -67,11 +69,21 @@ func (p *Proxy) getAsesoresKeysReport(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "el reporte de asesores es solo para administración"})
 		return
 	}
-	ctx := r.Context()
-	asesores, err := p.cli.PermGroups.ListGroupUsers(ctx, &usersgrpcpb.ListGroupUsersRequest{GroupId: 3, Limit: 1000, ActiveOnly: true})
+	out, err := p.collectAsesoresKeys(r.Context())
 	if err != nil {
 		writeGRPCError(w, err)
 		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"asesores": out})
+}
+
+// collectAsesoresKeys compone asesor → colegios → llaves con rendidos/alumnos
+// (total y por año) — la MISMA fuente para el Reporte de Asesores del panel y
+// para la herramienta del Asistente IA (así el bot nunca contradice al panel).
+func (p *Proxy) collectAsesoresKeys(ctx context.Context) ([]map[string]any, error) {
+	asesores, err := p.cli.PermGroups.ListGroupUsers(ctx, &usersgrpcpb.ListGroupUsersRequest{GroupId: 3, Limit: 1000, ActiveOnly: true})
+	if err != nil {
+		return nil, err
 	}
 	// Cache por colegio: rendidos y alumnos DISTINTOS por llave (un colegio se
 	// procesa una sola vez aunque lo compartan asesores).
@@ -174,7 +186,7 @@ func (p *Proxy) getAsesoresKeysReport(w http.ResponseWriter, r *http.Request) {
 			"keys":           keys,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"asesores": out})
+	return out, nil
 }
 
 // ---------- Global dashboard (admin) ----------

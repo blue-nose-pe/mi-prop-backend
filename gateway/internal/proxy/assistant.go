@@ -142,6 +142,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
 - SATISFACCIÓN: para "¿qué tan satisfechos están los alumnos?" usa la herramienta de satisfacción de encuestas (promedio 1-5 por encuesta + total de respuestas). Las métricas son GLOBALES por encuesta, NO por colegio: si preguntan por un colegio concreto, da el promedio global y aclara que no se desglosa por colegio.
+- REPORTE DE ASESORES POR LLAVE: si la pregunta de asesores menciona LLAVES, AÑO, tipo de evaluación, aforo/ocupación o historial ("asesores con más alumnos en 2025", "llaves de María Torres", "aforo vigente en 2027"), usa reporte_asesores_llaves (misma fuente que la pantalla del panel; sus números SIEMPRE coinciden con ella). Las llaves vencidas se llaman "Caducas". Para el HISTORIAL de un asesor: reporte_asesores_llaves con asesor='<nombre>' y solo_activas=false (así entran las Caducas). Si el usuario es ADMIN, JAMÁS le respondas "solo puedo mostrar tu propia operación" — el admin ve a todos los asesores.
 - RANKING DE ASESORES ("qué asesor tiene más impactos/alumnos/colegios/visitas"): usa el comparativo de asesores — el ADMINISTRADOR SÍ puede verlo (no lo rechaces si el usuario es admin); un asesor recibirá el aviso de que solo ve su propia operación. "Impactos" = alumnos impactados (alumnos distintos que rindieron con llaves del asesor).
 - PANEL EJECUTIVO / varios gráficos pedidos EXPLÍCITAMENTE: compón CADA gráfico solicitado con la herramienta de gráfico personalizado (hasta 4) — la regla "una historia = un gráfico" aplica cuando piden UNA cosa, no cuando piden un panel. La participación por tipo GLOBAL sale de por_tipo_total del resumen general.
 - EVOLUCIÓN POR TIPO de UN colegio entre años: llama el resumen de ESE colegio con period por cada año (por_tipo trae los intentos de los 3 tipos) y compón líneas (una por tipo). El comparativo es para comparar COLEGIOS, no tipos.
@@ -331,6 +332,23 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 			// intentos (coherente con el texto). Independiente de tipoForzado.
 			if participacionForzada && tc.Function.Name == "comparativo_colegios" {
 				args["metric"] = "participacion"
+			}
+			// REDIRECT duro: comparativo_asesores no distingue tipo ni año; si la
+			// pregunta trae tipo de evaluación o UN año, la fuente correcta es el
+			// reporte por llave (mismos números que la pantalla). Sin esto el bot
+			// etiquetaba intentos de TODOS los tipos como "simulacro" (145/111...).
+			if tc.Function.Name == "comparativo_asesores" && (tipoForzado != "" || len(aniosForzados) == 1) {
+				tc.Function.Name = "reporte_asesores_llaves"
+				delete(args, "metric")
+			}
+			// Reporte de asesores por llave: tipo/año de la pregunta se fuerzan.
+			if tc.Function.Name == "reporte_asesores_llaves" {
+				if tipoForzado != "" && strings.TrimSpace(argStr(args, "tipo")) == "" {
+					args["tipo"] = tipoForzado
+				}
+				if len(aniosForzados) == 1 && strings.TrimSpace(argStr(args, "anio")) == "" {
+					args["anio"] = aniosForzados[0]
+				}
 			}
 			// Años pedidos explícitamente → los comparativos filtran por ese año
 			// (si el modelo no lo pasó ya). 2+ años → periods (columnas agrupadas
@@ -1071,6 +1089,17 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
+		toolSchema("reporte_asesores_llaves", "El REPORTE DE ASESORES POR LLAVE (misma fuente y filtros que la pantalla 'Reporte de asesores'): por asesor, sus llaves (de SUS colegios), alumnos que rindieron, aforo y ocupación. SOLO administración. Filtros: tipo (simulacro|vocacional|habitos), anio ('YYYY': cuenta alumnos de ese año y solo llaves que jugaron ese año), solo_activas (default true: solo llaves vigentes; false = historial completo incluidas Caducas). Con 'asesor' devuelve el detalle/historial de las llaves de ESE asesor. Úsala para preguntas de asesores con llaves/año/tipo ('asesores con más alumnos en 2025', 'historial de llaves de María Torres', 'qué asesores tienen llaves vigentes en 2027 y cuánto aforo').", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tipo":         map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "habitos"}, "description": "opcional: solo llaves de este tipo"},
+				"anio":         map[string]any{"type": "string", "description": "opcional, año 'YYYY': alumnos de ese año y solo llaves que jugaron ese año"},
+				"solo_activas": map[string]any{"type": "boolean", "description": "default true (solo vigentes); false = TODAS las llaves (historial, incluye Caducas)"},
+				"asesor":       map[string]any{"type": "string", "description": "opcional: nombre del asesor para ver el detalle de SUS llaves"},
+				"top":          map[string]any{"type": "number", "description": "opcional: solo los N primeros del ranking"},
+			},
+			"required": []string{},
+		}),
 		toolSchema("satisfaccion_encuestas", "Métricas de las ENCUESTAS DE SATISFACCIÓN (las que el alumno responde al terminar un examen): promedio 1-5 por encuesta, total de respuestas y promedio global. Adjunta un gráfico de barras. IMPORTANTE: las métricas son por ENCUESTA y GLOBALES (todas las respuestas), NO se desglosan por colegio — si preguntan por la satisfacción de UN colegio, da estas cifras y aclara que el promedio es global (igual que la tarjeta del panel).", map[string]any{
 			"type":       "object",
 			"properties": map[string]any{},
@@ -1129,6 +1158,7 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		"comparativo_inclinacion": toolComparativoInclinacion,
 		"comparativo_asesores":    toolComparativoAsesores,
 		"satisfaccion_encuestas":  toolSatisfaccionEncuestas,
+		"reporte_asesores_llaves": toolReporteAsesoresLlaves,
 		"grafico_personalizado":   toolGraficoPersonalizado,
 	}
 	return schemas, byName
@@ -2035,7 +2065,26 @@ func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, [
 		}, nil, nil
 	}
 	aid := userIDFromContext(r)
-	if req := argStr(args, "asesor_id"); req != "" && admin {
+	if req := strings.TrimSpace(argStr(args, "asesor_id")); req != "" && admin {
+		if !looksLikeUUID(req) {
+			// El modelo suele pasar el NOMBRE del asesor; lo resolvemos contra el
+			// grupo de asesores (bug: el admin pedía "María Torres" y el RPC
+			// recibía basura → el bot inventaba un rechazo).
+			resolved := ""
+			if gu, gerr := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{GroupId: 3, Limit: 1000, ActiveOnly: true}); gerr == nil {
+				nl := normArea(req)
+				for _, u := range gu.GetItems() {
+					if strings.Contains(normArea(u.GetFirstName()+" "+u.GetLastName()), nl) {
+						resolved = u.GetId()
+						break
+					}
+				}
+			}
+			if resolved == "" {
+				return map[string]any{"error": "no encontré a ese asesor por nombre"}, nil, nil
+			}
+			req = resolved
+		}
 		aid = req
 	}
 	resp, err := p.cli.Analytics.GetAsesorDashboard(r.Context(), &analyticsgrpcpb.GetAsesorDashboardRequest{AsesorId: aid})
@@ -2148,6 +2197,215 @@ func toolSatisfaccionEncuestas(p *Proxy, r *http.Request, _ map[string]any) (any
 		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": "Satisfacción promedio por encuesta (escala 1-5)", "labels": labels, "series": []map[string]any{{"name": "Promedio (1-5)", "data": data}}})
 	}
 	return res, charts, nil
+}
+
+// keyJuegaEnAnio replica la regla del Reporte de Asesores: una llave "juega"
+// en un año si tuvo exámenes ese año O su vigencia lo toca (unión: el seed
+// tiene exámenes 2025 en llaves con vigencia 2026).
+func keyJuegaEnAnio(k map[string]any, anio string) bool {
+	if anio == "" {
+		return true
+	}
+	if ra, ok := k["rendidos_por_anio"].(map[string]int); ok && ra[anio] > 0 {
+		return true
+	}
+	yearOf := func(v any) int {
+		s := asString(v)
+		if len(s) >= 4 {
+			if y, err := time.Parse("2006", s[:4]); err == nil {
+				return y.Year()
+			}
+		}
+		return 0
+	}
+	y := yearOf(anio)
+	fromY := yearOf(k["valid_from"])
+	if fromY == 0 {
+		fromY = yearOf(k["creada_at"])
+	}
+	toY := yearOf(k["valid_to"])
+	if toY == 0 {
+		toY = 9999
+	}
+	if fromY == 0 {
+		return true // sin fechas conocidas: no la ocultamos
+	}
+	return fromY <= y && y <= toY
+}
+
+// toolReporteAsesoresLlaves: el Reporte de Asesores POR LLAVE con los MISMOS
+// filtros del panel (tipo, año, solo activas) y la MISMA fuente
+// (collectAsesoresKeys) — el bot nunca contradice a la pantalla. SOLO
+// administración. Con `asesor` devuelve su historial de llaves; sin él, el
+// ranking agregado. Gráfico de barras determinístico.
+func toolReporteAsesoresLlaves(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		return map[string]any{"error": "el reporte de asesores es solo para administración; como asesor puedes ver tus propios indicadores y llaves de tus colegios"}, nil, nil
+	}
+	tipo := strings.ToLower(strings.TrimSpace(argStr(args, "tipo")))
+	anio := strings.TrimSpace(argStr(args, "anio"))
+	soloActivas := true
+	if v, ok := args["solo_activas"].(bool); ok {
+		soloActivas = v
+	}
+	asesorFiltro := normArea(argStr(args, "asesor"))
+	data, err := p.collectAsesoresKeys(r.Context())
+	if err != nil {
+		return map[string]any{"error": "no se pudo obtener el reporte de asesores"}, nil, nil
+	}
+	filtros := "llaves " + map[bool]string{true: "ACTIVAS", false: "todas (historial)"}[soloActivas]
+	if tipo != "" {
+		filtros += " · " + tipo
+	}
+	if anio != "" {
+		filtros += " · año " + anio
+	}
+	alumnosDe := func(k map[string]any) int {
+		if anio == "" {
+			if v, ok := k["alumnos"].(int); ok {
+				return v
+			}
+			return 0
+		}
+		if m, ok := k["alumnos_por_anio"].(map[string]int); ok {
+			return m[anio]
+		}
+		return 0
+	}
+	rendidosDe := func(k map[string]any) int {
+		if anio == "" {
+			if v, ok := k["rendidos"].(int); ok {
+				return v
+			}
+			return 0
+		}
+		if m, ok := k["rendidos_por_anio"].(map[string]int); ok {
+			return m[anio]
+		}
+		return 0
+	}
+	filtrarKeys := func(keys []map[string]any) []map[string]any {
+		out := []map[string]any{}
+		for _, k := range keys {
+			if tipo != "" && asString(k["tipo"]) != tipo {
+				continue
+			}
+			if soloActivas {
+				if v, ok := k["vigente"].(bool); !ok || !v {
+					continue
+				}
+			}
+			if !keyJuegaEnAnio(k, anio) {
+				continue
+			}
+			out = append(out, k)
+		}
+		return out
+	}
+	estadoDe := func(k map[string]any) string {
+		if v, _ := k["vigente"].(bool); v {
+			return "Activa"
+		}
+		if v, _ := k["activa"].(bool); v {
+			return "Caduca"
+		}
+		return "Inactiva"
+	}
+
+	// ---- Detalle de UN asesor (historial de llaves) ----
+	if asesorFiltro != "" {
+		for _, a := range data {
+			nombre := asString(a["asesor"])
+			if !strings.Contains(normArea(nombre), asesorFiltro) {
+				continue
+			}
+			keys := filtrarKeys(toMapSlice(a["keys"]))
+			if len(keys) == 0 {
+				return map[string]any{"nota": nombre + " no tiene llaves con estos filtros (" + filtros + ")."}, nil, nil
+			}
+			items := []map[string]any{}
+			labels := []string{}
+			vals := []float64{}
+			for _, k := range keys {
+				al := alumnosDe(k)
+				items = append(items, map[string]any{
+					"codigo": asString(k["code"]), "colegio": asString(k["colegio"]),
+					"tipo": asString(k["tipo"]), "estado": estadoDe(k),
+					"aforo": k["aforo"], "examenes_rendidos": rendidosDe(k), "alumnos": al,
+				})
+				labels = append(labels, asString(k["code"]))
+				vals = append(vals, float64(al))
+			}
+			charts := []any{map[string]any{"kind": "bar", "horizontal": true, "title": "Alumnos por llave — " + nombre + " (" + filtros + ")", "labels": labels, "series": []map[string]any{{"name": "Alumnos", "data": vals}}}}
+			return map[string]any{"asesor": nombre, "filtros": filtros, "llaves": items}, charts, nil
+		}
+		return map[string]any{"error": "no encontré a ese asesor"}, nil, nil
+	}
+
+	// ---- Ranking agregado (como la tabla del panel) ----
+	type row struct {
+		nombre          string
+		llaves, alumnos int
+		aforo           float64
+	}
+	rows := []row{}
+	for _, a := range data {
+		keys := filtrarKeys(toMapSlice(a["keys"]))
+		if len(keys) == 0 {
+			continue // igual que el panel: sin llaves tras filtros, no aparece
+		}
+		rw := row{nombre: asString(a["asesor"]), llaves: len(keys)}
+		for _, k := range keys {
+			rw.alumnos += alumnosDe(k)
+			switch v := k["aforo"].(type) {
+			case int32:
+				rw.aforo += float64(v)
+			case int:
+				rw.aforo += float64(v)
+			}
+		}
+		rows = append(rows, rw)
+	}
+	if len(rows) == 0 {
+		return map[string]any{"nota": "ningún asesor tiene llaves con estos filtros (" + filtros + ")."}, nil, nil
+	}
+	for i := 0; i < len(rows); i++ {
+		for j := i + 1; j < len(rows); j++ {
+			if rows[j].alumnos > rows[i].alumnos {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
+		}
+	}
+	topN := argInt(args, "top", 0)
+	if topN > 0 && topN < len(rows) {
+		rows = rows[:topN]
+	}
+	items := []map[string]any{}
+	labels := []string{}
+	vals := []float64{}
+	for _, rw := range rows {
+		it := map[string]any{"asesor": rw.nombre, "llaves": rw.llaves, "alumnos_que_rindieron": rw.alumnos, "aforo": rw.aforo}
+		if rw.aforo > 0 {
+			it["ocupacion_pct"] = math.Round(math.Min(100, float64(rw.alumnos)/rw.aforo*100))
+		}
+		items = append(items, it)
+		labels = append(labels, rw.nombre)
+		vals = append(vals, float64(rw.alumnos))
+	}
+	charts := []any{map[string]any{"kind": "bar", "horizontal": true, "title": "Alumnos que rindieron por asesor (" + filtros + ")", "labels": labels, "series": []map[string]any{{"name": "Alumnos", "data": vals}}}}
+	return map[string]any{
+		"filtros": filtros,
+		"items":   items,
+		"nota":    "misma fuente y filtros que el Reporte de Asesores del panel: solo llaves de los colegios del asesor que cumplen los filtros; 'ocupacion_pct' = alumnos ÷ aforo de esas llaves.",
+	}, charts, nil
+}
+
+// toMapSlice convierte []map[string]any guardado como any.
+func toMapSlice(v any) []map[string]any {
+	if s, ok := v.([]map[string]any); ok {
+		return s
+	}
+	return nil
 }
 
 // isQAUser: cuentas de PRUEBA (e2e/qa/permhunt/demo/verif) que no deben salir
