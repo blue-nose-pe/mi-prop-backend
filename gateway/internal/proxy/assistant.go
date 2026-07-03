@@ -27,6 +27,8 @@ import (
 	analyticsgrpcpb "analytics_service/proto/gen"
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
+	satisfactiongrpcpb "satisfaction_service/proto/gen"
+	satisfactioncommonpb "satisfaction_service/proto/gen/common"
 	usersgrpcpb "users_service/proto/gen"
 	userscommonpb "users_service/proto/gen/common"
 )
@@ -139,11 +141,13 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - ENLACES: NUNCA escribas enlaces markdown [texto](url) ni "(#)". Los botones de "ver resultado / PDF" se adjuntan AUTOMÁTICAMENTE a tu respuesta; solo di "usa el botón de abajo".
 - MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
+- SATISFACCIÓN: para "¿qué tan satisfechos están los alumnos?" usa la herramienta de satisfacción de encuestas (promedio 1-5 por encuesta + total de respuestas). Las métricas son GLOBALES por encuesta, NO por colegio: si preguntan por un colegio concreto, da el promedio global y aclara que no se desglosa por colegio.
 - RANKING DE ASESORES ("qué asesor tiene más impactos/alumnos/colegios/visitas"): usa el comparativo de asesores — el ADMINISTRADOR SÍ puede verlo (no lo rechaces si el usuario es admin); un asesor recibirá el aviso de que solo ve su propia operación. "Impactos" = alumnos impactados (alumnos distintos que rindieron con llaves del asesor).
 - PANEL EJECUTIVO / varios gráficos pedidos EXPLÍCITAMENTE: compón CADA gráfico solicitado con la herramienta de gráfico personalizado (hasta 4) — la regla "una historia = un gráfico" aplica cuando piden UNA cosa, no cuando piden un panel. La participación por tipo GLOBAL sale de por_tipo_total del resumen general.
 - EVOLUCIÓN POR TIPO de UN colegio entre años: llama el resumen de ESE colegio con period por cada año (por_tipo trae los intentos de los 3 tipos) y compón líneas (una por tipo). El comparativo es para comparar COLEGIOS, no tipos.
 - COMPARAR LLAVES de un colegio en un gráfico: llama el resumen del colegio UNA VEZ POR LLAVE con key_code (código, ej. 'VO-ZKYFC7'), y luego compón UN gráfico personalizado con esos datos (voca/estilos → radar con una serie por llave; simulacro → columnas). Omite (y menciona) las llaves con 0 rendidos. NUNCA digas "no hay resultados" si el listado de llaves mostró rendidos > 0 — si un resumen por llave te salió vacío, revisa que pasaste el CÓDIGO en key_code.
 - TIPO DE GRÁFICO EXPLÍCITO: si el usuario pide un tipo concreto (polar, treemap, scatter, embudo, radial...), consigue los datos con grafico='ninguno' y compón el gráfico personalizado en ESE tipo — no adjuntes los gráficos por defecto (dona/radar) diciendo que son "polar".
+- "EN UN SOLO GRÁFICO/RADAR" comparando varias entidades: OBLIGATORIO terminar llamando el gráfico personalizado con TODAS las entidades como series (ej. radar con una serie por colegio). Si pediste los datos con grafico='ninguno', NO respondas sin haber compuesto el gráfico.
 - APILADO POR TIPO DE EVALUACIÓN (error a evitar): el "total de intentos" de un colegio (resumen general / total_intentos) SUMA los tres tipos — NO es la serie de "Simulacro". Para apilar por tipo, saca los intentos POR TIPO del resumen de CADA colegio (por_tipo.simulacro/vocacional/habitos.intentos) y usa esos tres como series. Verifica que la suma de las series por colegio = su total.
 - CATÁLOGO DE GRÁFICOS (elige el más demostrativo, como un analista senior): line/area = evolución en el tiempo; column/bar = comparación entre categorías; stacked = composición por categoría; pie/donut/treemap = distribución de un todo; radar = perfil multidimensión; scatter = relación entre dos variables; heatmap = matriz de intensidad (ej. colegios × áreas); gauge = un solo porcentaje; funnel = etapas/embudo. Si el usuario pide MEZCLAR temas en un gráfico (colegios con llaves, alumnos concretos, asesores, años), primero consigue TODOS los datos con las herramientas y luego compón UN gráfico a medida con la herramienta de gráfico personalizado — sus valores deben salir VERBATIM de los resultados de esta conversación, JAMÁS inventados. Una historia = un gráfico (no fragmentes en 4 gráficos lo que cabe en uno bien elegido).
 - Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
@@ -258,6 +262,7 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 	// rindió más, forzamos la métrica de participación en el comparativo para
 	// que el gráfico ordene por intentos igual que el texto.
 	participacionForzada := wantsParticipacion(lastUser)
+	unSoloGrafico := wantsSingleChart(lastUser)
 	// Años pedidos en la pregunta. Determinístico: 1 año → period (las cifras
 	// SON de ese año); 2+ años ("2025 vs 2026") → periods, y el comparativo
 	// construye ÉL MISMO las columnas agrupadas por año (el modelo no sabía
@@ -314,6 +319,13 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 						args["grafico"] = graficoDeTipo(tipoForzado)
 					}
 				}
+			}
+			// "en UN SOLO gráfico/radar" → los gráficos automáticos por colegio
+			// sobran (y el anti-spam recortaba entidades: el radar de 3 colegios
+			// salía como 2 donas + 2 radares): se apagan y el modelo COMPONE la
+			// combinación con grafico_personalizado.
+			if unSoloGrafico && tc.Function.Name == "dashboard_colegio" {
+				args["grafico"] = "ninguno"
 			}
 			// Participación pedida explícitamente → el comparativo rankea por
 			// intentos (coherente con el texto). Independiente de tipoForzado.
@@ -859,6 +871,19 @@ func topFromText(t string) int {
 	return 0
 }
 
+// wantsSingleChart detecta "en un solo gráfico/radar/heatmap..." — el usuario
+// quiere UNA composición combinada, así que los gráficos automáticos por
+// colegio (dona+radar de cada uno) están de más y además el anti-spam
+// recortaba entidades (bug: radar de 3 colegios salía como 2 donas + 2 radares).
+func wantsSingleChart(t string) bool {
+	for _, kw := range []string{"un solo", "un unico", "un único", "un mismo grafico", "un mismo gráfico", "una sola grafica", "una sola gráfica"} {
+		if strings.Contains(t, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // wantsParticipacion detecta si la pregunta es de PARTICIPACIÓN (cuántos
 // alumnos rindieron / quién rindió más) en vez de desempeño (promedio). Sirve
 // para que el comparativo ordene por intentos y el gráfico coincida con el texto.
@@ -946,16 +971,18 @@ func (p *Proxy) resolveColegioID(r *http.Request, args map[string]any) string {
 			}
 		}
 	}
-	// 2) match por nombre (exacto, luego "contiene").
+	// 2) match por nombre (exacto, luego "contiene"), SIN acentos: el cliente
+	// escribe "Sagrado Corazón" y la BD guarda "Sagrado Corazon" — sin
+	// normalizar, el bot respondía "no encontré ese colegio" (bug 2026-07-03).
 	if name != "" {
-		nl := strings.ToLower(name)
+		nl := normArea(name)
 		for _, s := range list {
-			if strings.ToLower(s.nm) == nl {
+			if normArea(s.nm) == nl {
 				return s.id
 			}
 		}
 		for _, s := range list {
-			snl := strings.ToLower(s.nm)
+			snl := normArea(s.nm)
 			if strings.Contains(snl, nl) || strings.Contains(nl, snl) {
 				return s.id
 			}
@@ -1044,6 +1071,11 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
+		toolSchema("satisfaccion_encuestas", "Métricas de las ENCUESTAS DE SATISFACCIÓN (las que el alumno responde al terminar un examen): promedio 1-5 por encuesta, total de respuestas y promedio global. Adjunta un gráfico de barras. IMPORTANTE: las métricas son por ENCUESTA y GLOBALES (todas las respuestas), NO se desglosan por colegio — si preguntan por la satisfacción de UN colegio, da estas cifras y aclara que el promedio es global (igual que la tarjeta del panel).", map[string]any{
+			"type":       "object",
+			"properties": map[string]any{},
+			"required":   []string{},
+		}),
 		toolSchema("listar_llaves_colegio", "Lista las llaves (keys) de un colegio, ordenadas de la MÁS RECIENTE a la más antigua (la primera es 'la última key creada'). Cada llave trae: key_id, codigo, tipo, aforo, activa, creada (fecha), usos_registro (contador de accesos, NO confiable) y rendidos_reales (exámenes realmente rendidos con resultados). Usa esta herramienta para elegir una key con datos: si necesitas graficar, prefiere una con rendidos_reales > 0. Pasa el NOMBRE del colegio en school_name; no inventes IDs.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -1096,6 +1128,7 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		"mejor_alumno_general":    toolMejorAlumnoGeneral,
 		"comparativo_inclinacion": toolComparativoInclinacion,
 		"comparativo_asesores":    toolComparativoAsesores,
+		"satisfaccion_encuestas":  toolSatisfaccionEncuestas,
 		"grafico_personalizado":   toolGraficoPersonalizado,
 	}
 	return schemas, byName
@@ -2029,6 +2062,92 @@ func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, [
 		"visitas_agendadas":   resp.GetScheduledVisits(),
 		"pruebas_pendientes":  resp.GetPendingTests(),
 	}, nil, nil
+}
+
+// toolSatisfaccionEncuestas: métricas de las encuestas de satisfacción (las que
+// el alumno responde al terminar un examen). MISMA fuente que la tarjeta
+// "Satisfacción promedio" del panel: encuestas activas → GetMetrics por encuesta
+// → promedio ponderado de las preguntas de ESCALA (1-5) + total de respuestas.
+// OJO: las métricas son POR ENCUESTA y GLOBALES (todas las respuestas), no por
+// colegio — la tarjeta del panel muestra lo mismo en la ficha de cada colegio.
+func toolSatisfaccionEncuestas(p *Proxy, r *http.Request, _ map[string]any) (any, []any, error) {
+	sresp, err := p.cli.Surveys.Search(r.Context(), &satisfactioncommonpb.SearchRequest{
+		FilterGroups: []*satisfactioncommonpb.FilterGroup{{
+			Filters: []*satisfactioncommonpb.Filter{{PropertyName: "active", Operator: satisfactioncommonpb.FilterOperator_EQ, Values: []string{"true"}}},
+		}},
+		Properties: []string{"id", "code", "title"},
+		Limit:      50,
+	})
+	if err != nil {
+		return map[string]any{"error": "no se pudieron obtener las encuestas de satisfacción"}, nil, nil
+	}
+	type srow struct {
+		titulo     string
+		respuestas int32
+		avg        float64
+		hasAvg     bool
+	}
+	rows := []srow{}
+	var sumW, cntW float64
+	var totalResp int32
+	for _, res := range sresp.GetResults() {
+		title := res.GetId()
+		if props := res.GetProperties(); props != nil {
+			if v, ok := props.AsMap()["title"].(string); ok && strings.TrimSpace(v) != "" {
+				title = v
+			}
+		}
+		m, merr := p.cli.Responses.GetMetrics(r.Context(), &satisfactiongrpcpb.GetMetricsRequest{SurveyId: res.GetId()})
+		if merr != nil {
+			continue
+		}
+		var qSum, qCnt float64
+		for _, q := range m.GetPerQuestion() {
+			if q.GetHasAverage() && q.GetKind() == "scale" && q.GetCount() > 0 {
+				qSum += q.GetAverage() * float64(q.GetCount())
+				qCnt += float64(q.GetCount())
+			}
+		}
+		row := srow{titulo: title, respuestas: m.GetTotalResponses()}
+		if qCnt > 0 {
+			row.avg = math.Round(qSum/qCnt*10) / 10
+			row.hasAvg = true
+			sumW += qSum
+			cntW += qCnt
+		}
+		totalResp += m.GetTotalResponses()
+		if m.GetTotalResponses() > 0 {
+			rows = append(rows, row)
+		}
+	}
+	if len(rows) == 0 {
+		return map[string]any{"nota": "todavía no hay respuestas de encuestas de satisfacción."}, nil, nil
+	}
+	items := make([]map[string]any, 0, len(rows))
+	labels := make([]string, 0, len(rows))
+	data := make([]float64, 0, len(rows))
+	for _, rw := range rows {
+		it := map[string]any{"encuesta": rw.titulo, "respuestas": rw.respuestas}
+		if rw.hasAvg {
+			it["promedio_1_a_5"] = rw.avg
+			labels = append(labels, rw.titulo)
+			data = append(data, rw.avg)
+		}
+		items = append(items, it)
+	}
+	res := map[string]any{
+		"encuestas":         items,
+		"total_respuestas":  totalResp,
+		"nota":              "métricas POR ENCUESTA y GLOBALES (todas las respuestas de todos los colegios) — la satisfacción NO se desglosa por colegio; si preguntan por un colegio concreto, acláralo (la tarjeta del panel muestra este mismo promedio global).",
+	}
+	if cntW > 0 {
+		res["promedio_global_1_a_5"] = math.Round(sumW/cntW*10) / 10
+	}
+	var charts []any
+	if len(labels) > 0 {
+		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": "Satisfacción promedio por encuesta (escala 1-5)", "labels": labels, "series": []map[string]any{{"name": "Promedio (1-5)", "data": data}}})
+	}
+	return res, charts, nil
 }
 
 // isQAUser: cuentas de PRUEBA (e2e/qa/permhunt/demo/verif) que no deben salir
