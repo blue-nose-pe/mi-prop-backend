@@ -131,7 +131,8 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 
 == DATOS DEL DOMINIO ==
 - Tipos de evaluación: "simulacro" tiene puntaje 0–100 (promediable). "vocacional" (áreas de interés: Sensibilidad Social, Cálculo, Artes, Verbal, Organización, etc.) y "estilos de aprendizaje" son PERFILES por área, NO promediables (se leen como % de inclinación). Las áreas vocacionales y los estilos de aprendizaje son cosas DISTINTAS: nunca reportes un área vocacional como si fuera un estilo de aprendizaje ni al revés.
-- COHERENCIA DE TIPO DE EVALUACIÓN: si la pregunta menciona "simulacro", trabaja SOLO con datos de simulacro (exam_type_code='simulacro'); si menciona "vocacional" o "estilos/hábitos", usa ese tipo. NUNCA muestres estilos o vocacional cuando preguntan por simulacro (ni al revés). Para "participación en simulacro por colegio" usa el comparativo de simulacro; para participación total usa el resumen general.
+- COHERENCIA DE TIPO DE EVALUACIÓN: si la pregunta menciona "simulacro", trabaja SOLO con datos de simulacro (exam_type_code='simulacro'); si menciona "vocacional" o "estilos/hábitos", usa ese tipo. NUNCA muestres estilos o vocacional cuando preguntan por simulacro (ni al revés).
+- PARTICIPACIÓN vs PROMEDIO (crítico para que texto y gráfico coincidan): si preguntan "cuál colegio tuvo MÁS PARTICIPACIÓN / más alumnos rindieron en {tipo}", usa el comparativo de ESE tipo con métrica de participación (ordena por intentos). NO uses el resumen general para esto (suma todos los tipos y el gráfico contradiría tu texto). El resumen general es solo para totales agregados de TODOS los tipos ("panorama", "cuántos han rendido en total"). El colegio que nombres como #1 DEBE ser el primero del gráfico.
 - Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
 - Para el PROMEDIO o gauge de un COLEGIO usa el resumen del colegio SIN filtrar por una llave; jamás reportes promedio 0 basándote en una sola llave sin exámenes rendidos.
 - Si el usuario es admin/superadmin, NO tiene "operación de asesor" (no es asesor de ningún colegio): para un panorama usa el listado de colegios y el comparativo, no los indicadores de asesor.
@@ -239,6 +240,11 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 	// en las herramientas, evitando que el modelo cruce tipos (ej. mostrar estilos
 	// cuando piden simulacro).
 	tipoForzado := examTypeFromText(lastUser)
+	// Intención de PARTICIPACIÓN (cuántos alumnos rindieron) vs desempeño
+	// (promedio). Determinístico: si la pregunta habla de participación/quién
+	// rindió más, forzamos la métrica de participación en el comparativo para
+	// que el gráfico ordene por intentos igual que el texto.
+	participacionForzada := wantsParticipacion(lastUser)
 
 	toolSchemas, toolByName := assistantTools()
 	var charts []any
@@ -289,6 +295,11 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 						args["grafico"] = graficoDeTipo(tipoForzado)
 					}
 				}
+			}
+			// Participación pedida explícitamente → el comparativo rankea por
+			// intentos (coherente con el texto). Independiente de tipoForzado.
+			if participacionForzada && tc.Function.Name == "comparativo_colegios" {
+				args["metric"] = "participacion"
 			}
 			var resultJSON string
 			if tool, ok := toolByName[tc.Function.Name]; ok {
@@ -683,6 +694,22 @@ func examTypeFromText(t string) string {
 	return ""
 }
 
+// wantsParticipacion detecta si la pregunta es de PARTICIPACIÓN (cuántos
+// alumnos rindieron / quién rindió más) en vez de desempeño (promedio). Sirve
+// para que el comparativo ordene por intentos y el gráfico coincida con el texto.
+func wantsParticipacion(t string) bool {
+	for _, kw := range []string{
+		"participaci", "participaron", "participo", "participó",
+		"rindieron", "rindio", "rindió", "rinden", "han rendido", "mas rendido", "más rendido",
+		"mas alumnos", "más alumnos", "cuantos alumnos", "cuántos alumnos",
+	} {
+		if strings.Contains(t, kw) {
+			return true
+		}
+	}
+	return false
+}
+
 // graficoDeTipo mapea el exam_type_code al valor del parámetro 'grafico' de
 // dashboard_colegio.
 func graficoDeTipo(tipo string) string {
@@ -801,10 +828,11 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
-		toolSchema("comparativo_colegios", "Ranking/comparación de los colegios del usuario en una evaluación. Adjunta un gráfico de barras. exam_type_code: 'simulacro' (por promedio) | 'vocacional' | 'habitos' (por participación).", map[string]any{
+		toolSchema("comparativo_colegios", "Ranking/comparación de los colegios del usuario en UNA evaluación, con un gráfico de barras. Úsala para 'cuál colegio va mejor / tiene más participación en {tipo}'. metric='promedio' ordena por desempeño (solo simulacro); metric='participacion' ordena por cuántos alumnos rindieron (sirve para cualquier tipo y hace que texto y gráfico cuenten lo MISMO). Para 'participación en {tipo}' usa esta herramienta con metric='participacion', NO el resumen general (que suma todos los tipos).", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
 				"exam_type_code": map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "habitos"}, "description": "tipo de evaluación"},
+				"metric":         map[string]any{"type": "string", "enum": []string{"promedio", "participacion"}, "description": "'promedio' = desempeño (solo simulacro); 'participacion' = cuántos alumnos rindieron. Si el usuario pregunta por participación/quién rindió más, usa 'participacion'."},
 			},
 			"required": []string{"exam_type_code"},
 		}),
@@ -1153,8 +1181,15 @@ func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (an
 		}
 		rows = append(rows, row{it.GetSchoolName(), it.GetAvgScore(), it.GetAttempts()})
 	}
-	scored := exam == "simulacro"
-	// Orden: simulacro por promedio; voca/estilos por participación.
+	// Métrica: simulacro se ordena por PROMEDIO por defecto; voca/estilos no
+	// tienen puntaje (siempre participación). Si el usuario pide explícitamente
+	// "participación" (cuántos alumnos rindieron), rankeamos por intentos aunque
+	// sea simulacro, para que el texto y el gráfico cuenten LO MISMO (fix cliente
+	// 2026-07-03: el texto decía "X #1 por participación" y el gráfico ordenaba
+	// por promedio / mezclaba todos los tipos).
+	metric := strings.ToLower(strings.TrimSpace(argStr(args, "metric")))
+	scored := exam == "simulacro" && metric != "participacion"
+	// Orden: por promedio si scored; si no, por participación (intentos).
 	for i := 0; i < len(rows); i++ {
 		for j := i + 1; j < len(rows); j++ {
 			less := false

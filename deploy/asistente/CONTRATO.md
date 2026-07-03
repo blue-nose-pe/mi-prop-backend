@@ -185,9 +185,34 @@ El script pega al gateway de PRODUCCIÓN vía ingress (no requiere port-forward)
 
 ---
 
-## 9. Datos de prueba (seed)
+## 9. Datos de prueba (seed) — dos reconciliaciones
 
-El contador `usos` de las llaves se reconcilió a la realidad (2026-07-03):
-`current_uses = COUNT(DISTINCT user_id)` de `exam_attempt` por llave. Antes el seed
-lo inflaba (2808 total → 74 real), lo que hacía ver "43/50 pero sin datos". Si se
-recarga el seed, re-ejecutar el reconcile (ver `deploy/asistente/reconcile_usos.sql`).
+El seed traía dos artefactos que rompían la coherencia. Si se recarga el seed,
+re-ejecutar AMBOS scripts (en orden):
+
+1. **Re-vinculado de intentos huérfanos** (`deploy/asistente/relink_attempts_keys.sql`).
+   El seed creaba `exam_attempt` con `key_id` NULL: los exámenes existían pero no
+   apuntaban a ninguna llave. Efecto visible: un colegio mostraba "97 rendidos"
+   pero cada llave individual mostraba 0 → el cliente veía "el gráfico dice 97
+   pero la llave dice 0, no tiene sentido". En producción esto NO pasa (todo
+   examen se rinde con una llave). El script asigna cada alumno con intentos
+   huérfanos a una llave activa de su colegio+tipo (spillover por aforo).
+   Aplicado 2026-07-03: 551 huérfanos → 545 vinculados, 6 sin llave de su tipo.
+   Reversible con `db_exams.dbo.exam_attempt_keyid_bak_20260703`.
+
+2. **Reconcile de `usos`** (incluido al final del mismo script, y en
+   `deploy/asistente/reconcile_usos.sql`): `current_uses = COUNT(DISTINCT user_id)`
+   de `exam_attempt` por llave. Antes el seed lo inflaba (2808 → 74 real), lo que
+   hacía ver "43/50 pero sin datos".
+
+**Efecto combinado:** el portal por-llave ya muestra datos reales; el bot atribuye
+la participación a la llave correcta; y el portal (front) por defecto **abre cada
+sección en la llave con más datos** (`current_uses` mayor), no en la más nueva/vacía
+(`colegio-portal.component.ts` → `parseKeys`). Todo cuenta la misma historia.
+
+**Fix de coherencia del bot (2026-07-03):** `comparativo_colegios` acepta
+`metric` (`promedio`|`participacion`); el handler fuerza `participacion` cuando la
+pregunta habla de participación (`wantsParticipacion`). Antes, "gráfico del
+simulacro con más participación" narraba desde el comparativo (simulacro) y
+graficaba desde el resumen general (TODOS los tipos) → el #1 del texto ≠ el #1 del
+gráfico. Ahora texto y gráfico usan la misma métrica y tipo.
