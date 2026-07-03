@@ -175,7 +175,7 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
 
-	const maxIters = 5
+	const maxIters = 6
 	for iter := 0; iter < maxIters; iter++ {
 		resp, err := p.callLLM(ctx, msgs, toolSchemas)
 		if err != nil {
@@ -218,9 +218,22 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 			msgs = append(msgs, oaMessage{Role: "tool", ToolCallID: tc.ID, Content: resultJSON})
 		}
 	}
+	// Agotamos las rondas de herramientas. En vez de rendirnos con "reformula"
+	// dejando gráficos huérfanos, forzamos UNA respuesta final SIN herramientas:
+	// el modelo debe sintetizar en texto lo que ya obtuvo (coherente con los
+	// gráficos que se hayan adjuntado). Fix cliente 2026-07-02: antes salía
+	// "no pude completar" junto a un gráfico, lo que se contradecía.
+	if final, ferr := p.callLLM(ctx, msgs, nil); ferr == nil && len(final.Choices) > 0 && strings.TrimSpace(final.Choices[0].Message.Content) != "" {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"answer": final.Choices[0].Message.Content,
+			"charts": capCharts(charts),
+		})
+		return
+	}
+	// Si ni así responde, mensaje claro y SIN gráficos huérfanos.
 	writeJSON(w, http.StatusOK, map[string]any{
-		"answer": "No pude completar la consulta (demasiados pasos). ¿Puedes reformular la pregunta de forma más simple?",
-		"charts": capCharts(charts),
+		"answer": "No pude completar la consulta. ¿Puedes reformularla de forma más simple?",
+		"charts": nil,
 	})
 }
 
@@ -499,7 +512,14 @@ func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (an
 	labels := make([]string, 0, len(rows))
 	data := make([]float64, 0, len(rows))
 	items := make([]map[string]any, 0, len(rows))
+	sinActividad := 0
 	for _, rw := range rows {
+		// Omitimos del gráfico y del listado los colegios sin actividad (0
+		// intentos): son ruido (ej. colegios de QA vacíos). Se cuentan aparte.
+		if rw.attempts == 0 {
+			sinActividad++
+			continue
+		}
 		labels = append(labels, rw.name)
 		if scored {
 			data = append(data, round1(rw.avg))
@@ -509,17 +529,21 @@ func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (an
 			items = append(items, map[string]any{"colegio": rw.name, "intentos": rw.attempts})
 		}
 	}
+	nombreTipo := map[string]string{"simulacro": "simulacro", "vocacional": "vocacional", "habitos": "estilos de aprendizaje"}[exam]
+	if nombreTipo == "" {
+		nombreTipo = exam
+	}
 	var charts []any
-	if len(rows) > 0 {
+	if len(labels) > 0 {
 		serieName := "Promedio (%)"
-		title := "Ranking de simulacro por colegio"
+		title := "Ranking de " + nombreTipo + " por colegio (promedio)"
 		if !scored {
 			serieName = "Participación (intentos)"
-			title = "Participación por colegio (" + exam + ")"
+			title = "Participación en " + nombreTipo + " por colegio"
 		}
 		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": title, "labels": labels, "series": []map[string]any{{"name": serieName, "data": data}}})
 	}
-	return map[string]any{"evaluacion": exam, "promediable": scored, "items": items}, charts, nil
+	return map[string]any{"evaluacion": nombreTipo, "promediable": scored, "items": items, "colegios_sin_actividad": sinActividad}, charts, nil
 }
 
 func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
