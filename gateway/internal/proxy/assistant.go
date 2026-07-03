@@ -219,6 +219,7 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 	// Construimos la conversación: system + historial del cliente (solo user/assistant
 	// con texto; se ignora cualquier rol tool que venga del cliente por seguridad).
 	msgs := []oaMessage{{Role: "system", Content: assistantSystemPrompt}}
+	lastUser := ""
 	for _, m := range in.Messages {
 		if m.Role != "user" && m.Role != "assistant" {
 			continue
@@ -226,8 +227,16 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 		if m.Content == "" {
 			continue
 		}
+		if m.Role == "user" {
+			lastUser = strings.ToLower(m.Content)
+		}
 		msgs = append(msgs, oaMessage{Role: m.Role, Content: m.Content})
 	}
+	// Tipo de evaluación exigido por la pregunta (determinístico, no depende del
+	// LLM): si el usuario dice "simulacro"/"vocacional"/"estilos" forzamos ese tipo
+	// en las herramientas, evitando que el modelo cruce tipos (ej. mostrar estilos
+	// cuando piden simulacro).
+	tipoForzado := examTypeFromText(lastUser)
 
 	toolSchemas, toolByName := assistantTools()
 	var charts []any
@@ -262,6 +271,20 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 			}
 			if args == nil {
 				args = map[string]any{}
+			}
+			// Override determinístico del tipo de evaluación: si la pregunta
+			// del usuario dice explícitamente simulacro/vocacional/estilos, lo
+			// forzamos en las herramientas que reciben exam_type_code o grafico,
+			// para que el modelo NO cruce tipos (bug: mostraba estilos al pedir simulacro).
+			if tipoForzado != "" {
+				if tc.Function.Name == "comparativo_colegios" {
+					args["exam_type_code"] = tipoForzado
+				}
+				if tc.Function.Name == "dashboard_colegio" {
+					if g := strings.ToLower(strings.TrimSpace(argStr(args, "grafico"))); g != "" && g != "todos" && g != "ninguno" {
+						args["grafico"] = graficoDeTipo(tipoForzado)
+					}
+				}
 			}
 			var resultJSON string
 			if tool, ok := toolByName[tc.Function.Name]; ok {
@@ -375,6 +398,47 @@ func asString(v any) string {
 		return s
 	}
 	return ""
+}
+
+// examTypeFromText detecta un tipo de evaluación mencionado EXPLÍCITAMENTE en la
+// pregunta del usuario, para forzarlo en las herramientas (determinístico). Si
+// menciona más de uno o ninguno, devuelve "" (no se fuerza nada).
+func examTypeFromText(t string) string {
+	sim := strings.Contains(t, "simulacro")
+	voc := strings.Contains(t, "vocacional") || strings.Contains(t, "vocacion")
+	est := strings.Contains(t, "estilo") || strings.Contains(t, "habito") || strings.Contains(t, "hábito") || strings.Contains(t, "aprendizaje")
+	n := 0
+	res := ""
+	if sim {
+		n++
+		res = "simulacro"
+	}
+	if voc {
+		n++
+		res = "vocacional"
+	}
+	if est {
+		n++
+		res = "habitos"
+	}
+	if n == 1 {
+		return res
+	}
+	return ""
+}
+
+// graficoDeTipo mapea el exam_type_code al valor del parámetro 'grafico' de
+// dashboard_colegio.
+func graficoDeTipo(tipo string) string {
+	switch tipo {
+	case "simulacro":
+		return "simulacro"
+	case "vocacional":
+		return "vocacional"
+	case "habitos":
+		return "estilos"
+	}
+	return "todos"
 }
 
 // isQAColegio detecta colegios de PRUEBA/QA por su nombre (permhunt-, E2E,
