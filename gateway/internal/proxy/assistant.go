@@ -134,7 +134,10 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - Tipos de evaluación: "simulacro" tiene puntaje 0–100 (promediable). "vocacional" (áreas de interés: Sensibilidad Social, Cálculo, Artes, Verbal, Organización, etc.) y "estilos de aprendizaje" son PERFILES por área, NO promediables (se leen como % de inclinación). Las áreas vocacionales y los estilos de aprendizaje son cosas DISTINTAS: nunca reportes un área vocacional como si fuera un estilo de aprendizaje ni al revés.
 - COHERENCIA DE TIPO DE EVALUACIÓN: si la pregunta menciona "simulacro", trabaja SOLO con datos de simulacro (exam_type_code='simulacro'); si menciona "vocacional" o "estilos/hábitos", usa ese tipo. NUNCA muestres estilos o vocacional cuando preguntan por simulacro (ni al revés).
 - PARTICIPACIÓN vs PROMEDIO (crítico para que texto y gráfico coincidan): si preguntan "cuál colegio tuvo MÁS PARTICIPACIÓN / más alumnos rindieron en {tipo}", usa el comparativo de ESE tipo con métrica de participación (ordena por intentos). NO uses el resumen general para esto (suma todos los tipos y el gráfico contradiría tu texto). El resumen general es solo para totales agregados de TODOS los tipos ("panorama", "cuántos han rendido en total"). El colegio que nombres como #1 DEBE ser el primero del gráfico.
-- AÑOS: si la pregunta menciona un año ("en 2025"), pasa period='YYYY' a la herramienta; las cifras sin period son del HISTÓRICO total y NUNCA debes presentarlas como si fueran de ese año.
+- AÑOS: si la pregunta menciona un año ("en 2025"), pasa period='YYYY' a la herramienta; las cifras sin period son del HISTÓRICO total y NUNCA debes presentarlas como si fueran de ese año. Para COMPARAR años ("2025 vs 2026") pasa periods=['2025','2026'] al comparativo: devuelve UN gráfico de columnas agrupadas + 'mejora' por colegio (responde "cuál mejoró más" leyendo ese campo). NUNCA llames dos veces con period ni armes la comparación a mano.
+- TABLAS: NO escribas tablas ASCII con guiones (|----|). Si necesitas tabla, usa markdown limpio (| A | B | en cada fila, sin línea separadora); para ≤3 filas prefiere viñetas.
+- ENLACES: NUNCA escribas enlaces markdown [texto](url) ni "(#)". Los botones de "ver resultado / PDF" se adjuntan AUTOMÁTICAMENTE a tu respuesta; solo di "usa el botón de abajo".
+- MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
 - CATÁLOGO DE GRÁFICOS (elige el más demostrativo, como un analista senior): line/area = evolución en el tiempo; column/bar = comparación entre categorías; stacked = composición por categoría; pie/donut/treemap = distribución de un todo; radar = perfil multidimensión; scatter = relación entre dos variables; heatmap = matriz de intensidad (ej. colegios × áreas); gauge = un solo porcentaje; funnel = etapas/embudo. Si el usuario pide MEZCLAR temas en un gráfico (colegios con llaves, alumnos concretos, asesores, años), primero consigue TODOS los datos con las herramientas y luego compón UN gráfico a medida con la herramienta de gráfico personalizado — sus valores deben salir VERBATIM de los resultados de esta conversación, JAMÁS inventados. Una historia = un gráfico (no fragmentes en 4 gráficos lo que cabe en uno bien elegido).
 - Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
@@ -249,10 +252,12 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 	// rindió más, forzamos la métrica de participación en el comparativo para
 	// que el gráfico ordene por intentos igual que el texto.
 	participacionForzada := wantsParticipacion(lastUser)
-	// Año pedido en la pregunta ("en 2025"). Determinístico: se fuerza el
-	// period en los comparativos para que las cifras SEAN de ese año (bug: el
-	// bot etiquetaba el histórico total como "2025").
-	anioForzado := yearFromText(lastUser)
+	// Años pedidos en la pregunta. Determinístico: 1 año → period (las cifras
+	// SON de ese año); 2+ años ("2025 vs 2026") → periods, y el comparativo
+	// construye ÉL MISMO las columnas agrupadas por año (el modelo no sabía
+	// combinar dos rankings en un gráfico y el anti-spam botaba la 2da barra).
+	aniosForzados := yearsFromText(lastUser)
+	topForzado := topFromText(lastUser)
 
 	toolSchemas, toolByName := assistantTools()
 	var charts []any
@@ -309,10 +314,23 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 			if participacionForzada && tc.Function.Name == "comparativo_colegios" {
 				args["metric"] = "participacion"
 			}
-			// Año pedido explícitamente → los comparativos filtran por ese año
-			// (si el modelo no lo pasó ya). Así "en 2025" = cifras de 2025.
-			if anioForzado != "" && (tc.Function.Name == "comparativo_colegios" || tc.Function.Name == "comparativo_inclinacion") && strings.TrimSpace(argStr(args, "period")) == "" {
-				args["period"] = anioForzado
+			// Años pedidos explícitamente → los comparativos filtran por ese año
+			// (si el modelo no lo pasó ya). 2+ años → periods (columnas agrupadas
+			// por año construidas por el tool, determinístico).
+			esComparativo := tc.Function.Name == "comparativo_colegios" || tc.Function.Name == "comparativo_inclinacion"
+			if len(aniosForzados) == 1 && esComparativo && strings.TrimSpace(argStr(args, "period")) == "" {
+				args["period"] = aniosForzados[0]
+			}
+			if len(aniosForzados) >= 2 && tc.Function.Name == "comparativo_colegios" && args["periods"] == nil {
+				ps := make([]any, len(aniosForzados))
+				for i, y := range aniosForzados {
+					ps[i] = y
+				}
+				args["periods"] = ps
+			}
+			// "top 3" pedido → recorta el ranking (texto y gráfico iguales).
+			if topForzado > 0 && tc.Function.Name == "comparativo_colegios" && args["top"] == nil {
+				args["top"] = float64(topForzado)
 			}
 			var resultJSON string
 			if tool, ok := toolByName[tc.Function.Name]; ok {
@@ -433,11 +451,16 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 	}
 	var keyID, codeReal string
 	var examType int32
+	type kinfo struct {
+		id, code string
+		tipo     int32
+	}
+	allKeys := []kinfo{}
 	if kr, err := p.cli.Keys.ListByColegio(r.Context(), &keysgrpcpb.ListByColegioRequest{SchoolId: sid}); err == nil {
 		for _, k := range kr.GetItems() {
+			allKeys = append(allKeys, kinfo{k.GetId(), k.GetCode(), k.GetExamTypeId()})
 			if strings.EqualFold(k.GetCode(), keyCode) {
 				keyID, codeReal, examType = k.GetId(), k.GetCode(), k.GetExamTypeId()
-				break
 			}
 		}
 	}
@@ -449,9 +472,14 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 		return map[string]any{"nota": "la llave " + codeReal + " es de " + routeTool + ", que NO tiene puntaje; no se puede rankear por 'más alto/bajo' (es un perfil por área)."}, nil, nil
 	}
 	best := map[string]float64{}
+	rendidosPorKey := map[string]int{}
 	if at, err := p.cli.Attempts.ListByColegio(r.Context(), &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: sid}); err == nil {
 		for _, a := range at.GetItems() {
-			if a.GetSubmittedAt() == nil || a.GetKeyId() != keyID || a.GetMaxScore() <= 0 {
+			if a.GetSubmittedAt() == nil {
+				continue
+			}
+			rendidosPorKey[a.GetKeyId()]++
+			if a.GetKeyId() != keyID || a.GetMaxScore() <= 0 {
 				continue
 			}
 			pct := a.GetScore() / a.GetMaxScore() * 100
@@ -461,7 +489,22 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 		}
 	}
 	if len(best) == 0 {
-		return map[string]any{"nota": "la llave " + codeReal + " todavía no tiene exámenes rendidos con resultados."}, nil, nil
+		// Recuperación: dile al modelo QUÉ llaves hermanas del mismo tipo SÍ
+		// tienen resultados, para que reintente con la correcta en vez de
+		// rendirse (bug cliente: preguntó por el mejor alumno y el modelo
+		// eligió la llave más nueva, que estaba vacía).
+		hermanas := []string{}
+		for _, k := range allKeys {
+			if k.tipo == examType && k.id != keyID && rendidosPorKey[k.id] > 0 {
+				hermanas = append(hermanas, fmt.Sprintf("%s (%d rendidos)", k.code, rendidosPorKey[k.id]))
+			}
+		}
+		res := map[string]any{"nota": "la llave " + codeReal + " todavía no tiene exámenes rendidos con resultados."}
+		if len(hermanas) > 0 {
+			res["llaves_con_resultados_mismo_tipo"] = hermanas
+			res["sugerencia"] = "si el usuario quiere 'el mejor alumno' del colegio, vuelve a llamar esta herramienta con la llave que SÍ tiene rendidos (o usa la de mejor alumno general por colegio)."
+		}
+		return res, nil, nil
 	}
 	type row struct {
 		user string
@@ -747,11 +790,11 @@ func examTypeFromText(t string) string {
 	return ""
 }
 
-// yearFromText detecta UN año concreto en la pregunta ("en 2025"). Si hay más
-// de uno (rangos/comparaciones "2024 vs 2025") devuelve vacío y se deja que el
-// modelo decida con sus parámetros.
-func yearFromText(t string) string {
-	found := ""
+// yearsFromText detecta los años concretos de la pregunta ("en 2025",
+// "2025 vs 2026"), en orden y sin duplicados (máx 3). 1 año → period; 2+ →
+// comparación multi-año (periods) determinística.
+func yearsFromText(t string) []string {
+	out := []string{}
 	for i := 0; i+4 <= len(t); i++ {
 		if t[i] == '2' && t[i+1] == '0' && t[i+2] >= '0' && t[i+2] <= '9' && t[i+3] >= '0' && t[i+3] <= '9' {
 			// bordes: no debe ser parte de un número más largo (ej. código 120254)
@@ -762,13 +805,42 @@ func yearFromText(t string) string {
 				continue
 			}
 			y := t[i : i+4]
-			if found != "" && found != y {
-				return "" // más de un año distinto → ambiguo
+			if !containsStr(out, y) {
+				out = append(out, y)
 			}
-			found = y
+			if len(out) >= 3 {
+				break
+			}
 		}
 	}
-	return found
+	return out
+}
+
+// topFromText detecta "top N" / "los N mejores" en la pregunta (N 1..10).
+func topFromText(t string) int {
+	for _, kw := range []string{"top ", "top-", "los ", "las "} {
+		idx := strings.Index(t, kw)
+		for idx >= 0 {
+			rest := t[idx+len(kw):]
+			n := 0
+			for len(rest) > 0 && rest[0] >= '0' && rest[0] <= '9' {
+				n = n*10 + int(rest[0]-'0')
+				rest = rest[1:]
+			}
+			if n >= 1 && n <= 10 {
+				// "los N mejores/primeros/peores" o "top N"
+				if strings.HasPrefix(kw, "top") || strings.HasPrefix(strings.TrimSpace(rest), "mejor") || strings.HasPrefix(strings.TrimSpace(rest), "peor") || strings.HasPrefix(strings.TrimSpace(rest), "primer") {
+					return n
+				}
+			}
+			next := strings.Index(t[idx+1:], kw)
+			if next < 0 {
+				break
+			}
+			idx = idx + 1 + next
+		}
+	}
+	return 0
 }
 
 // wantsParticipacion detecta si la pregunta es de PARTICIPACIÓN (cuántos
@@ -911,6 +983,8 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 				"exam_type_code": map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "habitos"}, "description": "tipo de evaluación"},
 				"metric":         map[string]any{"type": "string", "enum": []string{"promedio", "participacion"}, "description": "'promedio' = desempeño (solo simulacro); 'participacion' = cuántos alumnos rindieron. Si el usuario pregunta por participación/quién rindió más, usa 'participacion'."},
 				"period":         map[string]any{"type": "string", "description": "opcional, año 'YYYY'; vacío = histórico total"},
+				"periods":        map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "para COMPARAR 2-3 años en UN gráfico ('2025 vs 2026'): pasa los años y la herramienta construye las columnas agrupadas por año + el campo 'mejora' por colegio. Úsalo SIEMPRE que el usuario compare años; NO llames dos veces con period."},
+				"top":            map[string]any{"type": "number", "description": "opcional: quedarse solo con los N primeros del ranking ('top 3')"},
 			},
 			"required": []string{"exam_type_code"},
 		}),
@@ -1259,10 +1333,132 @@ func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, 
 	return data, charts, nil
 }
 
+// comparativoMultiAnio: ranking de colegios comparando 2-3 AÑOS en un solo
+// gráfico de columnas agrupadas (una serie por año) + 'mejora' por colegio
+// (último año - primero). Determinístico: el modelo no arma nada a mano.
+func (p *Proxy) comparativoMultiAnio(r *http.Request, exam, metric string, years []string, topN int) (any, []any, error) {
+	scored := exam == "simulacro" && metric != "participacion"
+	type prow struct {
+		name string
+		vals map[string]float64 // año → promedio o intentos
+		has  map[string]bool
+	}
+	rows := []prow{}
+	for _, c := range p.scopedColegios(r) {
+		pr := prow{name: c.Nombre, vals: map[string]float64{}, has: map[string]bool{}}
+		for _, y := range years {
+			resp, err := p.cli.Analytics.GetColegioDashboard(r.Context(), &analyticsgrpcpb.GetColegioDashboardRequest{SchoolId: c.ID, Period: y})
+			if err != nil {
+				continue
+			}
+			if s := resp.GetByExamType()[exam]; s != nil && s.GetAttempts() > 0 {
+				if scored {
+					pr.vals[y] = round1(s.GetAvgScore())
+				} else {
+					pr.vals[y] = float64(s.GetAttempts())
+				}
+				pr.has[y] = true
+			}
+		}
+		if len(pr.has) > 0 {
+			rows = append(rows, pr)
+		}
+	}
+	if len(rows) == 0 {
+		return map[string]any{"nota": "no hay exámenes rendidos de " + exam + " en los años " + strings.Join(years, ", ") + " en tus colegios."}, nil, nil
+	}
+	// Orden por el ÚLTIMO año desc (los que no tienen dato van al final).
+	last := years[len(years)-1]
+	for i := 0; i < len(rows); i++ {
+		for j := i + 1; j < len(rows); j++ {
+			vi, vj := -1.0, -1.0
+			if rows[i].has[last] {
+				vi = rows[i].vals[last]
+			}
+			if rows[j].has[last] {
+				vj = rows[j].vals[last]
+			}
+			if vj > vi {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
+		}
+	}
+	if topN > 0 && topN < len(rows) {
+		rows = rows[:topN]
+	}
+	metricName := "promedio"
+	unit := "%"
+	if !scored {
+		metricName = "participacion"
+		unit = "intentos"
+	}
+	items := make([]map[string]any, 0, len(rows))
+	labels := make([]string, 0, len(rows))
+	for _, rw := range rows {
+		it := map[string]any{"colegio": rw.name}
+		for _, y := range years {
+			if rw.has[y] {
+				it[metricName+"_"+y] = rw.vals[y]
+			} else {
+				it[metricName+"_"+y] = nil
+			}
+		}
+		if rw.has[years[0]] && rw.has[last] {
+			it["mejora"] = round1(rw.vals[last] - rw.vals[years[0]])
+		}
+		items = append(items, it)
+		labels = append(labels, rw.name)
+	}
+	series := make([]map[string]any, 0, len(years))
+	for _, y := range years {
+		data := make([]float64, 0, len(rows))
+		for _, rw := range rows {
+			data = append(data, rw.vals[y]) // 0 si no hay dato ese año
+		}
+		series = append(series, map[string]any{"name": y, "data": data})
+	}
+	nombreTipo := map[string]string{"simulacro": "simulacro", "vocacional": "vocacional", "habitos": "estilos de aprendizaje"}[exam]
+	if nombreTipo == "" {
+		nombreTipo = exam
+	}
+	title := "Promedio de " + nombreTipo + " por colegio — " + strings.Join(years, " vs ")
+	if !scored {
+		title = "Participación en " + nombreTipo + " por colegio — " + strings.Join(years, " vs ")
+	}
+	charts := []any{map[string]any{"kind": "column", "title": title, "labels": labels, "series": series, "unit": unit}}
+	return map[string]any{
+		"evaluacion": nombreTipo,
+		"anios":      years,
+		"items":      items,
+		"nota":       "cifras POR AÑO (no histórico). 'mejora' = " + last + " menos " + years[0] + "; el que tenga la mayor 'mejora' es el que más mejoró. El gráfico de columnas agrupadas ya está adjunto: NO construyas otro ni escribas tablas.",
+	}, charts, nil
+}
+
 func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
 	exam := argStr(args, "exam_type_code")
 	if exam == "" {
 		exam = "simulacro"
+	}
+	metricArg := strings.ToLower(strings.TrimSpace(argStr(args, "metric")))
+	topN := argInt(args, "top", 0)
+	// MULTI-AÑO ("2025 vs 2026"): el tool construye ÉL MISMO las columnas
+	// agrupadas (una serie por año) + el campo 'mejora' por colegio. Antes el
+	// modelo llamaba 2 veces al comparativo y no sabía combinar los rankings
+	// en un gráfico (y el anti-spam botaba la 2da barra).
+	if rawPeriods, ok := args["periods"].([]any); ok && len(rawPeriods) >= 2 {
+		years := []string{}
+		for _, v := range rawPeriods {
+			y := strings.TrimSpace(asString(v))
+			if len(y) == 4 && strings.HasPrefix(y, "2") && !containsStr(years, y) {
+				years = append(years, y)
+			}
+			if len(years) >= 3 {
+				break
+			}
+		}
+		if len(years) >= 2 {
+			return p.comparativoMultiAnio(r, exam, metricArg, years, topN)
+		}
 	}
 	period := strings.TrimSpace(argStr(args, "period"))
 	type row struct {
@@ -1310,8 +1506,7 @@ func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (an
 	// sea simulacro, para que el texto y el gráfico cuenten LO MISMO (fix cliente
 	// 2026-07-03: el texto decía "X #1 por participación" y el gráfico ordenaba
 	// por promedio / mezclaba todos los tipos).
-	metric := strings.ToLower(strings.TrimSpace(argStr(args, "metric")))
-	scored := exam == "simulacro" && metric != "participacion"
+	scored := exam == "simulacro" && metricArg != "participacion"
 	// Orden: por promedio si scored; si no, por participación (intentos).
 	for i := 0; i < len(rows); i++ {
 		for j := i + 1; j < len(rows); j++ {
@@ -1325,6 +1520,10 @@ func toolComparativoColegios(p *Proxy, r *http.Request, args map[string]any) (an
 				rows[i], rows[j] = rows[j], rows[i]
 			}
 		}
+	}
+	// "top N" pedido → el ranking (texto y gráfico) se queda con los N primeros.
+	if topN > 0 && topN < len(rows) {
+		rows = rows[:topN]
 	}
 	labels := make([]string, 0, len(rows))
 	data := make([]float64, 0, len(rows))
