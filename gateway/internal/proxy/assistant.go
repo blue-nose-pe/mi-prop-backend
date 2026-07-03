@@ -297,15 +297,62 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// capCharts limita cuántos gráficos se devuelven por respuesta. El red-team
-// mostró que "¿qué vocaciones predominan en mis colegios?" adjuntaba 30 charts
-// (doughnut/radar por colegio) — inmanejable. Tope duro razonable.
-func capCharts(charts []any) []any {
-	const maxCharts = 6
-	if len(charts) > maxCharts {
-		return charts[:maxCharts]
+// capCharts / normalizeCharts imponen la POLÍTICA de presentación de gráficos en
+// CÓDIGO (no en el prompt), para que sea determinística sin depender de que el
+// LLM se porte bien. Reglas: (1) dedup por (kind+title); (2) si hay barras
+// (ranking), se quitan los gauges sueltos que el modelo a veces adjunta por
+// colegio; (3) tope por tipo (≤1 gauge, ≤1 bar, ≤2 doughnut, ≤2 radar) y ≤6 total.
+func capCharts(charts []any) []any { return normalizeCharts(charts) }
+
+func normalizeCharts(charts []any) []any {
+	if len(charts) == 0 {
+		return charts
 	}
-	return charts
+	kindOf := func(c any) string {
+		m, _ := c.(map[string]any)
+		k, _ := m["kind"].(string)
+		return k
+	}
+	titleOf := func(c any) string {
+		m, _ := c.(map[string]any)
+		t, _ := m["title"].(string)
+		return t
+	}
+	hasBar := false
+	for _, c := range charts {
+		if kindOf(c) == "bar" {
+			hasBar = true
+			break
+		}
+	}
+	perKind := map[string]int{"gauge": 1, "bar": 1, "doughnut": 2, "radar": 2}
+	seen := map[string]bool{}
+	countKind := map[string]int{}
+	out := make([]any, 0, len(charts))
+	for _, c := range charts {
+		k := kindOf(c)
+		if hasBar && k == "gauge" {
+			continue // ranking presente → sin gauges sueltos
+		}
+		key := k + "|" + titleOf(c)
+		if seen[key] {
+			continue // dedup
+		}
+		limit, ok := perKind[k]
+		if !ok {
+			limit = 1
+		}
+		if countKind[k] >= limit {
+			continue
+		}
+		seen[key] = true
+		countKind[k]++
+		out = append(out, c)
+		if len(out) >= 6 {
+			break
+		}
+	}
+	return out
 }
 
 // ---------- Herramientas (solo lectura, scopeadas) ----------
