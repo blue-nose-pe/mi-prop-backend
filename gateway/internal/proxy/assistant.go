@@ -139,6 +139,8 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - ENLACES: NUNCA escribas enlaces markdown [texto](url) ni "(#)". Los botones de "ver resultado / PDF" se adjuntan AUTOMÁTICAMENTE a tu respuesta; solo di "usa el botón de abajo".
 - MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
+- PANEL EJECUTIVO / varios gráficos pedidos EXPLÍCITAMENTE: compón CADA gráfico solicitado con la herramienta de gráfico personalizado (hasta 4) — la regla "una historia = un gráfico" aplica cuando piden UNA cosa, no cuando piden un panel. La participación por tipo GLOBAL sale de por_tipo_total del resumen general.
+- EVOLUCIÓN POR TIPO de UN colegio entre años: llama el resumen de ESE colegio con period por cada año (por_tipo trae los intentos de los 3 tipos) y compón líneas (una por tipo). El comparativo es para comparar COLEGIOS, no tipos.
 - COMPARAR LLAVES de un colegio en un gráfico: llama el resumen del colegio UNA VEZ POR LLAVE con key_code (código, ej. 'VO-ZKYFC7'), y luego compón UN gráfico personalizado con esos datos (voca/estilos → radar con una serie por llave; simulacro → columnas). Omite (y menciona) las llaves con 0 rendidos. NUNCA digas "no hay resultados" si el listado de llaves mostró rendidos > 0 — si un resumen por llave te salió vacío, revisa que pasaste el CÓDIGO en key_code.
 - TIPO DE GRÁFICO EXPLÍCITO: si el usuario pide un tipo concreto (polar, treemap, scatter, embudo, radial...), consigue los datos con grafico='ninguno' y compón el gráfico personalizado en ESE tipo — no adjuntes los gráficos por defecto (dona/radar) diciendo que son "polar".
 - APILADO POR TIPO DE EVALUACIÓN (error a evitar): el "total de intentos" de un colegio (resumen general / total_intentos) SUMA los tres tipos — NO es la serie de "Simulacro". Para apilar por tipo, saca los intentos POR TIPO del resumen de CADA colegio (por_tipo.simulacro/vocacional/habitos.intentos) y usa esos tres como series. Verifica que la suma de las series por colegio = su total.
@@ -1120,6 +1122,7 @@ func toolResumenGeneral(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 	colegios := p.scopedColegios(r)
 	var totalIntentos int32
 	var simSum, simW float64
+	porTipoTotal := map[string]int32{}
 	porColegio := []map[string]any{}
 	for _, c := range colegios {
 		resp, err := p.cli.Analytics.GetColegioDashboard(r.Context(), &analyticsgrpcpb.GetColegioDashboardRequest{SchoolId: c.ID})
@@ -1132,6 +1135,12 @@ func toolResumenGeneral(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 		}
 		totalIntentos += att
 		row := map[string]any{"colegio": resp.GetSchoolName(), "intentos": att}
+		for code, s := range resp.GetByExamType() {
+			if s == nil {
+				continue
+			}
+			porTipoTotal[code] += s.GetAttempts()
+		}
 		if s := resp.GetByExamType()["simulacro"]; s != nil && s.GetAttempts() > 0 {
 			row["promedio_simulacro"] = round1(s.GetAvgScore())
 			simSum += s.GetAvgScore() * float64(s.GetAttempts())
@@ -1142,8 +1151,13 @@ func toolResumenGeneral(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 	res := map[string]any{
 		"total_colegios_con_actividad": len(porColegio),
 		"total_intentos_rendidos":      totalIntentos,
-		"por_colegio":                  porColegio,
-		"nota":                         "total_intentos_rendidos = suma de exámenes rendidos (un alumno puede tener varios intentos). No es 'alumnos matriculados'.",
+		// Totales POR TIPO (suma de todos los colegios visibles): la fuente para
+		// "participación por tipo de evaluación" global. Bug cliente 2026-07-03:
+		// sin este desglose, el modelo etiquetaba el TOTAL (460) como "Simulacro"
+		// e inventaba 0 para vocacional/estilos en la dona del panel ejecutivo.
+		"por_tipo_total": porTipoTotal,
+		"por_colegio":    porColegio,
+		"nota":           "total_intentos_rendidos = suma de exámenes rendidos (un alumno puede tener varios intentos; suma los 3 tipos). Para participación POR TIPO usa por_tipo_total — NUNCA etiquetes el total como 'simulacro'.",
 	}
 	if simW > 0 {
 		res["promedio_global_simulacro"] = round1(simSum / simW)
