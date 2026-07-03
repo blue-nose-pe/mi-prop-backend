@@ -139,6 +139,8 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - ENLACES: NUNCA escribas enlaces markdown [texto](url) ni "(#)". Los botones de "ver resultado / PDF" se adjuntan AUTOMÁTICAMENTE a tu respuesta; solo di "usa el botón de abajo".
 - MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
+- COMPARAR LLAVES de un colegio en un gráfico: llama el resumen del colegio UNA VEZ POR LLAVE con key_code (código, ej. 'VO-ZKYFC7'), y luego compón UN gráfico personalizado con esos datos (voca/estilos → radar con una serie por llave; simulacro → columnas). Omite (y menciona) las llaves con 0 rendidos. NUNCA digas "no hay resultados" si el listado de llaves mostró rendidos > 0 — si un resumen por llave te salió vacío, revisa que pasaste el CÓDIGO en key_code.
+- TIPO DE GRÁFICO EXPLÍCITO: si el usuario pide un tipo concreto (polar, treemap, scatter, embudo, radial...), consigue los datos con grafico='ninguno' y compón el gráfico personalizado en ESE tipo — no adjuntes los gráficos por defecto (dona/radar) diciendo que son "polar".
 - APILADO POR TIPO DE EVALUACIÓN (error a evitar): el "total de intentos" de un colegio (resumen general / total_intentos) SUMA los tres tipos — NO es la serie de "Simulacro". Para apilar por tipo, saca los intentos POR TIPO del resumen de CADA colegio (por_tipo.simulacro/vocacional/habitos.intentos) y usa esos tres como series. Verifica que la suma de las series por colegio = su total.
 - CATÁLOGO DE GRÁFICOS (elige el más demostrativo, como un analista senior): line/area = evolución en el tiempo; column/bar = comparación entre categorías; stacked = composición por categoría; pie/donut/treemap = distribución de un todo; radar = perfil multidimensión; scatter = relación entre dos variables; heatmap = matriz de intensidad (ej. colegios × áreas); gauge = un solo porcentaje; funnel = etapas/embudo. Si el usuario pide MEZCLAR temas en un gráfico (colegios con llaves, alumnos concretos, asesores, años), primero consigue TODOS los datos con las herramientas y luego compón UN gráfico a medida con la herramienta de gráfico personalizado — sus valores deben salir VERBATIM de los resultados de esta conversación, JAMÁS inventados. Una historia = un gráfico (no fragmentes en 4 gráficos lo que cabe en uno bien elegido).
 - Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
@@ -984,7 +986,8 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 				"school_id":   map[string]any{"type": "string", "description": "opcional: id del colegio si lo conoces con certeza; NO lo inventes"},
 				"grafico":     map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "estilos", "todos", "ninguno"}, "description": "qué gráfico adjuntar: 'simulacro' (gauge del promedio), 'vocacional' o 'estilos' (doughnut+radar), 'todos' (dashboard completo), 'ninguno' (solo texto / conteo / rechazo). Elígelo según lo que el usuario pidió. Por defecto 'ninguno'."},
 				"period":      map[string]any{"type": "string", "description": "opcional, año 'YYYY'; vacío = todo el histórico"},
-				"key_id":      map[string]any{"type": "string", "description": "opcional, id de una llave para analizar solo ese grupo; NO lo uses para el promedio general del colegio"},
+				"key_code":    map[string]any{"type": "string", "description": "opcional, CÓDIGO de una llave (ej. 'VO-ZKYFC7') para analizar SOLO ese grupo — se resuelve automáticamente. Úsalo para comparar llaves (una llamada por llave). NO lo uses para el promedio general del colegio."},
+				"key_id":      map[string]any{"type": "string", "description": "opcional, id interno de una llave si lo conoces con certeza; si solo tienes el código usa key_code"},
 			},
 			"required": []string{},
 		}),
@@ -1265,6 +1268,25 @@ func toolListarColegios(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 	return map[string]any{"colegios": out, "total": len(out)}, nil, nil
 }
 
+// looksLikeUUID: 36 chars con guiones en 8-4-4-4-12 (case-insensitive).
+func looksLikeUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+			continue
+		}
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
 func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
 	sid := p.resolveColegioID(r, args)
 	if sid == "" {
@@ -1273,10 +1295,35 @@ func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, 
 	if !p.enforceColegioScope(r, sid) {
 		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
 	}
+	// Filtro por llave: el modelo conoce CÓDIGOS (VO-ZKYFC7), no los UUID
+	// internos. Aceptamos key_code (o un key_id que no parezca UUID) y lo
+	// resolvemos a id dentro del colegio. Bug cliente 2026-07-03: pasaba el
+	// código como key_id → analytics filtraba a 0 attempts → "sin resultados"
+	// contradiciendo el listado de llaves (5 y 23 rendidos).
+	keyID := strings.TrimSpace(argStr(args, "key_id"))
+	keyCode := strings.ToUpper(strings.TrimSpace(argStr(args, "key_code")))
+	if keyCode == "" && keyID != "" && !looksLikeUUID(keyID) {
+		keyCode = strings.ToUpper(keyID)
+		keyID = ""
+	}
+	var codeReal string
+	if keyCode != "" {
+		if kr, kerr := p.cli.Keys.ListByColegio(r.Context(), &keysgrpcpb.ListByColegioRequest{SchoolId: sid}); kerr == nil {
+			for _, k := range kr.GetItems() {
+				if strings.EqualFold(k.GetCode(), keyCode) {
+					keyID, codeReal = k.GetId(), k.GetCode()
+					break
+				}
+			}
+		}
+		if keyID == "" {
+			return map[string]any{"error": "no encontré la llave " + keyCode + " en ese colegio"}, nil, nil
+		}
+	}
 	resp, err := p.cli.Analytics.GetColegioDashboard(r.Context(), &analyticsgrpcpb.GetColegioDashboardRequest{
 		SchoolId: sid,
 		Period:   argStr(args, "period"),
-		KeyId:    argStr(args, "key_id"),
+		KeyId:    keyID,
 	})
 	if err != nil {
 		// Degradación suave: no propagamos el error crudo (el modelo lo verbaliza
@@ -1289,6 +1336,11 @@ func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, 
 	grafico := strings.ToLower(strings.TrimSpace(argStr(args, "grafico")))
 	quiere := func(tipo string) bool { return grafico == "todos" || grafico == tipo }
 	name := resp.GetSchoolName()
+	if codeReal != "" {
+		// Con filtro por llave, los títulos y el resultado la nombran — así una
+		// comparación de varias llaves se distingue a simple vista.
+		name += " · " + codeReal
+	}
 	stats := resp.GetByExamType()
 	porTipo := map[string]any{}
 	var charts []any
@@ -1341,6 +1393,10 @@ func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, 
 		"total_alumnos":  resp.GetTotalStudents(),
 		"total_intentos": resp.GetTotalAttempts(),
 		"por_tipo":       porTipo,
+	}
+	if codeReal != "" {
+		data["llave"] = codeReal
+		data["nota"] = "cifras SOLO de la llave " + codeReal + " (no de todo el colegio)."
 	}
 	return data, charts, nil
 }
