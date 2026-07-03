@@ -139,6 +139,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - ENLACES: NUNCA escribas enlaces markdown [texto](url) ni "(#)". Los botones de "ver resultado / PDF" se adjuntan AUTOMÁTICAMENTE a tu respuesta; solo di "usa el botón de abajo".
 - MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
+- RANKING DE ASESORES ("qué asesor tiene más impactos/alumnos/colegios/visitas"): usa el comparativo de asesores — el ADMINISTRADOR SÍ puede verlo (no lo rechaces si el usuario es admin); un asesor recibirá el aviso de que solo ve su propia operación. "Impactos" = alumnos impactados (alumnos distintos que rindieron con llaves del asesor).
 - PANEL EJECUTIVO / varios gráficos pedidos EXPLÍCITAMENTE: compón CADA gráfico solicitado con la herramienta de gráfico personalizado (hasta 4) — la regla "una historia = un gráfico" aplica cuando piden UNA cosa, no cuando piden un panel. La participación por tipo GLOBAL sale de por_tipo_total del resumen general.
 - EVOLUCIÓN POR TIPO de UN colegio entre años: llama el resumen de ESE colegio con period por cada año (por_tipo trae los intentos de los 3 tipos) y compón líneas (una por tipo). El comparativo es para comparar COLEGIOS, no tipos.
 - COMPARAR LLAVES de un colegio en un gráfico: llama el resumen del colegio UNA VEZ POR LLAVE con key_code (código, ej. 'VO-ZKYFC7'), y luego compón UN gráfico personalizado con esos datos (voca/estilos → radar con una serie por llave; simulacro → columnas). Omite (y menciona) las llaves con 0 rendidos. NUNCA digas "no hay resultados" si el listado de llaves mostró rendidos > 0 — si un resumen por llave te salió vacío, revisa que pasaste el CÓDIGO en key_code.
@@ -1035,6 +1036,14 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
+		toolSchema("comparativo_asesores", "Ranking/comparación de TODOS los asesores por una métrica de su operación, con gráfico de barras. SOLO administración (un asesor no puede ver la operación de otros). Úsala para 'qué asesor tiene más impactos/alumnos/colegios/visitas'.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"metric": map[string]any{"type": "string", "enum": []string{"alumnos_impactados", "intentos", "colegios", "llaves", "visitas_completadas"}, "description": "métrica del ranking; 'impactos' = alumnos_impactados"},
+				"top":    map[string]any{"type": "number", "description": "opcional: solo los N primeros"},
+			},
+			"required": []string{},
+		}),
 		toolSchema("listar_llaves_colegio", "Lista las llaves (keys) de un colegio, ordenadas de la MÁS RECIENTE a la más antigua (la primera es 'la última key creada'). Cada llave trae: key_id, codigo, tipo, aforo, activa, creada (fecha), usos_registro (contador de accesos, NO confiable) y rendidos_reales (exámenes realmente rendidos con resultados). Usa esta herramienta para elegir una key con datos: si necesitas graficar, prefiere una con rendidos_reales > 0. Pasa el NOMBRE del colegio en school_name; no inventes IDs.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -1086,6 +1095,7 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		"top_alumnos_llave":       toolTopAlumnosLlave,
 		"mejor_alumno_general":    toolMejorAlumnoGeneral,
 		"comparativo_inclinacion": toolComparativoInclinacion,
+		"comparativo_asesores":    toolComparativoAsesores,
 		"grafico_personalizado":   toolGraficoPersonalizado,
 	}
 	return schemas, byName
@@ -1988,7 +1998,7 @@ func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, [
 	// de colegios / el comparativo en vez de reportar ceros como "su operación".
 	if admin && argStr(args, "asesor_id") == "" {
 		return map[string]any{
-			"nota": "El usuario es admin/superadmin y no es asesor de ningún colegio, así que estos indicadores no representan su operación. Para un panorama usa el listado de colegios y el comparativo.",
+			"nota": "El usuario es admin/superadmin y no es asesor de ningún colegio, así que estos indicadores no representan su operación. Para comparar/rankear ASESORES usa la herramienta de comparativo de asesores (el admin SÍ puede verla); para un panorama de colegios usa el listado o el comparativo de colegios.",
 		}, nil, nil
 	}
 	aid := userIDFromContext(r)
@@ -2019,6 +2029,112 @@ func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, [
 		"visitas_agendadas":   resp.GetScheduledVisits(),
 		"pruebas_pendientes":  resp.GetPendingTests(),
 	}, nil, nil
+}
+
+// isQAUser: cuentas de PRUEBA (e2e/qa/permhunt/demo/verif) que no deben salir
+// en rankings de asesores. Mismo espíritu que isQAColegio.
+func isQAUser(email, name string) bool {
+	s := strings.ToLower(email + " " + name)
+	for _, kw := range []string{"e2e", "permhunt", "qa.", "demo", "verif", ".test", "test@", "test63", "prueba"} {
+		if strings.Contains(s, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// toolComparativoAsesores: ranking de TODOS los asesores por una métrica de su
+// operación (alumnos impactados, intentos, colegios, llaves, visitas). SOLO
+// administración — expone la operación de otros asesores. Bug cliente
+// 2026-07-03: el admin pidió "asesores con más impactos" y el bot lo rechazó
+// con el mensaje pensado para asesores ("solo tu propia operación").
+func toolComparativoAsesores(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		return map[string]any{"error": "el comparativo de asesores es solo para administración; como asesor puedes ver tu propia operación (indicadores del asesor)"}, nil, nil
+	}
+	metric := strings.ToLower(strings.TrimSpace(argStr(args, "metric")))
+	if metric == "" {
+		metric = "alumnos_impactados"
+	}
+	topN := argInt(args, "top", 0)
+	asesores, err := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{GroupId: 3, Limit: 1000, ActiveOnly: true})
+	if err != nil {
+		return map[string]any{"error": "no se pudo obtener la lista de asesores"}, nil, nil
+	}
+	type row struct {
+		nombre string
+		vals   map[string]float64
+	}
+	rows := []row{}
+	for _, u := range asesores.GetItems() {
+		nombre := strings.TrimSpace(u.GetFirstName() + " " + u.GetLastName())
+		if nombre == "" {
+			nombre = u.GetEmail()
+		}
+		if isQAUser(u.GetEmail(), nombre) {
+			continue
+		}
+		resp, derr := p.cli.Analytics.GetAsesorDashboard(r.Context(), &analyticsgrpcpb.GetAsesorDashboardRequest{AsesorId: u.GetId()})
+		if derr != nil {
+			continue
+		}
+		vals := map[string]float64{
+			"alumnos_impactados":  float64(resp.GetTotalStudentsRendered()),
+			"intentos":            float64(resp.GetTotalAttempts()),
+			"colegios":            float64(resp.GetTotalColegios()),
+			"llaves":              float64(resp.GetTotalKeys()),
+			"visitas_completadas": float64(resp.GetCompletedVisits()),
+		}
+		total := 0.0
+		for _, v := range vals {
+			total += v
+		}
+		if total == 0 {
+			continue // asesor sin operación: ruido en el ranking
+		}
+		rows = append(rows, row{nombre, vals})
+	}
+	if len(rows) == 0 {
+		return map[string]any{"nota": "no hay asesores con operación registrada."}, nil, nil
+	}
+	if _, ok := rows[0].vals[metric]; !ok {
+		metric = "alumnos_impactados"
+	}
+	for i := 0; i < len(rows); i++ {
+		for j := i + 1; j < len(rows); j++ {
+			if rows[j].vals[metric] > rows[i].vals[metric] {
+				rows[i], rows[j] = rows[j], rows[i]
+			}
+		}
+	}
+	if topN > 0 && topN < len(rows) {
+		rows = rows[:topN]
+	}
+	metricLabel := map[string]string{
+		"alumnos_impactados":  "Alumnos impactados (rindieron)",
+		"intentos":            "Exámenes rendidos",
+		"colegios":            "Colegios gestionados",
+		"llaves":              "Llaves creadas",
+		"visitas_completadas": "Visitas completadas",
+	}[metric]
+	items := make([]map[string]any, 0, len(rows))
+	labels := make([]string, 0, len(rows))
+	data := make([]float64, 0, len(rows))
+	for _, rw := range rows {
+		it := map[string]any{"asesor": rw.nombre}
+		for k, v := range rw.vals {
+			it[k] = v
+		}
+		items = append(items, it)
+		labels = append(labels, rw.nombre)
+		data = append(data, rw.vals[metric])
+	}
+	charts := []any{map[string]any{"kind": "bar", "horizontal": true, "title": "Asesores por " + strings.ToLower(metricLabel), "labels": labels, "series": []map[string]any{{"name": metricLabel, "data": data}}}}
+	return map[string]any{
+		"metrica": metric,
+		"items":   items,
+		"nota":    "'alumnos_impactados' = alumnos distintos que rindieron con llaves del asesor; 'intentos' = exámenes rendidos. Ordenado por la métrica pedida.",
+	}, charts, nil
 }
 
 func toolListarLlavesColegio(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
