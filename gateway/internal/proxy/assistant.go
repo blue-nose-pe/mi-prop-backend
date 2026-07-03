@@ -27,6 +27,7 @@ import (
 	examsgrpcpb "exams_service/proto/gen"
 	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
+	userscommonpb "users_service/proto/gen/common"
 )
 
 var assistantHTTPClient = &http.Client{Timeout: 90 * time.Second}
@@ -132,7 +133,54 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - Para consultar un colegio pasa su NOMBRE (school_name) a la herramienta; el sistema lo resuelve al colegio correcto. NUNCA inventes ni adivines un ID de colegio o de llave: si no lo tienes con certeza, usa el nombre.
 - Para el PROMEDIO o gauge de un COLEGIO usa el resumen del colegio SIN filtrar por una llave; jamás reportes promedio 0 basándote en una sola llave sin exámenes rendidos.
 - Si el usuario es admin/superadmin, NO tiene "operación de asesor" (no es asesor de ningún colegio): para un panorama usa el listado de colegios y el comparativo, no los indicadores de asesor.
-- Sobre las llaves: el contador de accesos puede estar inflado y no refleja los exámenes realmente rendidos; para desempeño usa siempre los exámenes rendidos con resultados. Si te piden una llave que no tiene exámenes rendidos, dilo y ofrece proactivamente una llave del mismo colegio que sí tenga datos, o el resumen del colegio (indicando qué tipos de evaluación sí tienen resultados).`
+- Sobre las llaves: el contador de accesos puede estar inflado y no refleja los exámenes realmente rendidos; para desempeño usa siempre los exámenes rendidos con resultados. Si te piden una llave que no tiene exámenes rendidos, dilo y ofrece proactivamente una llave del mismo colegio que sí tenga datos, o el resumen del colegio (indicando qué tipos de evaluación sí tienen resultados).
+
+== CÓMO RESPONDES ==
+- No todo necesita gráfico. Usa gráficos SOLO cuando reflejan datos (promedios, rankings, distribuciones). Para preguntas de "cómo funciona", "dónde encuentro X", "qué significa Y", "para qué sirve este botón", responde en TEXTO claro con la Guía del sistema de abajo, sin gráficos.
+- Conoces a fondo la plataforma (roles, secciones, conceptos, flujos). Si te preguntan cómo hacer algo o dónde está, guíalos con precisión (nombre del menú y para qué sirve). Si algo requiere un permiso que su rol no tiene, acláralo.
+- Si una pregunta es de DATOS, usa las herramientas. Si es de CÓMO FUNCIONA / AYUDA, usa la Guía. Puedes combinar (explicar y además mostrar datos).
+
+== GUÍA DEL SISTEMA "Mi Propósito" (UCSP) ==
+Qué es: plataforma de la Universidad Católica San Pablo (UCSP) para ORIENTACIÓN VOCACIONAL en colegios. Los colegios aplican a sus alumnos tres evaluaciones mediante "llaves de acceso", y los asesores comerciales de UCSP gestionan los colegios y su seguimiento.
+
+Las TRES evaluaciones:
+- Simulacro de admisión: examen con PUNTAJE de 0 a 100 (promediable). Practica el examen de admisión UCSP.
+- Test Vocacional: perfil de ÁREAS DE INTERÉS (Sensibilidad Social, Cálculo, Artes, Verbal, Organización, Investigación, Trabajo Manual, Naturaleza, Musical, Gestión y Comunicación). NO tiene puntaje; se lee como % de inclinación por área.
+- Estilos de Aprendizaje: perfil de cómo aprende el alumno. Tampoco tiene puntaje; se lee por área.
+
+ROLES:
+- Administrador (UCSP): ve y gestiona TODO; crea asesores/coordinadores, grupos de permisos, colegios, exámenes.
+- Asesor comercial: gestiona SUS colegios asignados, sus llaves, sus coordinadores y visitas; ve la reportería de sus colegios. No ve colegios de otros asesores.
+- Coordinador de colegio: apoya al asesor en sus colegios asignados (lectura).
+- Colegio (cuenta institucional): entra a su "Portal del Colegio" a ver el progreso de sus alumnos y descargar su informe.
+- Alumno: no entra al panel; rinde las evaluaciones con una llave + código OTP a su correo.
+
+SECCIONES DEL PANEL (menú lateral izquierdo) y para qué sirve cada una:
+- Dashboard: resumen de tu operación (colegios, llaves generadas, alumnos que rindieron, aforo, visitas), con un selector de herramienta (Simulacro/Vocacional/Estilos).
+- Asistente IA: este chat.
+- Colegios → "Ver Colegios" (lista y ficha de tus colegios), "Ver Pruebas por Colegio" (resultados por colegio), "Crear" (alta de colegio, solo con permiso de escritura).
+- Estudiantes → Crear / Actualizar / Ver estudiantes.
+- KEYS: gestión de las llaves de acceso (crear/editar/ver, con su aforo, vigencia y tipo).
+- Tests: editor de exámenes (preguntas, opciones, puntajes) — típicamente del administrador.
+- Satisfacción: encuestas que el alumno responde al terminar un examen, y su reporte.
+- Reportería → "Histórico de colegio" (evolución por periodo), "Comparativo entre colegios", "Reporte de asesores", "Reporte de llaves", "Reporte de colegios".
+- Simulacro → "Crear"/"Ver" simulacros y "Simulacro Masivo" (campaña "Prepárate": captación de leads y envío de acceso).
+- Portal del Colegio: la vista para la cuenta del colegio (progreso + informe); admin/asesor también pueden abrirlo eligiendo un colegio, con análisis por llave (promedio del simulacro, perfil vocacional y de estilos).
+- Vocacional / Estilos → "Crear"/"Ver" esas evaluaciones.
+- Usuarios → Asesores, Coordinadores, Grupos de permisos (gestión de accesos; del administrador).
+
+CONCEPTOS Y TÉRMINOS CLAVE:
+- Llave (key): código que se entrega a un grupo de alumnos (un salón/sección) para rendir una evaluación. Tiene: tipo (simulacro/vocacional/estilos), aforo (cupo máximo), vigencia (desde/hasta), grado y sección, y un contador de usos.
+- Aforo: cupo máximo de alumnos de la llave (max_uses).
+- Usos / "usos de la llave": cuántos alumnos se registraron con la llave. OJO: es un contador de accesos y puede no coincidir con los exámenes realmente rendidos con resultados. Para desempeño usa los exámenes rendidos, no este contador.
+- Ocupación (en el portal): rendidos ÷ aforo.
+- Visita: registro operativo de que el asesor visitó (o agendó, o el colegio no asistió) a un colegio. Alimenta "Visitas Completadas" del dashboard.
+- Simulacro Masivo / "Prepárate": campaña de captación; se recogen leads (interesados) y se les envía un acceso para rendir el simulacro.
+- Grupo de permisos: conjunto de permisos que define qué puede ver/hacer un usuario. El administrador los asigna.
+
+CÓMO RINDE UN ALUMNO: el asesor o el colegio le entrega el CÓDIGO de la llave; el alumno entra a la landing, valida la llave, pide un código OTP a su correo, lo ingresa y rinde la evaluación. Al terminar ve sus resultados y responde una breve encuesta de satisfacción.
+
+CÓMO SE ENTREGA UNA EVALUACIÓN A UN COLEGIO: se crea una llave del tipo deseado (Simulacro/Vocacional/Estilos) con su aforo y vigencia, y se comparte el código con los alumnos del salón. Cada tipo tiene su sección para crear/ver.`
 
 type assistantRequest struct {
 	Messages []struct {
@@ -263,6 +311,13 @@ func argStr(args map[string]any, k string) string {
 
 func round1(f float64) float64 { return math.Round(f*10) / 10 }
 
+func asString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
 // resolveColegioID resuelve un colegio a su ID real dentro del SCOPE del caller,
 // a partir de school_id y/o school_name. Es determinístico y evita que el LLM
 // invente un UUID inexistente (que hacía a analytics devolver Internal). Devuelve
@@ -363,15 +418,70 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
+		toolSchema("estudiantes_de_colegio", "Lista los estudiantes de un colegio (nombre, correo, documento), scopeado a los colegios que el usuario puede ver. Opcionalmente filtra por un texto (nombre/correo/documento). Úsala para consultas puntuales de alumnos.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"school_name": map[string]any{"type": "string", "description": "nombre del colegio; se resuelve automáticamente"},
+				"school_id":   map[string]any{"type": "string", "description": "opcional: id del colegio si lo conoces; NO lo inventes"},
+				"filtro":      map[string]any{"type": "string", "description": "opcional: texto para filtrar por nombre/correo/documento"},
+			},
+			"required": []string{},
+		}),
 	}
 	byName := map[string]assistantToolFn{
-		"listar_colegios":       toolListarColegios,
-		"dashboard_colegio":     toolDashboardColegio,
-		"comparativo_colegios":  toolComparativoColegios,
-		"dashboard_asesor":      toolDashboardAsesor,
-		"listar_llaves_colegio": toolListarLlavesColegio,
+		"listar_colegios":        toolListarColegios,
+		"dashboard_colegio":      toolDashboardColegio,
+		"comparativo_colegios":   toolComparativoColegios,
+		"dashboard_asesor":       toolDashboardAsesor,
+		"listar_llaves_colegio":  toolListarLlavesColegio,
+		"estudiantes_de_colegio": toolEstudiantesDeColegio,
 	}
 	return schemas, byName
+}
+
+func toolEstudiantesDeColegio(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	sid := p.resolveColegioID(r, args)
+	if sid == "" {
+		return map[string]any{"error": "no encontré ese colegio entre los que puedes ver; revisa el nombre"}, nil, nil
+	}
+	if !p.enforceColegioScope(r, sid) {
+		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
+	}
+	req := &userscommonpb.SearchRequest{
+		FilterGroups: []*userscommonpb.FilterGroup{{
+			Filters: []*userscommonpb.Filter{
+				{PropertyName: "school_id", Operator: userscommonpb.FilterOperator_EQ, Values: []string{sid}},
+				{PropertyName: "active", Operator: userscommonpb.FilterOperator_EQ, Values: []string{"true"}},
+			},
+		}},
+		Properties: []string{"email", "first_name", "last_name", "document_number", "school_id"},
+		Limit:      500,
+	}
+	resp, err := p.cli.Users.SearchUsers(r.Context(), req)
+	if err != nil {
+		return map[string]any{"error": "no se pudo obtener la lista de estudiantes"}, nil, nil
+	}
+	filtro := strings.ToLower(strings.TrimSpace(argStr(args, "filtro")))
+	out := make([]map[string]any, 0, 50)
+	for _, it := range resp.GetResults() {
+		props := it.GetProperties().AsMap()
+		nombre := strings.TrimSpace(asString(props["first_name"]) + " " + asString(props["last_name"]))
+		email := asString(props["email"])
+		doc := asString(props["document_number"])
+		if filtro != "" {
+			hay := strings.Contains(strings.ToLower(nombre), filtro) ||
+				strings.Contains(strings.ToLower(email), filtro) ||
+				strings.Contains(strings.ToLower(doc), filtro)
+			if !hay {
+				continue
+			}
+		}
+		out = append(out, map[string]any{"nombre": nombre, "correo": email, "documento": doc})
+		if len(out) >= 60 {
+			break
+		}
+	}
+	return map[string]any{"estudiantes": out, "total_mostrados": len(out)}, nil, nil
 }
 
 func toolSchema(name, desc string, params map[string]any) any {
