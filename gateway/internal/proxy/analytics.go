@@ -76,25 +76,45 @@ func (p *Proxy) getAsesoresKeysReport(w http.ResponseWriter, r *http.Request) {
 	// Cache por colegio: rendidos y alumnos DISTINTOS por llave (un colegio se
 	// procesa una sola vez aunque lo compartan asesores).
 	type schoolAtt struct {
-		rendidos map[string]int
-		alumnos  map[string]map[string]struct{}
+		rendidos     map[string]int
+		alumnos      map[string]map[string]struct{}
+		rendidosAnio map[string]map[string]int                 // keyID → año → rendidos
+		alumnosAnio  map[string]map[string]map[string]struct{} // keyID → año → alumnos distintos
 	}
 	attCache := map[string]*schoolAtt{}
 	attOf := func(schoolID string) *schoolAtt {
 		if sa, ok := attCache[schoolID]; ok {
 			return sa
 		}
-		sa := &schoolAtt{rendidos: map[string]int{}, alumnos: map[string]map[string]struct{}{}}
+		sa := &schoolAtt{
+			rendidos:     map[string]int{},
+			alumnos:      map[string]map[string]struct{}{},
+			rendidosAnio: map[string]map[string]int{},
+			alumnosAnio:  map[string]map[string]map[string]struct{}{},
+		}
 		if at, aerr := p.cli.Attempts.ListByColegio(ctx, &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: schoolID}); aerr == nil {
 			for _, a := range at.GetItems() {
 				if a.GetSubmittedAt() == nil || a.GetKeyId() == "" {
 					continue
 				}
-				sa.rendidos[a.GetKeyId()]++
-				if sa.alumnos[a.GetKeyId()] == nil {
-					sa.alumnos[a.GetKeyId()] = map[string]struct{}{}
+				kid := a.GetKeyId()
+				anio := a.GetSubmittedAt().AsTime().Format("2006")
+				sa.rendidos[kid]++
+				if sa.alumnos[kid] == nil {
+					sa.alumnos[kid] = map[string]struct{}{}
 				}
-				sa.alumnos[a.GetKeyId()][a.GetUserId()] = struct{}{}
+				sa.alumnos[kid][a.GetUserId()] = struct{}{}
+				if sa.rendidosAnio[kid] == nil {
+					sa.rendidosAnio[kid] = map[string]int{}
+				}
+				sa.rendidosAnio[kid][anio]++
+				if sa.alumnosAnio[kid] == nil {
+					sa.alumnosAnio[kid] = map[string]map[string]struct{}{}
+				}
+				if sa.alumnosAnio[kid][anio] == nil {
+					sa.alumnosAnio[kid][anio] = map[string]struct{}{}
+				}
+				sa.alumnosAnio[kid][anio][a.GetUserId()] = struct{}{}
 			}
 		}
 		attCache[schoolID] = sa
@@ -125,16 +145,22 @@ func (p *Proxy) getAsesoresKeysReport(w http.ResponseWriter, r *http.Request) {
 			sa := attOf(s.GetId())
 			for _, k := range kr.GetItems() {
 				vigente := k.GetActive() && (k.GetValidTo() == nil || k.GetValidTo().AsTime().After(now))
+				alumnosAnio := map[string]int{}
+				for anio, set := range sa.alumnosAnio[k.GetId()] {
+					alumnosAnio[anio] = len(set)
+				}
 				keys = append(keys, map[string]any{
-					"code":      k.GetCode(),
-					"colegio":   s.GetName(),
-					"tipo":      toolRouteFromExamTypeId(k.GetExamTypeId()),
-					"activa":    k.GetActive(),
-					"vigente":   vigente,
-					"aforo":     k.GetMaxUses(),
-					"rendidos":  sa.rendidos[k.GetId()],
-					"alumnos":   len(sa.alumnos[k.GetId()]),
-					"creada_at": optionalTimestamp(k.GetCreatedAt()),
+					"code":              k.GetCode(),
+					"colegio":           s.GetName(),
+					"tipo":              toolRouteFromExamTypeId(k.GetExamTypeId()),
+					"activa":            k.GetActive(),
+					"vigente":           vigente,
+					"aforo":             k.GetMaxUses(),
+					"rendidos":          sa.rendidos[k.GetId()],
+					"alumnos":           len(sa.alumnos[k.GetId()]),
+					"rendidos_por_anio": sa.rendidosAnio[k.GetId()],
+					"alumnos_por_anio":  alumnosAnio,
+					"creada_at":         optionalTimestamp(k.GetCreatedAt()),
 				})
 			}
 		}
