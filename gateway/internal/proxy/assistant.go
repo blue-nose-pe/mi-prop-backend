@@ -139,6 +139,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 == CÓMO RESPONDES ==
 - No todo necesita gráfico. Usa gráficos SOLO cuando reflejan datos (promedios, rankings, distribuciones). Para preguntas de "cómo funciona", "dónde encuentro X", "qué significa Y", "para qué sirve este botón", responde en TEXTO claro con la Guía del sistema de abajo, sin gráficos.
 - CONTROL DE GRÁFICOS (importante — el cliente odia el "spam" de gráficos): al llamar a la herramienta de resumen de un colegio, SIEMPRE fija el parámetro "grafico" a lo que el usuario pidió: 'simulacro' si pide el promedio/puntaje del simulacro, 'vocacional' o 'estilos' si pide ese perfil, 'todos' SOLO si pide el dashboard/resumen completo, y 'ninguno' si solo quiere un número/conteo, un texto, o si vas a rehusar. NO adjuntes gráficos de vocacional/estilos cuando preguntan por simulacro (ni viceversa). NUNCA adjuntes gráficos a una respuesta que es un rechazo o una limitación ("no tengo ese dato", "no existe", "no puedo"). Muestra a lo sumo lo que refleja EXACTAMENTE lo que se preguntó.
+- UNA sola herramienta por intención: si la pregunta es de RANKING / comparación / "cuál colegio" / participación / panorama, usa SOLO la herramienta de resumen general o la de comparación (que ya traen su único gráfico de barras); NO llames además al resumen de un colegio individual, para no mezclar un gauge suelto e irrelevante con el ranking. Un gauge de un colegio es solo para cuando preguntan el promedio de ESE colegio puntual.
 - Conoces a fondo la plataforma (roles, secciones, conceptos, flujos). Si te preguntan cómo hacer algo o dónde está, guíalos con precisión (nombre del menú y para qué sirve). Si algo requiere un permiso que su rol no tiene, acláralo.
 - Si una pregunta es de DATOS, usa las herramientas. Si es de CÓMO FUNCIONA / AYUDA, usa la Guía. Puedes combinar (explicar y además mostrar datos).
 
@@ -538,7 +539,38 @@ func toolResumenGeneral(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 	if simW > 0 {
 		res["promedio_global_simulacro"] = round1(simSum / simW)
 	}
-	return res, nil, nil
+	// Gráfico de participación por colegio (barras, ordenado desc). UN solo
+	// gráfico relevante — así una pregunta de "gráfico de participación /
+	// panorama" SÍ obtiene un gráfico, en vez de "no puedo generar un gráfico".
+	var charts []any
+	if len(porColegio) > 0 {
+		ordered := make([]map[string]any, len(porColegio))
+		copy(ordered, porColegio)
+		for i := 0; i < len(ordered); i++ {
+			for j := i + 1; j < len(ordered); j++ {
+				ai, _ := ordered[i]["intentos"].(int32)
+				aj, _ := ordered[j]["intentos"].(int32)
+				if aj > ai {
+					ordered[i], ordered[j] = ordered[j], ordered[i]
+				}
+			}
+		}
+		labels := make([]string, 0, len(ordered))
+		data := make([]float64, 0, len(ordered))
+		for _, row := range ordered {
+			labels = append(labels, asString(row["colegio"]))
+			if v, ok := row["intentos"].(int32); ok {
+				data = append(data, float64(v))
+			}
+		}
+		charts = append(charts, map[string]any{
+			"kind": "bar", "horizontal": true,
+			"title":  "Participación por colegio (exámenes rendidos)",
+			"labels": labels,
+			"series": []map[string]any{{"name": "Exámenes rendidos", "data": data}},
+		})
+	}
+	return res, charts, nil
 }
 
 func toolEstudiantesDeColegio(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
