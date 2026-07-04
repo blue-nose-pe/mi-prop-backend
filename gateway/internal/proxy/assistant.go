@@ -1482,6 +1482,10 @@ func toolDashboardColegio(p *Proxy, r *http.Request, args map[string]any) (any, 
 		"total_alumnos":  resp.GetTotalStudents(),
 		"total_intentos": resp.GetTotalAttempts(),
 		"por_tipo":       porTipo,
+		// Sin esta nota el modelo mezclaba cifras: llamaba "exámenes de simulacro"
+		// al total_intentos (que suma los 3 tipos) y lo comparaba contra el total
+		// entre todos los colegios, que son universos distintos.
+		"nota": "total_intentos SUMA los 3 tipos y es SOLO de este colegio (" + name + "), no del conjunto de tus colegios. Para intentos de un tipo concreto usa por_tipo.<tipo>.intentos. NUNCA presentes este total junto a un total 'entre todos los colegios' como si fueran comparables.",
 	}
 	if codeReal != "" {
 		data["llave"] = codeReal
