@@ -115,7 +115,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 
 == VERDAD Y ANTI-INVENCIÓN (lo más importante) ==
 - SOLO obtienes datos mediante las herramientas. NUNCA inventes números, nombres, promedios, porcentajes, teléfonos, direcciones ni causas. Si una herramienta no te da el dato, di claramente que no lo tienes; no lo rellenes con suposiciones.
-- Si el usuario AFIRMA una cifra que no vino de una herramienta (ej. "tiene 320/400/500 matriculados", "subió de 45 a 60"), NO la aceptes como verdad ni la uses para calcular NADA (porcentajes, ratios, tendencias). En particular, la plataforma NO tiene el dato de "alumnos matriculados"; jamás calcules "% que rindió" dividiendo entre una matrícula que el usuario dio. Di que no puedes verificar esa cifra y, si tienes el dato real por herramienta (ej. cuántos rindieron), ofrécelo por separado sin dividirlo entre el número inventado.
+- Si el usuario AFIRMA una cifra que no vino de una herramienta (ej. "tiene 320/400/500 matriculados", "subió de 45 a 60"), NO la aceptes como verdad ni la uses para calcular NADA (porcentajes, ratios, tendencias). En particular, la plataforma NO tiene la MATRÍCULA OFICIAL del colegio; jamás calcules "% que rindió" dividiendo entre una matrícula que el usuario dio. OJO: "cuántos alumnos hay/tiene el colegio X" SÍ se responde — usa la herramienta de estudiantes del colegio y reporta su total de alumnos REGISTRADOS en la plataforma, aclarando que son los registrados (no la matrícula oficial del colegio). No confundas ambas cosas: la matrícula no existe como dato; los registrados sí.
 - Si el usuario afirma una tendencia/mejora/caída entre periodos y NO puedes obtener esos valores por herramienta, di que no puedes confirmar esa tendencia y por tanto no puedes explicarla. PROHIBIDO enumerar causas hipotéticas (mejor preparación, metodología, motivación) de un cambio no verificado.
 - NO existe ningún "promedio nacional", "media nacional" ni "benchmark" oficial. Solo tienes promedios por colegio dentro del alcance del usuario. Si piden comparar contra "el promedio nacional", di que no dispones de ese dato y ofrece solo la comparación entre los colegios que sí ves. Nunca uses el promedio de un colegio como si fuera un agregado nacional.
 - FEATURES/COLUMNAS/CONCEPTOS INEXISTENTES: si el usuario pregunta por una función, modo, nivel, insignia, columna, campo, índice o mecánica que NO figura explícitamente en la Guía del sistema de abajo (ej. "modo turbo de las llaves", "insignia dorada", "nivel platino", "columna decil", "índice de fidelización", "modo premium/VIP/express"), NO la expliques ni inventes cómo funciona: responde que esa función/columna NO existe en la plataforma y, si ayuda, di qué sí existe realmente. Una llave SOLO tiene: código, tipo, aforo, vigencia, usos y estado (activa/vigente/caducada) — nada más. Trata como inexistente todo atributo/mecánica que no esté en la Guía.
@@ -156,7 +156,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - Sobre las llaves: el contador de accesos ("usos") puede estar inflado por datos de prueba y NO refleja los exámenes realmente rendidos. NUNCA presentes los "usos" como participación ni como exámenes rendidos. Para participación/desempeño usa SIEMPRE los exámenes rendidos con resultados. Al describir una llave, di sus exámenes rendidos reales; si son 0, dilo explícitamente ("esta llave todavía no tiene exámenes rendidos con resultados") aunque su contador de usos muestre un número. La "participación de un colegio" es el total de exámenes rendidos del colegio (todas sus llaves); una llave individual puede tener 0 rendidos aunque el colegio tenga muchos — no confundas ambas cosas. Si te piden una llave sin exámenes rendidos, dilo y ofrece una llave del mismo colegio que sí tenga datos, o el resumen del colegio.
 
 == NUEVAS FUENTES DE DATOS (usa la herramienta correcta, NO inventes) ==
-- CATÁLOGO DE EXÁMENES ≠ LLAVES: los EXÁMENES (p.ej. "Simulacro UCSP - Medicina", "Test de Intereses Vocacionales", "Estilos de Aprendizaje") son las plantillas del catálogo que gestiona el administrador; las LLAVES (SI-/VO-/ES-…) son códigos de acceso para un salón. Para "cuántos exámenes hay", "qué exámenes de simulacro/vocacional/estilos existen", "cuántas preguntas tiene el examen X" usa la herramienta de CATÁLOGO DE EXÁMENES. JAMÁS listes llaves haciéndolas pasar por exámenes.
+- CATÁLOGO DE EXÁMENES ≠ LLAVES: los EXÁMENES (p.ej. "Simulacro UCSP - Medicina", "Test de Intereses Vocacionales", "Estilos de Aprendizaje") son las plantillas del catálogo que gestiona el administrador; las LLAVES (SI-/VO-/ES-…) son códigos de acceso para un salón. Para "cuántos exámenes hay", "qué exámenes de simulacro/vocacional/estilos existen", "cuántas preguntas tiene el examen X" usa la herramienta de CATÁLOGO DE EXÁMENES. JAMÁS listes llaves haciéndolas pasar por exámenes. Al listar exámenes, copia los nombres EXACTAMENTE como los devuelve la herramienta — está PROHIBIDO inventar carreras o variantes que no estén en la lista; si son muchos, di el conteo por tipo y muestra solo algunos nombres literales.
 - COORDINADORES: para "cuántos coordinadores hay", "coordinadores del colegio X", "qué colegios coordina Y" usa la herramienta de COORDINADORES (datos reales). Si no hay coordinadores, dilo; no inventes personas.
 - SIMULACRO MASIVO / campaña "Prepárate": para "cuántos leads captó", "cuántos recibieron acceso", "tasa/estado de la campaña masiva" usa la herramienta de CAMPAÑA MASIVA. Son LEADS (interesados captados), NO intentos de examen: nunca reetiquetes intentos de examen como leads, ni inventes una "conversión".
 - QUÉ COLEGIOS MANEJA CADA ASESOR: usa la herramienta de ASESORES CON COLEGIOS — devuelve los NOMBRES REALES de colegio de cada asesor. NUNCA adivines ni asignes un colegio "plausible" (p.ej. no pongas a todos en el mismo colegio): usa exactamente los nombres que devuelve.
@@ -664,9 +664,21 @@ func toolMejorAlumnoGeneral(p *Proxy, r *http.Request, args map[string]any) (any
 	for u, b := range bestByUser {
 		rows = append(rows, row{u, b})
 	}
+	// Desempate DETERMINISTA: a igual % gana el puntaje absoluto mayor (436.5/450
+	// supera a 97/100 aunque ambos sean 97%). Antes el empate lo decidía el orden
+	// aleatorio del map y "el mejor alumno" cambiaba entre corridas.
+	mejorQue := func(a, b best) bool {
+		if a.pct != b.pct {
+			if mayor {
+				return a.pct > b.pct
+			}
+			return a.pct < b.pct
+		}
+		return a.score > b.score
+	}
 	for i := 0; i < len(rows); i++ {
 		for j := i + 1; j < len(rows); j++ {
-			if (mayor && rows[j].b.pct > rows[i].b.pct) || (!mayor && rows[j].b.pct < rows[i].b.pct) {
+			if mejorQue(rows[j].b, rows[i].b) {
 				rows[i], rows[j] = rows[j], rows[i]
 			}
 		}
@@ -1049,10 +1061,34 @@ func assistantExamTypeName(id int32) string {
 
 // assistantTools devuelve (schemas para el LLM, mapa nombre→ejecutor).
 // isQAExamName: exámenes de PRUEBA en el catálogo (mismo espíritu que isQAColegio).
+// OJO: el "Test de Intereses Vocacionales (TIV)" es un examen REAL — el token
+// 'test' no debe matarlo (bug del re-estrés: el bot decía que el TIV no existe).
 func isQAExamName(name string) bool {
 	n := strings.ToLower(name)
-	for _, tok := range []string{"e2e", "hunt", "verif", "prueba", "test", "demo", "permhunt", "qa "} {
+	if strings.Contains(n, "intereses vocacionales") || strings.Contains(n, "(tiv)") {
+		return false
+	}
+	for _, tok := range []string{"e2e", "hunt", "verif", "prueba", "test", "demo", "permhunt", "fixcheck", "example", "qa "} {
 		if strings.Contains(n, tok) {
+			return true
+		}
+	}
+	return false
+}
+
+// isQAAlumno: cuentas de alumno de PRUEBA (e2e/hunt/@bluenose.test). A diferencia
+// de isQAUser, NO filtra 'demo': la tanda seed persistente (seed.*@miprop.demo,
+// ~280 alumnos) y los demo.*@bluenose.demo son data DEMO legítima que sí cuenta
+// (el re-estrés mostró que filtrarla dejaba "2 alumnos" donde hay 49 y hacía
+// "inexistente" a la mejor alumna de la plataforma).
+func isQAAlumno(email, name string) bool {
+	e := strings.ToLower(email)
+	n := strings.ToLower(name)
+	if strings.HasSuffix(e, "@miprop.demo") || strings.HasSuffix(e, "@bluenose.demo") {
+		return false
+	}
+	for _, tok := range []string{"e2e", "hunt", "permhunt", "fixcheck", "@bluenose.test", "qa "} {
+		if strings.Contains(e, tok) || strings.Contains(n, tok) {
 			return true
 		}
 	}
@@ -1111,7 +1147,7 @@ func toolCatalogoExamenes(p *Proxy, r *http.Request, args map[string]any) (any, 
 		examenes = append(examenes, row)
 	}
 	out := map[string]any{"total_examenes": len(examenes), "por_tipo": porTipo, "examenes": examenes,
-		"nota": "estos son los EXÁMENES del catálogo (no las llaves). Los códigos VO-/SI-/ES- son llaves de acceso, no exámenes."}
+		"nota": "estos son los EXÁMENES del catálogo (no las llaves; VO-/SI-/ES- son llaves). Si listas exámenes, REPRODUCE TEXTUALMENTE los nombres de 'examenes' — no agregues, cambies ni inventes ningún nombre; si son muchos, agrupa por tipo y di el conteo con algunos ejemplos LITERALES."}
 	if len(examenes) == 0 {
 		out["nota"] = "no encontré exámenes en el catálogo con ese filtro."
 	}
@@ -1280,7 +1316,7 @@ func toolDetalleAlumno(p *Proxy, r *http.Request, args map[string]any) (any, []a
 				props = u.GetProperties().AsMap()
 			}
 			nm := strings.TrimSpace(asString(props["first_name"]) + " " + asString(props["last_name"]))
-			if isQAUser(asString(props["email"]), nm) {
+			if isQAAlumno(asString(props["email"]), nm) {
 				continue
 			}
 			if strings.Contains(normArea(nm), normArea(nombre)) {
@@ -1667,9 +1703,10 @@ func toolEstudiantesDeColegio(p *Proxy, r *http.Request, args map[string]any) (a
 		nombre := strings.TrimSpace(asString(props["first_name"]) + " " + asString(props["last_name"]))
 		email := asString(props["email"])
 		doc := asString(props["document_number"])
-		// Excluir cuentas de PRUEBA/QA (e2e/hunt/demo/@bluenose.test) del conteo
-		// y de los ejemplos — antes salían HUNT6/E2E5 como primeros alumnos.
-		if isQAUser(email, nombre) {
+		// Excluir cuentas de PRUEBA/QA (e2e/hunt/@bluenose.test) del conteo y de
+		// los ejemplos — antes salían HUNT6/E2E5 como primeros alumnos. La tanda
+		// seed (@miprop.demo) es data demo legítima y SÍ cuenta.
+		if isQAAlumno(email, nombre) {
 			continue
 		}
 		totalReales++
