@@ -26,6 +26,7 @@ import (
 
 	analyticsgrpcpb "analytics_service/proto/gen"
 	examsgrpcpb "exams_service/proto/gen"
+	examscommonpb "exams_service/proto/gen/common"
 	keysgrpcpb "keys_service/proto/gen"
 	usersgrpcpb "users_service/proto/gen"
 	userscommonpb "users_service/proto/gen/common"
@@ -154,6 +155,23 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - Si el usuario es admin/superadmin, NO tiene "operación de asesor" (no es asesor de ningún colegio): para un panorama usa el listado de colegios y el comparativo, no los indicadores de asesor.
 - Sobre las llaves: el contador de accesos ("usos") puede estar inflado por datos de prueba y NO refleja los exámenes realmente rendidos. NUNCA presentes los "usos" como participación ni como exámenes rendidos. Para participación/desempeño usa SIEMPRE los exámenes rendidos con resultados. Al describir una llave, di sus exámenes rendidos reales; si son 0, dilo explícitamente ("esta llave todavía no tiene exámenes rendidos con resultados") aunque su contador de usos muestre un número. La "participación de un colegio" es el total de exámenes rendidos del colegio (todas sus llaves); una llave individual puede tener 0 rendidos aunque el colegio tenga muchos — no confundas ambas cosas. Si te piden una llave sin exámenes rendidos, dilo y ofrece una llave del mismo colegio que sí tenga datos, o el resumen del colegio.
 
+== NUEVAS FUENTES DE DATOS (usa la herramienta correcta, NO inventes) ==
+- CATÁLOGO DE EXÁMENES ≠ LLAVES: los EXÁMENES (p.ej. "Simulacro UCSP - Medicina", "Test de Intereses Vocacionales", "Estilos de Aprendizaje") son las plantillas del catálogo que gestiona el administrador; las LLAVES (SI-/VO-/ES-…) son códigos de acceso para un salón. Para "cuántos exámenes hay", "qué exámenes de simulacro/vocacional/estilos existen", "cuántas preguntas tiene el examen X" usa la herramienta de CATÁLOGO DE EXÁMENES. JAMÁS listes llaves haciéndolas pasar por exámenes.
+- COORDINADORES: para "cuántos coordinadores hay", "coordinadores del colegio X", "qué colegios coordina Y" usa la herramienta de COORDINADORES (datos reales). Si no hay coordinadores, dilo; no inventes personas.
+- SIMULACRO MASIVO / campaña "Prepárate": para "cuántos leads captó", "cuántos recibieron acceso", "tasa/estado de la campaña masiva" usa la herramienta de CAMPAÑA MASIVA. Son LEADS (interesados captados), NO intentos de examen: nunca reetiquetes intentos de examen como leads, ni inventes una "conversión".
+- QUÉ COLEGIOS MANEJA CADA ASESOR: usa la herramienta de ASESORES CON COLEGIOS — devuelve los NOMBRES REALES de colegio de cada asesor. NUNCA adivines ni asignes un colegio "plausible" (p.ej. no pongas a todos en el mismo colegio): usa exactamente los nombres que devuelve.
+- DESEMPEÑO DE UN ALUMNO CONCRETO (por nombre): usa la herramienta de DETALLE DE ALUMNO — devuelve sus pruebas rendidas reales (simulacro con puntaje; vocacional/estilos como participación). Si la herramienta dice que no lo encontró, responde que no lo encuentras; PROHIBIDO fabricar su puntaje o un perfil de estilos/vocacional inventado.
+- ROLES / GRUPOS DE PERMISOS: para "qué grupos/roles existen" o "cuántos usuarios por rol" usa la herramienta de GRUPOS DE PERMISOS (a un admin SÍ puedes listárselos). Para "quién puede crear llaves / gestionar coordinadores", responde por la Guía: el ASESOR puede crear/gestionar las llaves de sus colegios; la gestión de coordinadores requiere un permiso específico que el administrador asigna (no es exclusivo del admin). NUNCA afirmes "solo el administrador puede X" si la Guía dice lo contrario.
+
+== PRECISIÓN NUMÉRICA (errores frecuentes a evitar) ==
+- PUNTAJE vs PORCENTAJE: las herramientas de alumnos devuelven "puntaje" (ABSOLUTO, ej. 436.5), "puntaje_maximo" (ej. 450) y "porcentaje" (ej. 97). Reporta el mejor alumno como "436.5 de 450 (97%)". NUNCA digas "puntaje de 97": 97 es el porcentaje, no el puntaje.
+- TOTAL (3 tipos) vs SIMULACRO: el total de intentos del resumen general SUMA simulacro+vocacional+estilos. Si preguntan por intentos/rendidos DE SIMULACRO, usa el conteo específico de simulacro (comparativo con participación, o por_tipo.simulacro), NUNCA el total agregado. No reportes el total de los 3 tipos como si fueran de simulacro.
+- INTENTOS vs ALUMNOS: "intentos/exámenes rendidos" (cuenta cada examen) ≠ "alumnos que rindieron" (personas distintas). No uses uno por el otro; si el dato es de intentos, no lo llames "alumnos".
+- MENOS/PEOR/REFORZAR: si piden el que tiene MENOS o el PEOR (para reforzar), reporta el MÍNIMO del ranking (el último), NO el máximo. Lee con cuidado si piden mayor o menor.
+- AÑOS/PERIODOS SIN DATOS: si preguntan por un periodo del que las herramientas no traen datos (p.ej. 2019, 2020), responde que no hay datos de ese periodo. JAMÁS muestres cifras de otro periodo etiquetándolas como de ese año.
+- PREGUNTA AMBIGUA ("dame los números", sin contexto): pide una breve aclaración (¿de qué colegio/tipo/periodo?). No arrastres ni repitas datos de un tema anterior no relacionado.
+- HIPÓTESIS ENMARCADAS: si el usuario pide EXPLÍCITAMENTE hipótesis o posibles explicaciones (reconociendo que son especulativas) de un cambio que SÍ verificaste con datos reales, puedes ofrecer 2-3 hipótesis razonables aclarando que son especulativas y no confirmadas. Lo prohibido sigue siendo afirmar una causa como hecho, o explicar un cambio que NO pudiste verificar.
+
 == CÓMO RESPONDES ==
 - No todo necesita gráfico. Usa gráficos SOLO cuando reflejan datos (promedios, rankings, distribuciones). Para preguntas de "cómo funciona", "dónde encuentro X", "qué significa Y", "para qué sirve este botón", responde en TEXTO claro con la Guía del sistema de abajo, sin gráficos.
 - CONTROL DE GRÁFICOS (importante — el cliente odia el "spam" de gráficos): al llamar a la herramienta de resumen de un colegio, SIEMPRE fija el parámetro "grafico" a lo que el usuario pidió: 'simulacro' si pide el promedio/puntaje del simulacro, 'vocacional' o 'estilos' si pide ese perfil, 'todos' SOLO si pide el dashboard/resumen completo, y 'ninguno' si solo quiere un número/conteo, un texto, o si vas a rehusar. NO adjuntes gráficos de vocacional/estilos cuando preguntan por simulacro (ni viceversa). NUNCA adjuntes gráficos a una respuesta que es un rechazo o una limitación ("no tengo ese dato", "no existe", "no puedo"). Muestra a lo sumo lo que refleja EXACTAMENTE lo que se preguntó.
@@ -273,10 +291,12 @@ func (p *Proxy) assistantChat(w http.ResponseWriter, r *http.Request) {
 	var charts []any
 	var links []any // botones "Ver/descargar resultado" que emiten las tools (campo _links)
 
-	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), 120*time.Second)
 	defer cancel()
 
-	const maxIters = 6
+	// 8 rondas: da margen a investigaciones multi-paso (traer datos → razonar →
+	// pedir más → componer) sin colgar la petición (timeout de 90s arriba).
+	const maxIters = 8
 	for iter := 0; iter < maxIters; iter++ {
 		resp, err := p.callLLM(ctx, msgs, toolSchemas)
 		if err != nil {
@@ -515,7 +535,8 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 	if examType != 2 {
 		return map[string]any{"nota": "la llave " + codeReal + " es de " + routeTool + ", que NO tiene puntaje; no se puede rankear por 'más alto/bajo' (es un perfil por área)."}, nil, nil
 	}
-	best := map[string]float64{}
+	type sc struct{ pct, score, max float64 }
+	best := map[string]sc{}
 	rendidosPorKey := map[string]int{}
 	if at, err := p.cli.Attempts.ListByColegio(r.Context(), &examsgrpcpb.ListAttemptsByColegioRequest{SchoolId: sid}); err == nil {
 		for _, a := range at.GetItems() {
@@ -527,8 +548,8 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 				continue
 			}
 			pct := a.GetScore() / a.GetMaxScore() * 100
-			if v, ok := best[a.GetUserId()]; !ok || pct > v {
-				best[a.GetUserId()] = pct
+			if v, ok := best[a.GetUserId()]; !ok || pct > v.pct {
+				best[a.GetUserId()] = sc{pct, a.GetScore(), a.GetMaxScore()}
 			}
 		}
 	}
@@ -552,15 +573,15 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 	}
 	type row struct {
 		user string
-		pct  float64
+		s    sc
 	}
 	rows := make([]row, 0, len(best))
-	for u, pct := range best {
-		rows = append(rows, row{u, pct})
+	for u, s := range best {
+		rows = append(rows, row{u, s})
 	}
 	for i := 0; i < len(rows); i++ {
 		for j := i + 1; j < len(rows); j++ {
-			if (mayor && rows[j].pct > rows[i].pct) || (!mayor && rows[j].pct < rows[i].pct) {
+			if (mayor && rows[j].s.pct > rows[i].s.pct) || (!mayor && rows[j].s.pct < rows[i].s.pct) {
 				rows[i], rows[j] = rows[j], rows[i]
 			}
 		}
@@ -575,9 +596,11 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 	links := []any{}
 	for _, rw := range rows {
 		nombre := p.userName(r, rw.user)
-		alumnos = append(alumnos, map[string]any{"alumno": nombre, "puntaje": round1(rw.pct)})
+		// Puntaje ABSOLUTO + %. El % NUNCA se presenta como el puntaje.
+		alumnos = append(alumnos, map[string]any{"alumno": nombre,
+			"puntaje": round1(rw.s.score), "puntaje_maximo": round1(rw.s.max), "porcentaje": round1(rw.s.pct)})
 		labels = append(labels, nombre)
-		data = append(data, round1(rw.pct))
+		data = append(data, round1(rw.s.pct))
 		// Botón DIRECTO por alumno: abre su modal de resultados ya desplegado
 		// (?alumno=), con la descarga del PDF a un clic.
 		links = append(links, resultLink(routeTool, sid, codeReal, "Abrir resultado de "+nombre+" (PDF)", rw.user))
@@ -605,6 +628,8 @@ func toolMejorAlumnoGeneral(p *Proxy, r *http.Request, args map[string]any) (any
 	colFilter := strings.ToLower(strings.TrimSpace(argStr(args, "colegio_nombre")))
 	type best struct {
 		pct     float64
+		score   float64
+		max     float64
 		keyID   string
 		sid     string
 		colegio string
@@ -624,7 +649,7 @@ func toolMejorAlumnoGeneral(p *Proxy, r *http.Request, args map[string]any) (any
 			}
 			pct := a.GetScore() / a.GetMaxScore() * 100
 			if v, ok := bestByUser[a.GetUserId()]; !ok || pct > v.pct {
-				bestByUser[a.GetUserId()] = best{pct, a.GetKeyId(), c.ID, c.Nombre}
+				bestByUser[a.GetUserId()] = best{pct, a.GetScore(), a.GetMaxScore(), a.GetKeyId(), c.ID, c.Nombre}
 			}
 		}
 	}
@@ -656,7 +681,10 @@ func toolMejorAlumnoGeneral(p *Proxy, r *http.Request, args map[string]any) (any
 	links := []any{}
 	for _, rw := range rows {
 		nombre := p.userName(r, rw.user)
-		alumnos = append(alumnos, map[string]any{"alumno": nombre, "colegio": rw.b.colegio, "puntaje": round1(rw.b.pct)})
+		// Puntaje ABSOLUTO (ej. 436.5 de 450) + su %. El 97 es el PORCENTAJE,
+		// NUNCA lo presentes como si fuera el puntaje.
+		alumnos = append(alumnos, map[string]any{"alumno": nombre, "colegio": rw.b.colegio,
+			"puntaje": round1(rw.b.score), "puntaje_maximo": round1(rw.b.max), "porcentaje": round1(rw.b.pct)})
 		labels = append(labels, nombre)
 		data = append(data, round1(rw.b.pct))
 		// link: resolver el código de la llave del mejor intento para abrir su
@@ -1020,6 +1048,304 @@ func assistantExamTypeName(id int32) string {
 }
 
 // assistantTools devuelve (schemas para el LLM, mapa nombre→ejecutor).
+// isQAExamName: exámenes de PRUEBA en el catálogo (mismo espíritu que isQAColegio).
+func isQAExamName(name string) bool {
+	n := strings.ToLower(name)
+	for _, tok := range []string{"e2e", "hunt", "verif", "prueba", "test", "demo", "permhunt", "qa "} {
+		if strings.Contains(n, tok) {
+			return true
+		}
+	}
+	return false
+}
+
+// toolCatalogoExamenes: catálogo MAESTRO de exámenes (db_exams.exam), NO las llaves.
+func toolCatalogoExamenes(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		return map[string]any{"nota": "el catálogo de exámenes lo gestiona el administrador; tu rol no lo ve."}, nil, nil
+	}
+	tipo := strings.ToLower(strings.TrimSpace(argStr(args, "tipo")))
+	if tipo == "estilos" {
+		tipo = "habitos"
+	}
+	tipoID := map[string]int32{"vocacional": 1, "simulacro": 2, "habitos": 3}
+	nombreFiltro := strings.ToLower(strings.TrimSpace(argStr(args, "nombre")))
+	resp, err := p.cli.Exams.SearchExams(r.Context(), &examscommonpb.SearchRequest{
+		Properties: []string{"name", "exam_type_id", "active"}, Limit: 500,
+	})
+	if err != nil {
+		return map[string]any{"error": "no se pudo obtener el catálogo de exámenes"}, nil, nil
+	}
+	tipoNombre := map[int32]string{1: "Vocacional", 2: "Simulacro", 3: "Estilos de Aprendizaje"}
+	porTipo := map[string]int{}
+	examenes := []map[string]any{}
+	for _, res := range resp.GetResults() {
+		props := map[string]any{}
+		if res.GetProperties() != nil {
+			props = res.GetProperties().AsMap()
+		}
+		name := asString(props["name"])
+		if name == "" || isQAExamName(name) {
+			continue
+		}
+		var etid int32
+		if v, ok := props["exam_type_id"].(float64); ok {
+			etid = int32(v)
+		}
+		tn := tipoNombre[etid]
+		if tipo != "" && tipoID[tipo] != etid {
+			continue
+		}
+		if nombreFiltro != "" && !strings.Contains(strings.ToLower(name), nombreFiltro) {
+			continue
+		}
+		porTipo[tn]++
+		row := map[string]any{"nombre": name, "tipo": tn}
+		// Nº de preguntas SOLO cuando se pide un examen concreto por nombre
+		// (contarlo para los 60+ del catálogo serían 60 llamadas gRPC).
+		if nombreFiltro != "" {
+			if qr, e := p.cli.ExamQs.ListByExam(r.Context(), &examsgrpcpb.ListByExamRequest{ExamId: res.GetId()}); e == nil {
+				row["num_preguntas"] = len(qr.GetItems())
+			}
+		}
+		examenes = append(examenes, row)
+	}
+	out := map[string]any{"total_examenes": len(examenes), "por_tipo": porTipo, "examenes": examenes,
+		"nota": "estos son los EXÁMENES del catálogo (no las llaves). Los códigos VO-/SI-/ES- son llaves de acceso, no exámenes."}
+	if len(examenes) == 0 {
+		out["nota"] = "no encontré exámenes en el catálogo con ese filtro."
+	}
+	return out, nil, nil
+}
+
+// toolCoordinadores: coordinadores de colegio (assignment), reales (no inventados).
+func toolCoordinadores(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	ctx := r.Context()
+	colegioArg := strings.TrimSpace(argStr(args, "colegio"))
+	if colegioArg != "" {
+		// resolveColegioID espera school_name; esta tool recibe "colegio".
+		args["school_name"] = colegioArg
+		sid := p.resolveColegioID(r, args)
+		if sid == "" {
+			return map[string]any{"error": "no encontré ese colegio entre los que puedes ver; revisa el nombre"}, nil, nil
+		}
+		if !p.enforceColegioScope(r, sid) {
+			return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
+		}
+		coords := []map[string]any{}
+		if cr, e := p.cli.Schools.ListCoordinadoresBySchool(ctx, &usersgrpcpb.ListCoordinadoresBySchoolRequest{SchoolId: sid}); e == nil {
+			for _, c := range cr.GetItems() {
+				nombre := strings.TrimSpace(c.GetFirstName() + " " + c.GetLastName())
+				if isQAUser(c.GetEmail(), nombre) {
+					continue
+				}
+				coords = append(coords, map[string]any{"coordinador": nombre, "email": c.GetEmail()})
+			}
+		}
+		return map[string]any{"colegio": colegioArg, "coordinadores": coords, "total": len(coords)}, nil, nil
+	}
+	// Sin colegio: todos los coordinadores del alcance, agrupados por persona.
+	porPersona := map[string]map[string]struct{}{} // nombre → set colegios
+	emailDe := map[string]string{}
+	for _, c := range p.scopedColegios(r) {
+		if cr, e := p.cli.Schools.ListCoordinadoresBySchool(ctx, &usersgrpcpb.ListCoordinadoresBySchoolRequest{SchoolId: c.ID}); e == nil {
+			for _, u := range cr.GetItems() {
+				nombre := strings.TrimSpace(u.GetFirstName() + " " + u.GetLastName())
+				if isQAUser(u.GetEmail(), nombre) {
+					continue
+				}
+				if porPersona[nombre] == nil {
+					porPersona[nombre] = map[string]struct{}{}
+				}
+				porPersona[nombre][c.Nombre] = struct{}{}
+				emailDe[nombre] = u.GetEmail()
+			}
+		}
+	}
+	lista := []map[string]any{}
+	for nombre, cols := range porPersona {
+		colegios := make([]string, 0, len(cols))
+		for cn := range cols {
+			colegios = append(colegios, cn)
+		}
+		lista = append(lista, map[string]any{"coordinador": nombre, "email": emailDe[nombre], "colegios": colegios})
+	}
+	return map[string]any{"total_coordinadores": len(lista), "coordinadores": lista}, nil, nil
+}
+
+// toolCampanaMasiva: métricas de leads del Simulacro Masivo / "Prepárate" (LAN).
+func toolCampanaMasiva(p *Proxy, r *http.Request, _ map[string]any) (any, []any, error) {
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		return map[string]any{"nota": "la campaña de Simulacro Masivo la gestiona el administrador; tu rol no la ve."}, nil, nil
+	}
+	resp, err := p.cli.Leads.ListLeads(r.Context(), &usersgrpcpb.ListLeadsRequest{Limit: 5000})
+	if err != nil {
+		return map[string]any{"error": "no se pudo obtener la campaña de simulacro masivo"}, nil, nil
+	}
+	total := 0
+	conAcceso := 0
+	for _, l := range resp.GetItems() {
+		total++
+		if l.GetAccesoEnviadoAt() != nil {
+			conAcceso++
+		}
+	}
+	tasa := 0.0
+	if total > 0 {
+		tasa = math.Round(float64(conAcceso) / float64(total) * 100)
+	}
+	return map[string]any{
+		"total_leads":        total,
+		"leads_con_acceso":   conAcceso,
+		"leads_sin_acceso":   total - conAcceso,
+		"tasa_envio_acceso":  tasa,
+		"nota":               "son LEADS (interesados captados por la campaña 'Prepárate'), NO intentos de examen. 'tasa_envio_acceso' = % de leads a los que ya se les envió el acceso. No existe una 'conversión' a examen rendido en este dato.",
+	}, nil, nil
+}
+
+// toolAsesoresColegios: asesores con sus COLEGIOS REALES (nombres verdaderos) y
+// alumnos impactados. Reusa collectAsesoresKeys → mata la invención de nombres.
+func toolAsesoresColegios(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		return map[string]any{"nota": "el listado global de asesores es del administrador; tú solo ves tu propia operación."}, nil, nil
+	}
+	data, err := p.collectAsesoresKeys(r.Context())
+	if err != nil {
+		return map[string]any{"error": "no se pudo obtener la información de asesores"}, nil, nil
+	}
+	filtro := strings.ToLower(strings.TrimSpace(argStr(args, "asesor")))
+	asesores := []map[string]any{}
+	for _, a := range data {
+		nombre := asString(a["asesor"])
+		if filtro != "" && !strings.Contains(strings.ToLower(nombre), filtro) {
+			continue
+		}
+		colSet := map[string]struct{}{}
+		impactados := 0
+		keys, _ := a["keys"].([]map[string]any)
+		for _, k := range keys {
+			if cn := asString(k["colegio"]); cn != "" {
+				colSet[cn] = struct{}{}
+			}
+			if al, ok := k["alumnos"].(int); ok {
+				impactados += al
+			}
+		}
+		colegios := make([]string, 0, len(colSet))
+		for cn := range colSet {
+			colegios = append(colegios, cn)
+		}
+		asesores = append(asesores, map[string]any{
+			"asesor": nombre, "colegios": colegios, "total_colegios": len(colegios), "alumnos_impactados": impactados,
+		})
+	}
+	return map[string]any{"total_asesores": len(asesores), "asesores": asesores,
+		"nota": "los nombres de colegio son REALES (no los inventes ni los cambies)."}, nil, nil
+}
+
+// toolDetalleAlumno: desempeño de UN alumno por nombre (intentos reales de todos
+// los tipos). Si no lo encuentra, lo dice — nunca fabrica su perfil.
+func toolDetalleAlumno(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	ctx := r.Context()
+	nombre := strings.ToLower(strings.TrimSpace(argStr(args, "nombre")))
+	if nombre == "" {
+		return map[string]any{"error": "indica el nombre del alumno a buscar"}, nil, nil
+	}
+	// Busca al alumno dentro del alcance del usuario (por colegio si se indicó,
+	// si no en todos sus colegios). Match por nombre (contains, sin acentos).
+	type cand struct{ id, nombre, colegio string }
+	cands := []cand{}
+	colegios := p.scopedColegios(r)
+	if col := strings.TrimSpace(argStr(args, "colegio")); col != "" {
+		// resolveColegioID espera school_name; esta tool recibe "colegio".
+		args["school_name"] = col
+		if sid := p.resolveColegioID(r, args); sid != "" {
+			colegios = []struct{ ID, Nombre string }{{sid, col}}
+		}
+	}
+	for _, c := range colegios {
+		req := &userscommonpb.SearchRequest{
+			FilterGroups: []*userscommonpb.FilterGroup{{Filters: []*userscommonpb.Filter{
+				{PropertyName: "school_id", Operator: userscommonpb.FilterOperator_EQ, Values: []string{c.ID}},
+			}}},
+			Properties: []string{"first_name", "last_name", "email", "school_id"}, Limit: 1000,
+		}
+		sr, e := p.cli.Users.SearchUsers(ctx, req)
+		if e != nil {
+			continue
+		}
+		for _, u := range sr.GetResults() {
+			props := map[string]any{}
+			if u.GetProperties() != nil {
+				props = u.GetProperties().AsMap()
+			}
+			nm := strings.TrimSpace(asString(props["first_name"]) + " " + asString(props["last_name"]))
+			if isQAUser(asString(props["email"]), nm) {
+				continue
+			}
+			if strings.Contains(normArea(nm), normArea(nombre)) {
+				cands = append(cands, cand{u.GetId(), nm, c.Nombre})
+			}
+		}
+	}
+	if len(cands) == 0 {
+		return map[string]any{"nota": "no encontré a ningún alumno con ese nombre entre los colegios que puedes ver. No inventes su desempeño."}, nil, nil
+	}
+	al := cands[0]
+	// Intentos del alumno (todos los tipos). max_score>0 = simulacro (con puntaje).
+	pruebas := []map[string]any{}
+	if at, e := p.cli.Attempts.ListByUser(ctx, &examsgrpcpb.ListAttemptsByUserRequest{UserId: al.id}); e == nil {
+		for _, a := range at.GetItems() {
+			if a.GetSubmittedAt() == nil {
+				continue
+			}
+			row := map[string]any{"fecha": optionalTimestamp(a.GetSubmittedAt())}
+			if a.GetMaxScore() > 0 {
+				row["tipo"] = "Simulacro"
+				row["puntaje"] = round1(a.GetScore())
+				row["puntaje_maximo"] = round1(a.GetMaxScore())
+				row["porcentaje"] = round1(a.GetScore() / a.GetMaxScore() * 100)
+			} else {
+				row["tipo"] = "Vocacional o Estilos (perfil por área, sin puntaje)"
+			}
+			pruebas = append(pruebas, row)
+		}
+	}
+	res := map[string]any{"alumno": al.nombre, "colegio": al.colegio, "pruebas_rendidas": pruebas, "total_pruebas": len(pruebas)}
+	if len(cands) > 1 {
+		res["nota"] = "hay más de un alumno con ese nombre; muestro el primero. Pide el colegio si necesitas desambiguar."
+	}
+	if len(pruebas) == 0 {
+		res["nota"] = "el alumno existe pero no tiene exámenes rendidos con resultados."
+	}
+	return res, nil, nil
+}
+
+// toolGruposPermisos: roles/grupos de acceso con cuántos usuarios tiene cada uno.
+func toolGruposPermisos(p *Proxy, r *http.Request, _ map[string]any) (any, []any, error) {
+	if !callerIsUserAdmin(r) {
+		return map[string]any{"nota": "los grupos de permisos los administra el administrador de UCSP; tu rol no los gestiona."}, nil, nil
+	}
+	// No hay RPC para listar grupos; consultamos los roles conocidos por su id.
+	roles := []struct {
+		id     uint32
+		nombre string
+	}{
+		{1, "Estudiantes"}, {3, "Asesores comerciales"}, {4, "Coordinadores de colegio"},
+		{6, "Administradores UCSP"}, {20, "Gestión de coordinadores"},
+	}
+	grupos := []map[string]any{}
+	for _, g := range roles {
+		gr, e := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{GroupId: g.id, Limit: 1})
+		if e != nil {
+			continue
+		}
+		grupos = append(grupos, map[string]any{"grupo": g.nombre, "usuarios": gr.GetTotal()})
+	}
+	return map[string]any{"grupos": grupos,
+		"nota": "son los principales roles de acceso con su nº de usuarios. Para 'quién puede hacer X' responde por la Guía del sistema, no inventes permisos."}, nil, nil
+}
+
 func assistantTools() ([]any, map[string]assistantToolFn) {
 	schemas := []any{
 		toolSchema("listar_colegios", "Lista los colegios que el usuario puede ver (nombre, ciudad, id). Úsala para saber qué colegios hay o para obtener el id de un colegio por su nombre.", map[string]any{
@@ -1146,8 +1472,48 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
+		toolSchema("catalogo_examenes", "CATÁLOGO de exámenes de la plataforma (los exámenes MAESTROS que gestiona el administrador, NO las llaves). Cuenta y lista los exámenes por tipo (simulacro/vocacional/estilos) y, si se indica un nombre, devuelve su número de preguntas. Úsala para 'cuántos exámenes hay', 'qué exámenes de simulacro/vocacional/estilos existen', 'cuántas preguntas tiene el examen X'. NO confundas exámenes (catálogo) con llaves (códigos de acceso VO-/SI-/ES-).", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"tipo":   map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "estilos"}, "description": "opcional: solo exámenes de este tipo"},
+				"nombre": map[string]any{"type": "string", "description": "opcional: nombre (o parte) de un examen para ver su nº de preguntas"},
+			},
+			"required": []string{},
+		}),
+		toolSchema("coordinadores", "COORDINADORES de colegio (personas que apoyan al asesor en un colegio). Sin colegio: cuenta y lista todos los coordinadores con los colegios que gestionan (solo administración). Con un colegio: los coordinadores de ESE colegio. Úsala para 'cuántos coordinadores hay', 'qué coordinadores tiene el colegio X', 'qué colegios gestiona el coordinador Y'.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"colegio": map[string]any{"type": "string", "description": "opcional: nombre del colegio; vacío = todos los coordinadores del alcance del usuario"},
+			},
+			"required": []string{},
+		}),
+		toolSchema("campana_masiva", "SIMULACRO MASIVO / campaña 'Prepárate' (LAN): métricas de LEADS captados (interesados), cuántos ya recibieron su acceso y la tasa de envío. Solo administración. Úsala para 'cuántos leads captó el masivo', 'conversión/tasa de la campaña masiva', 'detalle de la campaña Prepárate'. NO son intentos de examen: son LEADS (personas interesadas).", map[string]any{
+			"type": "object", "properties": map[string]any{}, "required": []string{},
+		}),
+		toolSchema("asesores_colegios", "Lista de ASESORES con los COLEGIOS REALES que maneja cada uno (nombre del colegio) y cuántos alumnos ha impactado. Solo administración. Úsala para 'qué colegios maneja cada asesor', 'cuántos asesores hay y sus colegios', 'en qué colegio está el asesor X'. Los nombres de colegio salen de datos reales — NUNCA los inventes.", map[string]any{
+			"type": "object", "properties": map[string]any{
+				"asesor": map[string]any{"type": "string", "description": "opcional: nombre de un asesor para ver solo sus colegios"},
+			}, "required": []string{},
+		}),
+		toolSchema("detalle_alumno", "Desempeño de UN alumno concreto por su nombre: sus intentos de examen (simulacro con puntaje, y participación en vocacional/estilos) con puntaje absoluto y %, fecha, y en qué llave. Úsala para 'cómo le fue al alumno X', 'qué pruebas rindió Y', 'puntaje de Z'. Si no encuentras al alumno, dilo — NUNCA inventes su desempeño ni un perfil.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"nombre":  map[string]any{"type": "string", "description": "nombre (o parte) del alumno a buscar"},
+				"colegio": map[string]any{"type": "string", "description": "opcional: acota la búsqueda a un colegio"},
+			},
+			"required": []string{"nombre"},
+		}),
+		toolSchema("grupos_permisos", "GRUPOS DE PERMISOS de la plataforma (roles de acceso): lista los grupos con cuántos usuarios tiene cada uno. Solo administración. Úsala para 'qué grupos de permisos existen', 'cuántos usuarios hay en cada grupo/rol'. Para 'quién puede hacer X' (crear llaves, gestionar coordinadores) responde por la Guía del sistema, no inventes permisos.", map[string]any{
+			"type": "object", "properties": map[string]any{}, "required": []string{},
+		}),
 	}
 	byName := map[string]assistantToolFn{
+		"catalogo_examenes":  toolCatalogoExamenes,
+		"coordinadores":      toolCoordinadores,
+		"campana_masiva":     toolCampanaMasiva,
+		"asesores_colegios":  toolAsesoresColegios,
+		"detalle_alumno":     toolDetalleAlumno,
+		"grupos_permisos":    toolGruposPermisos,
 		"listar_colegios":        toolListarColegios,
 		"dashboard_colegio":      toolDashboardColegio,
 		"comparativo_colegios":   toolComparativoColegios,
@@ -1295,11 +1661,18 @@ func toolEstudiantesDeColegio(p *Proxy, r *http.Request, args map[string]any) (a
 	}
 	filtro := strings.ToLower(strings.TrimSpace(argStr(args, "filtro")))
 	out := make([]map[string]any, 0, 50)
+	totalReales := 0
 	for _, it := range resp.GetResults() {
 		props := it.GetProperties().AsMap()
 		nombre := strings.TrimSpace(asString(props["first_name"]) + " " + asString(props["last_name"]))
 		email := asString(props["email"])
 		doc := asString(props["document_number"])
+		// Excluir cuentas de PRUEBA/QA (e2e/hunt/demo/@bluenose.test) del conteo
+		// y de los ejemplos — antes salían HUNT6/E2E5 como primeros alumnos.
+		if isQAUser(email, nombre) {
+			continue
+		}
+		totalReales++
 		if filtro != "" {
 			hay := strings.Contains(strings.ToLower(nombre), filtro) ||
 				strings.Contains(strings.ToLower(email), filtro) ||
@@ -1308,12 +1681,11 @@ func toolEstudiantesDeColegio(p *Proxy, r *http.Request, args map[string]any) (a
 				continue
 			}
 		}
-		out = append(out, map[string]any{"nombre": nombre, "correo": email, "documento": doc})
-		if len(out) >= 60 {
-			break
+		if len(out) < 60 {
+			out = append(out, map[string]any{"nombre": nombre, "correo": email, "documento": doc})
 		}
 	}
-	return map[string]any{"estudiantes": out, "total_mostrados": len(out)}, nil, nil
+	return map[string]any{"estudiantes": out, "total_mostrados": len(out), "total_alumnos": totalReales}, nil, nil
 }
 
 func toolSchema(name, desc string, params map[string]any) any {
