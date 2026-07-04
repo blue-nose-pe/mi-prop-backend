@@ -24,18 +24,28 @@ func NewSurveyRepo(db *sql.DB) *SurveyRepo {
 	return &SurveyRepo{db: db, SearchEngine: NewSearchEngine(db, surveySearchSchema)}
 }
 
-const surveyCols = `CONVERT(NVARCHAR(36), id),
-		code,
-		title,
-		ISNULL(description, ''),
-		target_role,
-		trigger_kind,
-		version,
-		published,
-		active,
-		created_at,
-		updated_at,
-		ISNULL(CONVERT(NVARCHAR(36), key_id), '')`
+// attachedKeyExpr proyecta la llave REALMENTE atada a la encuesta desde la
+// tabla survey_key (migration 007), NO la columna legacy survey.key_id (que
+// desde ese modelo queda NULL). El subselect correlaciona con la tabla base
+// `survey` sin alias, así que las queries que lo usan deben referenciar la
+// tabla como `survey` (no `s`). Como el modelo es 1 encuesta -> N llaves,
+// tomamos la primera (hoy todas son 1:1); el reporte suma por todas las
+// llaves via el gateway.
+const attachedKeyExpr = `ISNULL((SELECT TOP 1 CONVERT(NVARCHAR(36), sk.key_id)
+		FROM survey_key sk WHERE sk.survey_id = survey.id), '')`
+
+const surveyCols = `CONVERT(NVARCHAR(36), survey.id),
+		survey.code,
+		survey.title,
+		ISNULL(survey.description, ''),
+		survey.target_role,
+		survey.trigger_kind,
+		survey.version,
+		survey.published,
+		survey.active,
+		survey.created_at,
+		survey.updated_at,
+		` + attachedKeyExpr
 
 func (r *SurveyRepo) Save(ctx context.Context, s *domain.Survey) (domain.SurveyID, error) {
 	const q = `
@@ -102,24 +112,32 @@ func (r *SurveyRepo) FindByCodeVersion(ctx context.Context, code string, version
 // Comparamos la key como string (CONVERT a NVARCHAR) para no convertir @p2 a
 // UNIQUEIDENTIFIER cuando viene "" (evita error de conversion).
 func (r *SurveyRepo) FindActivePublished(ctx context.Context, triggerKind, keyID string) (*domain.Survey, error) {
+	// Usamos la tabla SIN alias (`FROM survey`) porque surveyCols/attachedKeyExpr
+	// correlacionan con `survey.id`. El fallback a la general (branch 2) solo se
+	// bloquea si la encuesta asignada a la key está VIVA (published+active): si
+	// se pausa/despublica, la key cae a la general de su tipo en vez de quedarse
+	// sin encuesta (fix auditoría 2026-07-03). Desempate determinista por
+	// created_at/id para no depender del plan de SQL Server con versiones iguales.
 	const q = `SELECT TOP 1 ` + surveyCols + `
-		FROM survey s
-		WHERE s.published = 1 AND s.active = 1
+		FROM survey
+		WHERE survey.published = 1 AND survey.active = 1
 		  AND (
-		        s.id = (SELECT TOP 1 sk.survey_id FROM survey_key sk
+		        survey.id = (SELECT TOP 1 sk.survey_id FROM survey_key sk
 		                 WHERE @p2 <> '' AND CONVERT(NVARCHAR(36), sk.key_id) = @p2)
 		     OR (
 		          NOT EXISTS (SELECT 1 FROM survey_key sk
-		                       WHERE @p2 <> '' AND CONVERT(NVARCHAR(36), sk.key_id) = @p2)
-		          AND s.trigger_kind = @p1
-		          AND NOT EXISTS (SELECT 1 FROM survey_key sk2 WHERE sk2.survey_id = s.id)
+		                       JOIN survey sa ON sa.id = sk.survey_id
+		                       WHERE @p2 <> '' AND CONVERT(NVARCHAR(36), sk.key_id) = @p2
+		                         AND sa.published = 1 AND sa.active = 1)
+		          AND survey.trigger_kind = @p1
+		          AND NOT EXISTS (SELECT 1 FROM survey_key sk2 WHERE sk2.survey_id = survey.id)
 		        )
 		  )
 		ORDER BY
-		  CASE WHEN s.id = (SELECT TOP 1 sk.survey_id FROM survey_key sk
+		  CASE WHEN survey.id = (SELECT TOP 1 sk.survey_id FROM survey_key sk
 		                     WHERE @p2 <> '' AND CONVERT(NVARCHAR(36), sk.key_id) = @p2)
 		       THEN 0 ELSE 1 END,
-		  s.version DESC`
+		  survey.version DESC, survey.created_at DESC, survey.id`
 	row := r.db.QueryRowContext(ctx, q, triggerKind, keyID)
 	return scanSurvey(row)
 }
@@ -138,6 +156,34 @@ func (r *SurveyRepo) AssignKeyToSurvey(ctx context.Context, surveyID domain.Surv
 		 WHEN NOT MATCHED THEN INSERT (key_id, survey_id) VALUES (src.key_id, src.survey_id);`
 	_, err := r.db.ExecContext(ctx, q, keyID, string(surveyID))
 	return err
+}
+
+// UnassignKeysFromSurvey elimina TODAS las filas survey_key de esta encuesta —
+// la vuelve "general por tipo de examen" (el '-'/"Todas" del builder). Sin
+// esto, "limpiar" el targeting en la UI era un no-op y la encuesta seguía
+// atada a su llave para siempre.
+func (r *SurveyRepo) UnassignKeysFromSurvey(ctx context.Context, surveyID domain.SurveyID) error {
+	_, err := r.db.ExecContext(ctx,
+		`DELETE FROM dbo.survey_key WHERE survey_id = CONVERT(UNIQUEIDENTIFIER, @p1)`,
+		string(surveyID))
+	return err
+}
+
+// HasKeys indica si la encuesta está atada a al menos una llave (survey_key).
+// Se usa al publicar: una encuesta con trigger no-tipo (recurring/legacy) SÍ
+// puede publicarse si está dirigida a una llave concreta.
+func (r *SurveyRepo) HasKeys(ctx context.Context, surveyID domain.SurveyID) (bool, error) {
+	var x int
+	err := r.db.QueryRowContext(ctx,
+		`SELECT TOP 1 1 FROM dbo.survey_key WHERE survey_id = CONVERT(UNIQUEIDENTIFIER, @p1)`,
+		string(surveyID)).Scan(&x)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (r *SurveyRepo) SetPublished(ctx context.Context, id domain.SurveyID, published bool) error {

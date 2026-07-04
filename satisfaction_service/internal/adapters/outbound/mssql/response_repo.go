@@ -125,6 +125,28 @@ func (r *ResponseRepo) ExistsByUserSurvey(ctx context.Context, userID domain.Use
 	return true, nil
 }
 
+// ExistsBySurveyAttempt: dedup del flujo anónimo (sin user_id). El intento
+// identifica la sesión del alumno, así que "1 respuesta por (survey, intento)"
+// evita que reenvíos/doble-click inflen las cifras.
+func (r *ResponseRepo) ExistsBySurveyAttempt(ctx context.Context, surveyID domain.SurveyID, attemptID domain.AttemptID) (bool, error) {
+	if attemptID == "" {
+		return false, nil
+	}
+	const q = `
+		SELECT 1 FROM survey_response
+		 WHERE survey_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		   AND exam_attempt_id = CONVERT(UNIQUEIDENTIFIER, @p2)`
+	var x int
+	err := r.db.QueryRowContext(ctx, q, string(surveyID), string(attemptID)).Scan(&x)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // GetMetricsRaw: cosecha las respuestas, las preguntas y total para que
 // el query handler haga los cálculos. Más caro que un agregado SQL puro,
 // pero la lógica de NPS / averages vive en el core (testeable).

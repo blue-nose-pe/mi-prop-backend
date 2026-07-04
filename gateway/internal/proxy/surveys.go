@@ -19,6 +19,7 @@ package proxy
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"net/http"
 	"strconv"
@@ -124,6 +125,22 @@ func (p *Proxy) requireSurveyWrite(w http.ResponseWriter, r *http.Request) bool 
 	return false
 }
 
+// requireSurveyRead gatea las rutas de LECTURA de encuestas (search, get,
+// questions, metrics, responses). Antes cualquier autenticado — incluido un
+// ALUMNO logueado por OTP — podía leer definiciones y métricas de encuestas.
+// Solo el staff (admin/asesor/coordinador) o quien tenga survey.write puede.
+// Las rutas /api/public/* (flujo anónimo post-examen) NO pasan por aquí.
+func (p *Proxy) requireSurveyRead(w http.ResponseWriter, r *http.Request) bool {
+	if hasPermission(r, "db_satisfaction.survey.write") || !callerIsStudentLike(r) {
+		return true
+	}
+	writeJSON(w, http.StatusForbidden, errorBody{
+		Status: "error", Code: "PERMISSION_DENIED",
+		Message: "no tienes permiso para ver encuestas",
+	})
+	return false
+}
+
 func (p *Proxy) createSurvey(w http.ResponseWriter, r *http.Request) {
 	if !p.requireSurveyWrite(w, r) {
 		return
@@ -149,6 +166,9 @@ func (p *Proxy) createSurvey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getSurvey(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyRead(w, r) {
+		return
+	}
 	resp, err := p.cli.Surveys.GetSurvey(r.Context(), &satisfactiongrpcpb.GetSurveyRequest{Id: r.PathValue("id")})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -257,6 +277,9 @@ func (p *Proxy) cloneSurvey(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getSurveyByCode(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyRead(w, r) {
+		return
+	}
 	code := r.URL.Query().Get("code")
 	versionStr := r.URL.Query().Get("version")
 	if code == "" || versionStr == "" {
@@ -285,6 +308,9 @@ func (p *Proxy) getSurveyByCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) searchSurveys(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyRead(w, r) {
+		return
+	}
 	req := &satisfactioncommonpb.SearchRequest{}
 	if err := decodeSearchRequest(r, req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
@@ -303,6 +329,9 @@ func (p *Proxy) searchSurveys(w http.ResponseWriter, r *http.Request) {
 // ---------- Survey questions ----------
 
 func (p *Proxy) listSurveyQuestions(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyRead(w, r) {
+		return
+	}
 	resp, err := p.cli.Surveys.ListQuestions(r.Context(), &satisfactiongrpcpb.ListQuestionsRequest{
 		SurveyId: r.PathValue("id"),
 	})
@@ -429,6 +458,21 @@ func (p *Proxy) submitSurveyResponse(w http.ResponseWriter, r *http.Request) {
 	if caller := userIDFromContext(r); caller != "" {
 		userID = caller
 	}
+	// Flujo ANÓNIMO (post-examen sin JWT): exigir un exam_attempt_id REAL. Sin
+	// esto, cualquiera podía inflar las cifras con curl mandando intentos
+	// inventados o vacíos (la auditoría encontró 2 respuestas con intentos
+	// huérfanos). Con user autenticado no hace falta: el JWT ya lo identifica.
+	if userID == "" {
+		if strings.TrimSpace(in.ExamAttemptID) == "" {
+			writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "exam_attempt_id requerido"})
+			return
+		}
+		at, aerr := p.cli.Attempts.GetAttempt(r.Context(), &examsgrpcpb.GetAttemptRequest{AttemptId: in.ExamAttemptID})
+		if aerr != nil || at.GetAttempt() == nil {
+			writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "VALIDATION_ERROR", Message: "exam_attempt_id inválido"})
+			return
+		}
+	}
 	resp, err := p.cli.Responses.Submit(r.Context(), &satisfactiongrpcpb.SubmitResponseRequest{
 		SurveyId:      in.SurveyID,
 		UserId:        userID,
@@ -443,6 +487,9 @@ func (p *Proxy) submitSurveyResponse(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) getSurveyResponse(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyRead(w, r) {
+		return
+	}
 	resp, err := p.cli.Responses.GetResponse(r.Context(), &satisfactiongrpcpb.GetResponseRequest{Id: r.PathValue("id")})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -489,7 +536,7 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 		FilterGroups: []*satisfactioncommonpb.FilterGroup{{
 			Filters: []*satisfactioncommonpb.Filter{{PropertyName: "active", Operator: satisfactioncommonpb.FilterOperator_EQ, Values: []string{"true"}}},
 		}},
-		Properties: []string{"id", "code", "title", "trigger_kind", "key_id", "published"},
+		Properties: []string{"id", "code", "title", "trigger_kind", "key_id", "attached_key_id", "published"},
 		Limit:      200,
 	})
 	if err != nil {
@@ -500,6 +547,12 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 	// se computa una vez por tipo con GetColegioComparativo. Cache.
 	tipoAttempts := map[string]int32{}
 	attemptsDeTipo := func(tipo string) int32 {
+		// trigger_kind 'estilos' == exam type 'habitos' en analytics (validExamType
+		// solo acepta vocacional|simulacro|habitos). Sin normalizar, GetColegioComparativo
+		// devolvía ErrInvalidExamType → 0 → tasa "—" en las encuestas de Estilos.
+		if tipo == "estilos" {
+			tipo = "habitos"
+		}
 		if v, ok := tipoAttempts[tipo]; ok {
 			return v
 		}
@@ -511,14 +564,18 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 				}
 				total += it.GetAttempts()
 			}
+			tipoAttempts[tipo] = total // solo cacheamos en éxito (no fijar 0 por error transitorio)
 		}
-		tipoAttempts[tipo] = total
 		return total
 	}
-	// Denominador por LLAVE (intentos submitted de esa key). Cache por colegio.
+	// Denominador por LLAVE (intentos submitted de esa key). Cache por keyID.
+	keyAttemptsCache := map[string]int32{}
 	keyAttempts := func(keyID string) int32 {
 		if keyID == "" {
 			return 0
+		}
+		if v, ok := keyAttemptsCache[keyID]; ok {
+			return v
 		}
 		kr, e := p.cli.Keys.GetKey(ctx, &keysgrpcpb.GetKeyRequest{Id: keyID})
 		if e != nil || kr.GetKey() == nil {
@@ -531,14 +588,54 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 					n++
 				}
 			}
+			keyAttemptsCache[keyID] = n
 		}
 		return n
 	}
+	// Tipo de examen + código de una llave (para clasificar encuestas atadas
+	// cuyo trigger es legacy/recurring y para que el bot pueda referenciarlas
+	// por CÓDIGO). tipo normalizado (habitos→estilos). Cache por keyID.
+	type keyInfo struct{ tipo, code string }
+	keyInfoCache := map[string]keyInfo{}
+	infoDeLlave := func(keyID string) keyInfo {
+		if keyID == "" {
+			return keyInfo{}
+		}
+		if v, ok := keyInfoCache[keyID]; ok {
+			return v
+		}
+		var ki keyInfo
+		if kr, e := p.cli.Keys.GetKey(ctx, &keysgrpcpb.GetKeyRequest{Id: keyID}); e == nil && kr.GetKey() != nil {
+			ki.code = kr.GetKey().GetCode()
+			// exam_type (db_exams.exam_type): 1=vocacional, 2=simulacro, 3=habitos.
+			switch kr.GetKey().GetExamTypeId() {
+			case 1:
+				ki.tipo = "vocacional"
+			case 2:
+				ki.tipo = "simulacro"
+			case 3:
+				ki.tipo = "estilos"
+			}
+		}
+		keyInfoCache[keyID] = ki
+		return ki
+	}
 
-	tipoLabel := map[string]string{"simulacro": "Simulacro", "vocacional": "Vocacional", "estilos": "Estilos", "habitos": "Estilos"}
+	tipoLabel := map[string]string{
+		"simulacro": "Simulacro", "vocacional": "Vocacional", "estilos": "Estilos", "habitos": "Estilos",
+		"recurring": "Recurrente", "post_test": "Post-examen", "on_demand": "Bajo demanda",
+	}
+	// isExamType: ¿el trigger es un tipo de examen real (no legacy/recurring)?
+	isExamType := func(t string) bool {
+		switch t {
+		case "simulacro", "vocacional", "estilos", "habitos":
+			return true
+		}
+		return false
+	}
 	out := make([]map[string]any, 0)
 	var totResp, totCSATw, totCSATn float64
-	npsSum, npsN := 0.0, 0.0
+	var totNPSw, totNPSn float64 // NPS global ponderado por respuestas (como CSAT)
 	for _, res := range sresp.GetResults() {
 		props := map[string]any{}
 		if res.GetProperties() != nil {
@@ -551,24 +648,80 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 		trigger := strings.ToLower(asString(props["trigger_kind"]))
 		code := asString(props["code"])
 		title := asString(props["title"])
-		keyID := asString(props["key_id"])
-		if tipoFiltro != "" && trigger != tipoFiltro {
+		// Llave REAL atada (survey_key vía attached_key_id); fallback a la
+		// columna legacy por si acaso. Antes se leía solo el legacy (NULL) →
+		// toda encuesta-por-llave salía como "general" con el denominador equivocado.
+		keyID := asString(props["attached_key_id"])
+		if keyID == "" {
+			keyID = asString(props["key_id"])
+		}
+		atada := keyID != ""
+		// Tipo EFECTIVO: si el trigger ya es un tipo de examen, ese; si es
+		// legacy/recurring y la encuesta está atada a una llave, el tipo de esa
+		// llave. Normalizamos habitos→estilos.
+		tipoEfectivo := trigger
+		if !isExamType(trigger) && atada {
+			if ki := infoDeLlave(keyID); ki.tipo != "" {
+				tipoEfectivo = ki.tipo
+			}
+		}
+		if tipoEfectivo == "habitos" {
+			tipoEfectivo = "estilos"
+		}
+		if tipoFiltro != "" {
+			tf := tipoFiltro
+			if tf == "habitos" {
+				tf = "estilos"
+			}
+			if tipoEfectivo != tf {
+				continue
+			}
+		}
+		if codeFiltro != "" && !strings.EqualFold(code, codeFiltro) && !strings.Contains(strings.ToLower(title), strings.ToLower(codeFiltro)) {
 			continue
 		}
-		if codeFiltro != "" && !strings.EqualFold(code, codeFiltro) {
-			continue
+		// Metadatos de preguntas (texto + value→label) para que el reporte/bot
+		// muestren "¿Qué tan satisfecho estás?" en vez de "Pregunta 3" y las
+		// barras de opciones con su etiqueta en vez de 'opcion_1'.
+		type qMeta struct {
+			text   string
+			labels map[string]string
+		}
+		qmeta := map[string]qMeta{}
+		if qr, e := p.cli.Surveys.ListQuestions(ctx, &satisfactiongrpcpb.ListQuestionsRequest{SurveyId: res.GetId()}); e == nil {
+			for _, qq := range qr.GetItems() {
+				labels := map[string]string{}
+				if oj := qq.GetOptionsJson(); oj != "" {
+					var opts []struct {
+						Value string `json:"value"`
+						Label string `json:"label"`
+					}
+					if json.Unmarshal([]byte(oj), &opts) == nil {
+						for _, o := range opts {
+							if o.Value != "" {
+								labels[o.Value] = o.Label
+							}
+						}
+					}
+				}
+				qmeta[qq.GetId()] = qMeta{text: qq.GetText(), labels: labels}
+			}
 		}
 		m, merr := p.cli.Responses.GetMetrics(ctx, &satisfactiongrpcpb.GetMetricsRequest{SurveyId: res.GetId()})
 		if merr != nil {
 			continue
 		}
 		resp := int(m.GetTotalResponses())
-		// CSAT = promedio de las preguntas de escala (1-5). NPS = promedio de nps.
+		// CSAT = promedio de las preguntas de escala (1-5). NPS = promedio de nps
+		// PONDERADO por número de respuestas (misma metodología que el CSAT).
 		var scaleSum, scaleN float64
-		var npsSurvey, npsSurveyN float64
+		var npsW, npsWn float64
 		preguntas := []map[string]any{}
 		for _, q := range m.GetPerQuestion() {
 			pq := map[string]any{"kind": q.GetKind(), "count": q.GetCount()}
+			if meta, ok := qmeta[q.GetQuestionId()]; ok && strings.TrimSpace(meta.text) != "" {
+				pq["texto"] = meta.text
+			}
 			if q.GetHasAverage() {
 				pq["promedio"] = round1(float64(q.GetAverage()))
 				if q.GetKind() == "scale" {
@@ -578,36 +731,62 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 			}
 			if q.GetHasNps() {
 				pq["nps"] = q.GetNps()
-				npsSurvey += float64(q.GetNps())
-				npsSurveyN++
+				npsW += float64(q.GetNps()) * float64(q.GetCount())
+				npsWn += float64(q.GetCount())
 			}
 			if d := q.GetDistribution(); len(d) > 0 {
-				pq["distribucion"] = d
+				if q.GetKind() == "open" {
+					// En open, los "buckets" de la distribución SON los comentarios.
+					comentarios := make([]string, 0, len(d))
+					for text := range d {
+						comentarios = append(comentarios, text)
+					}
+					pq["comentarios"] = comentarios
+				} else if meta, ok := qmeta[q.GetQuestionId()]; ok && len(meta.labels) > 0 {
+					relabeled := map[string]int32{}
+					for val, cnt := range d {
+						if lbl, ok := meta.labels[val]; ok && lbl != "" {
+							relabeled[lbl] = cnt
+						} else {
+							relabeled[val] = cnt
+						}
+					}
+					pq["distribucion"] = relabeled
+				} else {
+					pq["distribucion"] = d
+				}
 			}
 			preguntas = append(preguntas, pq)
 		}
 		row := map[string]any{
-			"code": code, "titulo": title, "tipo": tipoLabel[trigger], "trigger": trigger,
-			"atada_a_llave": keyID != "", "respuestas": resp, "preguntas": preguntas,
+			"code": code, "titulo": title, "tipo": tipoLabel[tipoEfectivo], "trigger": trigger,
+			"atada_a_llave": atada, "respuestas": resp, "preguntas": preguntas,
+		}
+		if atada {
+			row["key_id"] = keyID
+			if ki := infoDeLlave(keyID); ki.code != "" {
+				row["key_code"] = ki.code
+			}
 		}
 		if scaleN > 0 {
-			csat := round1(scaleSum / scaleN)
-			row["csat_1a5"] = csat
-			row["csat_pct"] = math.Round((csat - 1) / 4 * 100)
-			totCSATw += csat * float64(resp)
+			raw := scaleSum / scaleN
+			row["csat_1a5"] = round1(raw)
+			row["csat_pct"] = math.Round((raw - 1) / 4 * 100)
+			totCSATw += raw * float64(resp)
 			totCSATn += float64(resp)
 		}
-		if npsSurveyN > 0 {
-			row["nps"] = math.Round(npsSurvey / npsSurveyN)
-			npsSum += npsSurvey / npsSurveyN
-			npsN++
+		if npsWn > 0 {
+			row["nps"] = math.Round(npsW / npsWn)
+			totNPSw += npsW
+			totNPSn += npsWn
 		}
-		// Tasa de respuesta con denominador correcto.
+		// Tasa de respuesta con denominador correcto: por LLAVE si está atada,
+		// si no por TIPO de examen (solo si el tipo efectivo es real).
 		var elegibles int32
-		if keyID != "" {
+		if atada {
 			elegibles = keyAttempts(keyID)
-		} else if trigger != "" {
-			elegibles = attemptsDeTipo(trigger)
+		} else if isExamType(tipoEfectivo) {
+			elegibles = attemptsDeTipo(tipoEfectivo)
 		}
 		if elegibles > 0 {
 			row["elegibles"] = elegibles
@@ -635,13 +814,16 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 	if totCSATn > 0 {
 		resumen["csat_promedio_1a5"] = round1(totCSATw / totCSATn)
 	}
-	if npsN > 0 {
-		resumen["nps_promedio"] = math.Round(npsSum / npsN)
+	if totNPSn > 0 {
+		resumen["nps_promedio"] = math.Round(totNPSw / totNPSn)
 	}
 	return resumen, out, nil
 }
 
 func (p *Proxy) getSurveyMetrics(w http.ResponseWriter, r *http.Request) {
+	if !p.requireSurveyRead(w, r) {
+		return
+	}
 	resp, err := p.cli.Responses.GetMetrics(r.Context(), &satisfactiongrpcpb.GetMetricsRequest{
 		SurveyId: r.PathValue("id"),
 	})

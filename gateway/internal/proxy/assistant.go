@@ -1098,10 +1098,12 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{},
 		}),
-		toolSchema("satisfaccion_encuestas", "REPORTE DE SATISFACCIÓN (mismas cifras que Reportería → Reporte de satisfacción): por encuesta publicada, respuestas, CSAT (promedio escala 1-5 y %), NPS y TASA DE RESPUESTA real (respuestas ÷ intentos de examen que califican para la encuesta). Con desglose por pregunta (promedios/distribuciones). Adjunta gráfico de barras del CSAT. Filtro opcional por tipo de examen. IMPORTANTE: las métricas son por ENCUESTA (no por colegio).", map[string]any{
+		toolSchema("satisfaccion_encuestas", "REPORTE DE SATISFACCIÓN (mismas cifras que Reportería → Reporte de satisfacción): por encuesta publicada, respuestas, CSAT (promedio escala 1-5 y %), NPS y TASA DE RESPUESTA real (respuestas ÷ intentos de examen que califican). Cada encuesta trae su desglose por pregunta (con el TEXTO de la pregunta, promedios, distribución con etiquetas) y los COMENTARIOS de texto libre. Si está atada a una llave trae key_code. Adjunta gráficos de CSAT y NPS por encuesta. Filtros: tipo de examen, código/nombre de encuesta, código de llave. SOLO ADMINISTRACIÓN (a un asesor/coordinador se le niega, igual que el panel). Las métricas son por ENCUESTA, no por colegio.", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"tipo": map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "estilos"}, "description": "opcional: solo encuestas de este tipo de examen"},
+				"tipo":     map[string]any{"type": "string", "enum": []string{"simulacro", "vocacional", "estilos"}, "description": "opcional: solo encuestas de este tipo de examen"},
+				"encuesta": map[string]any{"type": "string", "description": "opcional: código (ej. SAT-7467-E) o parte del nombre de una encuesta"},
+				"llave":    map[string]any{"type": "string", "description": "opcional: código de llave (ej. SI-OYF5WG) para ver solo la encuesta dirigida a esa llave"},
 			},
 			"required": []string{},
 		}),
@@ -2120,38 +2122,69 @@ func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, [
 // OJO: las métricas son POR ENCUESTA y GLOBALES (todas las respuestas), no por
 // colegio — la tarjeta del panel muestra lo mismo en la ficha de cada colegio.
 func toolSatisfaccionEncuestas(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	// Role-gate: el reporte de satisfacción es GLOBAL (todas las encuestas de la
+	// plataforma) y SOLO administración — igual que GET /api/analytics/satisfaccion/
+	// reporte, que responde 403 a un asesor/coordinador. Sin este guard el bot
+	// filtraba la fuga: un asesor obtenía por chat lo que el panel le niega.
+	if unrestricted, _, _ := p.callerColegioScope(r); !unrestricted {
+		return map[string]any{"error": "el reporte de satisfacción es solo para administración; tu rol no puede verlo por aquí."}, nil, nil
+	}
 	// MISMA fuente que el panel de Reportería de Satisfacción (el bot nunca
 	// contradice la pantalla): respuestas, CSAT (1-5), NPS y tasa de respuesta
-	// con denominador correcto. Filtro opcional por tipo.
+	// con denominador correcto. Filtros: tipo, código/nombre de encuesta, llave.
 	tipo := strings.ToLower(strings.TrimSpace(argStr(args, "tipo")))
 	if tipo == "habitos" {
 		tipo = "estilos"
 	}
-	resumen, encuestas, err := p.collectSatisfaccionReporte(r.Context(), tipo, "")
+	encFiltro := strings.TrimSpace(argStr(args, "encuesta"))
+	llaveFiltro := strings.ToUpper(strings.TrimSpace(argStr(args, "llave")))
+	resumen, encuestas, err := p.collectSatisfaccionReporte(r.Context(), tipo, encFiltro)
 	if err != nil {
 		return map[string]any{"error": "no se pudieron obtener las encuestas de satisfacción"}, nil, nil
+	}
+	// Filtro por CÓDIGO de llave (post-hoc: el colector no filtra por llave, pero
+	// cada fila atada trae key_code).
+	if llaveFiltro != "" {
+		filtradas := make([]map[string]any, 0)
+		for _, e := range encuestas {
+			if strings.EqualFold(asString(e["key_code"]), llaveFiltro) {
+				filtradas = append(filtradas, e)
+			}
+		}
+		encuestas = filtradas
 	}
 	if len(encuestas) == 0 {
 		return map[string]any{"nota": "no hay encuestas de satisfacción publicadas con respuestas para ese filtro."}, nil, nil
 	}
-	// Gráfico de barras: CSAT (%) por encuesta con respuestas.
-	labels := []string{}
-	data := []float64{}
+	// Gráficos: CSAT (%) y NPS por encuesta con respuestas.
+	labelsC, dataC := []string{}, []float64{}
+	labelsN, dataN := []string{}, []float64{}
 	for _, e := range encuestas {
 		resp, _ := e["respuestas"].(int)
-		if pct, ok := e["csat_pct"].(float64); ok && resp > 0 {
-			labels = append(labels, asString(e["titulo"]))
-			data = append(data, pct)
+		if resp <= 0 {
+			continue
+		}
+		titulo := asString(e["titulo"])
+		if pct, ok := e["csat_pct"].(float64); ok {
+			labelsC = append(labelsC, titulo)
+			dataC = append(dataC, pct)
+		}
+		if nps, ok := e["nps"].(float64); ok {
+			labelsN = append(labelsN, titulo)
+			dataN = append(dataN, nps)
 		}
 	}
 	var charts []any
-	if len(labels) > 0 {
-		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": "Satisfacción (CSAT %) por encuesta", "labels": labels, "series": []map[string]any{{"name": "Satisfacción %", "data": data}}, "unit": "%"})
+	if len(labelsC) > 0 {
+		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": "Satisfacción (CSAT %) por encuesta", "labels": labelsC, "series": []map[string]any{{"name": "Satisfacción %", "data": dataC}}, "unit": "%"})
+	}
+	if len(labelsN) > 0 {
+		charts = append(charts, map[string]any{"kind": "bar", "horizontal": true, "title": "NPS por encuesta (−100 a +100)", "labels": labelsN, "series": []map[string]any{{"name": "NPS", "data": dataN}}})
 	}
 	return map[string]any{
 		"resumen":   resumen,
 		"encuestas": encuestas,
-		"nota":      "mismas cifras que el panel Reportería → Reporte de satisfacción. CSAT = promedio de escala 1-5; NPS de las preguntas nps; tasa de respuesta = respuestas ÷ intentos de examen que califican. Las métricas NO se desglosan por colegio.",
+		"nota":      "mismas cifras que el panel Reportería → Reporte de satisfacción. CSAT = promedio escala 1-5; NPS de las preguntas nps (0-10); tasa de respuesta = respuestas ÷ intentos que califican. Cada pregunta trae 'texto'; las abiertas traen 'comentarios'. Las métricas NO se desglosan por colegio.",
 	}, charts, nil
 }
 

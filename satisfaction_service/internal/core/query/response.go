@@ -2,6 +2,7 @@ package query
 
 import (
 	"context"
+	"strings"
 
 	"satisfaction_service/internal/core/domain"
 	"satisfaction_service/internal/core/ports"
@@ -68,8 +69,17 @@ func computeMetrics(surveyID domain.SurveyID, raw *ports.RawMetrics) *domain.Met
 				nps := calcNPS(answers)
 				qm.NPS = &nps
 			}
-		case domain.KindSingle, domain.KindMulti:
-			qm.Distribution = distribution(answers)
+		case domain.KindSingle:
+			qm.Distribution = distribution(answers, false)
+		case domain.KindMulti:
+			// multi: el value_text llega como lista separada; cada opción cuenta
+			// por separado (antes el CSV entero se contaba como UN bucket).
+			qm.Distribution = distribution(answers, true)
+		case domain.KindOpen:
+			// Texto libre: exponemos los comentarios como distribución (texto→1)
+			// para que fluyan por el mismo canal (sin cambiar el proto) y el
+			// reporte/bot puedan leerlos. computeMetrics no los tenía en cuenta.
+			qm.Distribution = distribution(answers, false)
 		}
 		out.PerQuestion = append(out.PerQuestion, qm)
 	}
@@ -115,13 +125,32 @@ func calcNPS(answers []domain.Answer) int32 {
 	return (promoters - detractors) * 100 / total
 }
 
-func distribution(answers []domain.Answer) map[string]int32 {
+// distribution cuenta ocurrencias de value_text. Si splitMulti es true (para
+// preguntas de opción múltiple), separa el value_text por el delimitador '||'
+// (o ',' legacy) y cuenta cada opción por separado — antes el CSV entero
+// contaba como un único bucket, así que el conteo por opción salía mal en
+// cuanto un alumno marcaba más de una.
+func distribution(answers []domain.Answer, splitMulti bool) map[string]int32 {
 	out := map[string]int32{}
 	for _, a := range answers {
-		if a.ValueText == "" {
+		text := strings.TrimSpace(a.ValueText)
+		if text == "" {
 			continue
 		}
-		out[a.ValueText]++
+		if !splitMulti {
+			out[text]++
+			continue
+		}
+		sep := ","
+		if strings.Contains(text, "||") {
+			sep = "||"
+		}
+		for _, tok := range strings.Split(text, sep) {
+			tok = strings.TrimSpace(tok)
+			if tok != "" {
+				out[tok]++
+			}
+		}
 	}
 	return out
 }

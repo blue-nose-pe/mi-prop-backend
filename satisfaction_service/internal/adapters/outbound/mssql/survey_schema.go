@@ -14,7 +14,15 @@ var surveySearchSchema = SearchSchema{
 		"target_role":  {DBName: "target_role", Type: SearchTypeString, Filterable: true, Sortable: false, Selectable: true},
 		"trigger_kind": {DBName: "trigger_kind", Type: SearchTypeString, Filterable: true, Sortable: false, Selectable: true},
 		// Cliente (2026-06-04): permite buscar la encuesta dirigida a una key.
+		// key_id = columna LEGACY (survey.key_id, NULL desde migration 007).
 		"key_id":       {DBName: "key_id", Type: SearchTypeUUID, Filterable: true, Sortable: false, Selectable: true},
+		// attached_key_id = llave REAL atada vía survey_key (subselect). Solo
+		// proyectable (no filtrable/ordenable). El reporte lo lee en vez de la
+		// columna legacy para calcular atada_a_llave y la tasa por llave.
+		"attached_key_id": {
+			DBName:     "(SELECT TOP 1 CONVERT(NVARCHAR(36), sk.key_id) FROM survey_key sk WHERE sk.survey_id = survey.id)",
+			Type:       SearchTypeString, Filterable: false, Sortable: false, Selectable: true,
+		},
 		"version":      {DBName: "version", Type: SearchTypeInt, Filterable: true, Sortable: true, Selectable: true},
 		"published":    {DBName: "published", Type: SearchTypeBool, Filterable: true, Sortable: false, Selectable: true},
 		"active":       {DBName: "active", Type: SearchTypeBool, Filterable: true, Sortable: false, Selectable: true},

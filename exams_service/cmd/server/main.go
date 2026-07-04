@@ -112,6 +112,16 @@ func main() {
 		if fullMethod == "/exams.v1.AttemptService/CountSubmittedByKeyUser" {
 			return true
 		}
+		// GetAttempt es publico a nivel gRPC para que el gateway valide que un
+		// exam_attempt_id EXISTE al recibir una encuesta de satisfaccion ANONIMA
+		// (alumno post-examen sin JWT). Sin esto cualquiera inflaba las stats con
+		// intentos inventados, PERO exigirlo rompia el flujo anonimo (GetAttempt
+		// pedia auth). El servicio es ClusterIP (no expuesto a internet) y solo el
+		// gateway lo alcanza; el gateway sigue gateando la ruta HTTP con su propio
+		// ownership check. Mismo criterio que CountSubmittedByKeyUser.
+		if fullMethod == "/exams.v1.AttemptService/GetAttempt" {
+			return true
+		}
 		return strings.HasPrefix(fullMethod, "/grpc.health.") ||
 			strings.HasPrefix(fullMethod, "/grpc.reflection.")
 	}

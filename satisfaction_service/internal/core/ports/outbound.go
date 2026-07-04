@@ -20,6 +20,13 @@ type SurveyRepository interface {
 	// usa como mucho una encuesta (upsert por key_id); una encuesta puede servir
 	// a muchas keys. Reemplaza el survey.key_id de valor unico.
 	AssignKeyToSurvey(ctx context.Context, surveyID domain.SurveyID, keyID string) error
+	// UnassignKeysFromSurvey desata TODAS las llaves de la encuesta (la vuelve
+	// general por tipo). Implementa el "-"/"Todas" del builder.
+	UnassignKeysFromSurvey(ctx context.Context, surveyID domain.SurveyID) error
+	// HasKeys: ¿la encuesta está dirigida a al menos una llave? Se usa para
+	// permitir publicar encuestas de trigger no-tipo (recurring/legacy) atadas
+	// a una llave.
+	HasKeys(ctx context.Context, surveyID domain.SurveyID) (bool, error)
 	SetPublished(ctx context.Context, id domain.SurveyID, published bool) error
 	SetActive(ctx context.Context, id domain.SurveyID, active bool) error
 	Search(ctx context.Context, req search.Request) (*search.Response, error)
@@ -43,6 +50,9 @@ type ResponseRepository interface {
 	ExistsByUserAttempt(ctx context.Context, userID domain.UserID, surveyID domain.SurveyID, attemptID domain.AttemptID) (bool, error)
 	// ExistsByUserSurvey: ¿este user ya envió cualquier response para este survey?
 	ExistsByUserSurvey(ctx context.Context, userID domain.UserID, surveyID domain.SurveyID) (bool, error)
+	// ExistsBySurveyAttempt: ¿ya hay una respuesta para este survey + intento?
+	// Dedup del flujo ANÓNIMO (sin user_id): el intento identifica la sesión.
+	ExistsBySurveyAttempt(ctx context.Context, surveyID domain.SurveyID, attemptID domain.AttemptID) (bool, error)
 }
 
 // RawMetrics es la cosecha cruda que el adapter devuelve; el handler

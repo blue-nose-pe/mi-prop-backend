@@ -43,6 +43,15 @@ func (h *SurveyHandler) Create(ctx context.Context, in ports.CreateSurveyInput) 
 		return nil, err
 	}
 	s.ID = id
+	// Si se creó dirigida a una llave, atarla vía survey_key (fuente de verdad
+	// del targeting; FindActivePublished resuelve SOLO por esa tabla). Antes se
+	// escribía únicamente la columna legacy survey.key_id → la encuesta jamás se
+	// servía a los alumnos de esa llave (falla silenciosa).
+	if v := strings.TrimSpace(in.KeyID); v != "" && v != "-" {
+		if err := h.surveys.AssignKeyToSurvey(ctx, id, v); err != nil {
+			return nil, err
+		}
+	}
 	return s, nil
 }
 
@@ -85,7 +94,13 @@ func (h *SurveyHandler) Update(ctx context.Context, in ports.UpdateSurveyInput) 
 	// encuesta. Un uuid ata; "" = no tocar; "-" (limpiar legacy del modelo
 	// survey.key_id viejo) ya no aplica -> no-op. NO tocamos s.KeyID (columna
 	// legacy deprecada).
-	if v := strings.TrimSpace(in.KeyID); v != "" && v != "-" {
+	// key_id: uuid ata (vía survey_key); "-" DESATA (vuelve general por tipo);
+	// "" = no tocar. Antes "-" era no-op → no se podía quitar el targeting.
+	if v := strings.TrimSpace(in.KeyID); v == "-" {
+		if err := h.surveys.UnassignKeysFromSurvey(ctx, s.ID); err != nil {
+			return nil, err
+		}
+	} else if v != "" {
 		if err := h.surveys.AssignKeyToSurvey(ctx, s.ID, v); err != nil {
 			return nil, err
 		}
@@ -94,7 +109,8 @@ func (h *SurveyHandler) Update(ctx context.Context, in ports.UpdateSurveyInput) 
 }
 
 func (h *SurveyHandler) Publish(ctx context.Context, id domain.SurveyID) error {
-	if _, err := h.surveys.FindByID(ctx, id); err != nil {
+	s, err := h.surveys.FindByID(ctx, id)
+	if err != nil {
 		return err
 	}
 	qs, err := h.questions.ListBySurvey(ctx, id)
@@ -103,6 +119,20 @@ func (h *SurveyHandler) Publish(ctx context.Context, id domain.SurveyID) error {
 	}
 	if len(qs) == 0 {
 		return domain.ErrSurveyNotFound // un survey sin preguntas no se publica
+	}
+	// Targeting obligatorio: una encuesta publicada sin "Aplicar a" (trigger de
+	// tipo simulacro/vocacional/estilos) NI llave atada NUNCA se sirve a ningún
+	// alumno (FindActivePublished exige match exacto de trigger o de survey_key).
+	// Publicarla así es un error silencioso. La dejamos publicar solo si tiene
+	// un tipo válido o al menos una llave dirigida.
+	if !isExamTypeTrigger(s.Trigger) {
+		hasKeys, err := h.surveys.HasKeys(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !hasKeys {
+			return domain.ErrSurveyNoTarget
+		}
 	}
 	if err := h.surveys.SetPublished(ctx, id, true); err != nil {
 		return err
@@ -263,6 +293,18 @@ func validTrigger(t string) bool {
 	switch t {
 	case "post_test", "on_demand", "recurring",
 		"simulacro", "vocacional", "estilos":
+		return true
+	}
+	return false
+}
+
+// isExamTypeTrigger: ¿el trigger es un TIPO de examen real que el flujo del
+// alumno usa para resolver la encuesta general? Los legacy (post_test/
+// on_demand/recurring) no lo son: una encuesta con esos triggers solo llega a
+// los alumnos si está dirigida a una llave.
+func isExamTypeTrigger(t string) bool {
+	switch t {
+	case "simulacro", "vocacional", "estilos":
 		return true
 	}
 	return false

@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"satisfaction_service/internal/core/domain"
@@ -38,24 +39,54 @@ func (h *ResponseHandler) Submit(ctx context.Context, in ports.SubmitResponseInp
 	if err != nil {
 		return nil, err
 	}
-	provided := make(map[domain.QuestionID]bool, len(in.Answers))
+	// Validación de contenido (cubre TODOS los caminos: público anónimo y
+	// autenticado). Antes el endpoint público aceptaba cualquier question_id y
+	// cualquier value_number (un NPS de 15 contaba como promotor; un scale de
+	// 100 daba CSAT >100%). Ahora:
+	//   - rechazamos answers cuyo question_id NO pertenece a la encuesta,
+	//   - scale exige 1..5, nps exige 0..10,
+	//   - una pregunta required de texto (open/single/multi) exige contenido.
+	qByID := make(map[domain.QuestionID]domain.Question, len(qs))
+	for _, q := range qs {
+		qByID[q.ID] = q
+	}
+	answeredOK := make(map[domain.QuestionID]bool, len(in.Answers))
 	for _, a := range in.Answers {
-		provided[a.QuestionID] = true
+		q, ok := qByID[a.QuestionID]
+		if !ok {
+			return nil, domain.ErrQuestionNotInSurvey
+		}
+		switch q.Kind {
+		case domain.KindScale:
+			if a.ValueNumber == nil || *a.ValueNumber < 1 || *a.ValueNumber > 5 {
+				return nil, domain.ErrInvalidAnswerValue
+			}
+		case domain.KindNPS:
+			if a.ValueNumber == nil || *a.ValueNumber < 0 || *a.ValueNumber > 10 {
+				return nil, domain.ErrInvalidAnswerValue
+			}
+		default: // open / single / multi → contenido de texto
+			if strings.TrimSpace(a.ValueText) == "" {
+				return nil, domain.ErrInvalidAnswerValue
+			}
+		}
+		answeredOK[a.QuestionID] = true
 	}
 	for _, q := range qs {
-		if q.Required && !provided[q.ID] {
+		if q.Required && !answeredOK[q.ID] {
 			return nil, domain.ErrMissingRequiredAnswer
 		}
 	}
 
-	// La dedup por usuario solo aplica cuando hay un user_id. Las encuestas
-	// PÚBLICAS/anónimas (alumno sin sesión) llegan con user_id vacío: no se
-	// pueden deduplicar por usuario y, además, CONVERT(UNIQUEIDENTIFIER, '')
-	// reventaría la query → 500. Por eso se saltan los checks Exists* cuando
-	// in.UserID == "".
-	if in.UserID != "" {
-		switch s.Trigger {
-		case "post_test":
+	// Dedup de respuesta única. Antes el switch comparaba contra 'post_test'/
+	// 'on_demand' (timing legacy) pero trigger_kind hoy guarda el TIPO de examen
+	// (simulacro/vocacional/estilos) → el guard nunca disparaba y el único freno
+	// era el localStorage del navegador (doble-click, otra pestaña, incógnito).
+	// Ahora: única por (user, attempt) si hay intento, si no por (user, survey);
+	// y para el flujo anónimo (sin user) única por (survey, attempt). 'recurring'
+	// queda SIN restricción (NPS mensual: se responde varias veces a propósito).
+	if s.Trigger != "recurring" {
+		if in.UserID != "" {
 			if in.ExamAttemptID != "" {
 				exists, err := h.responses.ExistsByUserAttempt(ctx, in.UserID, in.SurveyID, in.ExamAttemptID)
 				if err != nil {
@@ -64,14 +95,24 @@ func (h *ResponseHandler) Submit(ctx context.Context, in ports.SubmitResponseInp
 				if exists {
 					return nil, domain.ErrAlreadySubmittedThisAttempt
 				}
+			} else {
+				exists, err := h.responses.ExistsByUserSurvey(ctx, in.UserID, in.SurveyID)
+				if err != nil {
+					return nil, err
+				}
+				if exists {
+					return nil, domain.ErrAlreadySubmittedThisSurvey
+				}
 			}
-		case "on_demand":
-			exists, err := h.responses.ExistsByUserSurvey(ctx, in.UserID, in.SurveyID)
+		} else if in.ExamAttemptID != "" {
+			// Anónimo: no hay user, pero el intento identifica la sesión. Evita
+			// que un mismo intento infle las cifras con reenvíos.
+			exists, err := h.responses.ExistsBySurveyAttempt(ctx, in.SurveyID, in.ExamAttemptID)
 			if err != nil {
 				return nil, err
 			}
 			if exists {
-				return nil, domain.ErrAlreadySubmittedThisSurvey
+				return nil, domain.ErrAlreadySubmittedThisAttempt
 			}
 		}
 	}
