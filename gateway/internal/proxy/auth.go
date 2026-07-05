@@ -115,6 +115,14 @@ func (p *Proxy) lookupStudentByKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !resp.GetExists() || key == nil {
+		// Alumno NUEVO con llave LLENA: por definición no tiene plaza (key_usage).
+		// Sin este check pasaba registro+OTP completos y chocaba contra el aforo
+		// recién al INICIAR el examen — mejor bloquear aquí, pre-OTP, con el
+		// mismo block_reason que el flujo de usuarios existentes.
+		if key != nil && !resp.GetExists() && key.GetMaxUses() > 0 && key.GetCurrentUses() >= key.GetMaxUses() {
+			out["can_attempt"] = false
+			out["block_reason"] = "aforo_lleno"
+		}
 		writeJSON(w, http.StatusOK, out)
 		return
 	}
@@ -343,8 +351,10 @@ func (p *Proxy) registerStudentWithKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1) Validar key. Si la key no es valida, devolvemos el error tal cual
-	// (keys_service lo distingue: KEY_NOT_FOUND, KEY_EXPIRED, KEY_EXHAUSTED).
+	// 1) Validar key: active + ventana de vigencia (KEY_NOT_FOUND/KEY_EXPIRED).
+	// OJO: ValidateKey NO chequea aforo (deliberado — el gate atómico por
+	// alumnos distintos vive en Keys.IncrementUses al iniciar el examen);
+	// el pre-check de aforo se hace abajo en 1b.
 	keyResp, err := p.cli.Keys.ValidateKey(r.Context(), &keysgrpcpb.ValidateKeyRequest{Code: in.KeyCode})
 	if err != nil {
 		writeGRPCError(w, err)
@@ -366,6 +376,29 @@ func (p *Proxy) registerStudentWithKey(w http.ResponseWriter, r *http.Request) {
 	// no lo veran (es lo esperado para flujo masivo), pero el alumno
 	// puede rendir el examen.
 	schoolID := key.GetSchoolId()
+
+	// 1b) AFORO lleno: bloquear el registro salvo que este alumno YA tenga
+	// plaza (key_usage) — el aforo es por alumnos DISTINTOS y su cupo se toma
+	// en el primer intento. Sin este check, un alumno nuevo con llave llena
+	// completaba registro+OTP y chocaba recién al iniciar el examen. El front
+	// ya mapea KEY_EXHAUSTED → "aforo máximo". ValidateKey NO chequea aforo
+	// (deliberado: el gate atómico vive en IncrementUses).
+	if key.GetMaxUses() > 0 && key.GetCurrentUses() >= key.GetMaxUses() {
+		tienePlaza := false
+		if lu, lerr := p.cli.Auth.CheckStudentEmail(r.Context(), &usersgrpcpb.CheckStudentEmailRequest{Email: in.Email}); lerr == nil && lu.GetExists() {
+			if hu, herr := p.cli.Keys.UserHasKeyUsage(r.Context(), &keysgrpcpb.UserHasKeyUsageRequest{KeyId: key.GetId(), UserId: lu.GetUserId()}); herr == nil && hu.GetHasUsage() {
+				tienePlaza = true
+			}
+		}
+		if !tienePlaza {
+			writeJSON(w, http.StatusConflict, errorBody{
+				Status:  "error",
+				Code:    "KEY_EXHAUSTED",
+				Message: "Esta llave ya alcanzó su aforo máximo de estudiantes. Pide una llave nueva a tu coordinador.",
+			})
+			return
+		}
+	}
 
 	// 2) Delegar creacion + envio de OTP a users_service.
 	regResp, err := p.cli.Auth.RegisterStudentWithKey(r.Context(), &usersgrpcpb.RegisterStudentWithKeyRequest{
