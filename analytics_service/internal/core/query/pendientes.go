@@ -50,6 +50,11 @@ func (h *DashboardHandler) GetAsesorPendientes(ctx context.Context, asesorID dom
 	studentsWithPending := []domain.PendingStudent{}
 
 	for _, c := range colegios {
+		// Colegio DESACTIVADO no aporta "pruebas pendientes" (panel del asesor +
+		// dashboard_asesor del bot).
+		if !c.Active {
+			continue
+		}
 		students, err := h.users.ListEstudiantesEnColegio(ctx, c.ID)
 		if err != nil {
 			continue // un colegio que falle no rompe el reporte

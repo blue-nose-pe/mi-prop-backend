@@ -1021,7 +1021,9 @@ func (p *Proxy) resolveColegioID(r *http.Request, args map[string]any) string {
 	var list []sc
 	unrestricted, _, _ := p.callerColegioScope(r)
 	if unrestricted {
-		if resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000}); err == nil {
+		// Colegio inactivo no se resuelve → no se puede consultar su dashboard/
+		// llaves/alumnos por el bot (queda solo en la gestión de colegios).
+		if resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000, ActiveOnly: true}); err == nil {
 			for _, s := range resp.GetItems() {
 				list = append(list, sc{s.GetId(), s.GetName()})
 			}
@@ -1029,6 +1031,9 @@ func (p *Proxy) resolveColegioID(r *http.Request, args map[string]any) string {
 	} else {
 		if resp, err := p.cli.Schools.ListSchoolsByAsesor(ctx, &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: userIDFromContext(r)}); err == nil {
 			for _, s := range resp.GetItems() {
+				if !s.GetActive() {
+					continue
+				}
 				list = append(list, sc{s.GetId(), s.GetName()})
 			}
 		}
@@ -1598,7 +1603,9 @@ func (p *Proxy) scopedColegios(r *http.Request) []struct{ ID, Nombre string } {
 	out := []struct{ ID, Nombre string }{}
 	unrestricted, _, _ := p.callerColegioScope(r)
 	if unrestricted {
-		if resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000}); err == nil {
+		// ActiveOnly: un colegio DESACTIVADO ("en reserva") no debe contar en
+		// ningún reporte/métrica del bot — solo se ve en la gestión de colegios.
+		if resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000, ActiveOnly: true}); err == nil {
 			for _, s := range resp.GetItems() {
 				if isQAColegio(s.GetName()) {
 					continue
@@ -1609,7 +1616,7 @@ func (p *Proxy) scopedColegios(r *http.Request) []struct{ ID, Nombre string } {
 	} else {
 		if resp, err := p.cli.Schools.ListSchoolsByAsesor(ctx, &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: userIDFromContext(r)}); err == nil {
 			for _, s := range resp.GetItems() {
-				if isQAColegio(s.GetName()) {
+				if isQAColegio(s.GetName()) || !s.GetActive() {
 					continue
 				}
 				out = append(out, struct{ ID, Nombre string }{s.GetId(), s.GetName()})
@@ -1765,7 +1772,7 @@ func toolListarColegios(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 	unrestricted, _, _ := p.callerColegioScope(r)
 	out := []map[string]any{}
 	if unrestricted {
-		resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000})
+		resp, err := p.cli.Schools.ListSchools(ctx, &usersgrpcpb.ListSchoolsRequest{Limit: 1000, ActiveOnly: true})
 		if err != nil {
 			return map[string]any{"error": "no se pudo obtener la informacion solicitada"}, nil, nil
 		}
@@ -1781,7 +1788,7 @@ func toolListarColegios(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 			return map[string]any{"error": "no se pudo obtener la informacion solicitada"}, nil, nil
 		}
 		for _, s := range resp.GetItems() {
-			if isQAColegio(s.GetName()) {
+			if isQAColegio(s.GetName()) || !s.GetActive() {
 				continue
 			}
 			out = append(out, map[string]any{"id": s.GetId(), "nombre": s.GetName(), "ciudad": s.GetCity()})
@@ -3018,7 +3025,7 @@ func toolComparativoAsesores(p *Proxy, r *http.Request, args map[string]any) (an
 		if sr, serr := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: u.GetId()}); serr == nil {
 			colegiosN = 0
 			for _, s := range sr.GetItems() {
-				if !isQAColegio(s.GetName()) {
+				if !isQAColegio(s.GetName()) && s.GetActive() {
 					colegiosN++
 				}
 			}

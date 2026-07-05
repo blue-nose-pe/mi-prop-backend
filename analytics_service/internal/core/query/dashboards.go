@@ -51,6 +51,25 @@ func (h *DashboardHandler) GetAsesorDashboard(ctx context.Context, asesorID doma
 	if err != nil {
 		return nil, err
 	}
+	// Colegio DESACTIVADO ("en reserva") no cuenta en el dashboard del asesor
+	// (panel + tools del bot): se filtran el colegio, sus attempts, y sus llaves
+	// (aforo/impactados). Solo sigue visible en la gestión de colegios.
+	activeSchoolIDs := map[domain.SchoolID]struct{}{}
+	colegiosAct := colegios[:0]
+	for _, c := range colegios {
+		if c.Active {
+			colegiosAct = append(colegiosAct, c)
+			activeSchoolIDs[c.ID] = struct{}{}
+		}
+	}
+	colegios = colegiosAct
+	keysAct := keys[:0]
+	for _, k := range keys {
+		if _, ok := activeSchoolIDs[k.SchoolID]; ok {
+			keysAct = append(keysAct, k)
+		}
+	}
+	keys = keysAct
 
 	// Acumular attempts cruzando los colegios.
 	stats := map[string]*domain.ExamTypeStats{}

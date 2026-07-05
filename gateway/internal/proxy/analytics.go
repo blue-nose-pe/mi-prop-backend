@@ -147,7 +147,11 @@ func (p *Proxy) collectAsesoresKeys(ctx context.Context) ([]map[string]any, erro
 		keys := []map[string]any{}
 		totalColegios := 0
 		for _, s := range schools.GetItems() {
-			if isQAColegio(s.GetName()) {
+			// Colegio DESACTIVADO no cuenta en el Reporte de Asesores (panel) ni
+			// en las tools del bot que reusan esto (reporte_asesores_llaves,
+			// ranking_llaves, asesores_colegios): ni el colegio, ni sus llaves,
+			// ni sus alumnos rendidos.
+			if isQAColegio(s.GetName()) || !s.GetActive() {
 				continue
 			}
 			totalColegios++
