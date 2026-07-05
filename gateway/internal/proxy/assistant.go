@@ -3010,10 +3010,23 @@ func toolComparativoAsesores(p *Proxy, r *http.Request, args map[string]any) (an
 		if derr != nil {
 			continue
 		}
+		// Colegios: contar FILTRANDO los de prueba (igual que el Reporte de
+		// Asesores del panel). El TotalColegios de analytics incluye colegios QA
+		// ("Verif D/E") y el bot decía "Gómez con 2 colegios" cuando el panel
+		// muestra 1 — bot y panel no pueden contradecirse.
+		colegiosN := int(resp.GetTotalColegios())
+		if sr, serr := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{AsesorId: u.GetId()}); serr == nil {
+			colegiosN = 0
+			for _, s := range sr.GetItems() {
+				if !isQAColegio(s.GetName()) {
+					colegiosN++
+				}
+			}
+		}
 		vals := map[string]float64{
 			"alumnos_impactados":  float64(resp.GetTotalStudentsRendered()),
 			"intentos":            float64(resp.GetTotalAttempts()),
-			"colegios":            float64(resp.GetTotalColegios()),
+			"colegios":            float64(colegiosN),
 			"llaves":              float64(resp.GetTotalKeys()),
 			"visitas_completadas": float64(resp.GetCompletedVisits()),
 		}
@@ -3062,10 +3075,28 @@ func toolComparativoAsesores(p *Proxy, r *http.Request, args map[string]any) (an
 		data = append(data, rw.vals[metric])
 	}
 	charts := []any{map[string]any{"kind": "bar", "horizontal": true, "title": "Asesores por " + strings.ToLower(metricLabel), "labels": labels, "series": []map[string]any{{"name": metricLabel, "data": data}}}}
+	nota := "'alumnos_impactados' = alumnos distintos que rindieron con llaves del asesor; 'intentos' = exámenes rendidos. Ordenado por la métrica pedida."
+	// Empate en el máximo: decirlo EXPLÍCITO para que el modelo no invente un
+	// único "ganador" (pasó con "asesor con más colegios": todos tienen 1).
+	if len(data) > 1 {
+		empatados := 0
+		for _, v := range data {
+			if v == data[0] {
+				empatados++
+			}
+		}
+		if empatados > 1 {
+			if empatados == len(data) {
+				nota += fmt.Sprintf(" OJO: EMPATE TOTAL — los %d asesores tienen el mismo valor (%.0f) en esta métrica; dilo tal cual, NO elijas un único 'ganador'.", empatados, data[0])
+			} else {
+				nota += fmt.Sprintf(" OJO: EMPATE en el primer puesto — %d asesores comparten el máximo (%.0f); menciónalos a todos, NO elijas uno solo.", empatados, data[0])
+			}
+		}
+	}
 	return map[string]any{
 		"metrica": metric,
 		"items":   items,
-		"nota":    "'alumnos_impactados' = alumnos distintos que rindieron con llaves del asesor; 'intentos' = exámenes rendidos. Ordenado por la métrica pedida.",
+		"nota":    nota,
 	}, charts, nil
 }
 
