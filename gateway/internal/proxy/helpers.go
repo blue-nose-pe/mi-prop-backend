@@ -438,6 +438,12 @@ func (p *Proxy) enforceColegioScope(r *http.Request, targetSchoolID string) bool
 	}
 	// Cuenta del rol Colegio: el school_id del JWT == target.
 	if callerSchoolID := schoolIDFromContext(r); callerSchoolID != "" && callerSchoolID == targetSchoolID {
+		// Colegio DESACTIVADO ("en reserva"): su cuenta-portal pierde acceso.
+		// Este fast-path es EXCLUSIVO del portal (el JWT trae school_id); asesor
+		// y admin resuelven por otras ramas, así que siguen pudiendo reactivar.
+		if sResp, serr := p.cli.Schools.GetSchool(r.Context(), &usersgrpcpb.GetSchoolRequest{Id: targetSchoolID}); serr == nil && sResp.GetSchool() != nil && !sResp.GetSchool().GetActive() {
+			return false
+		}
 		return true
 	}
 	resp, err := p.cli.Schools.ListSchoolsByAsesor(r.Context(), &usersgrpcpb.ListSchoolsByAsesorRequest{

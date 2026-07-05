@@ -216,7 +216,10 @@ func (h *SchoolHandler) canManageCoordinador(ctx context.Context, schoolID domai
 	}
 	for i := range mine {
 		if mine[i].ID == schoolID {
-			return true
+			// Colegio DESACTIVADO ("en reserva"): el asesor no gestiona sus
+			// coordinadores hasta reactivarlo (el superadmin sí, por el early
+			// return de arriba). Cierra assign y revoke a la vez.
+			return mine[i].Active
 		}
 	}
 	return false

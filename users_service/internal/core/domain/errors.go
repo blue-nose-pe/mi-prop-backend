@@ -16,6 +16,7 @@ var (
 	ErrPermGroupNotFound  = apperr.NewNotFound("PERMISSION_GROUP_NOT_FOUND", "permission group not found")
 
 	// ----- Conflict (choque de unicidad) -----
+	ErrSchoolInactive     = apperr.NewConflict("SCHOOL_INACTIVE", "el colegio está desactivado (en reserva): no admite nuevos registros hasta reactivarlo", "school_id")
 	ErrEmailTaken         = apperr.NewConflict("EMAIL_TAKEN", "email already registered", "email")
 	ErrDocumentTaken      = apperr.NewConflict("DOCUMENT_TAKEN", "document number already registered", "document_number")
 	ErrPermGroupCodeTaken = apperr.NewConflict("PERMISSION_GROUP_CODE_TAKEN", "permission group code already exists", "code")

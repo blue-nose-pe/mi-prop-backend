@@ -403,6 +403,15 @@ func (h *AuthHandler) RegisterStudentWithKey(
 		return nil, fmt.Errorf("first_name and last_name are required")
 	}
 
+	// Colegio DESACTIVADO ("en reserva"): no admite NUEVOS registros ni re-alta
+	// de alumnos (mismo criterio que crear llaves, gateway keys.go C1). El caso
+	// LAN/masivo (in.SchoolID == "") no tiene colegio y no se bloquea.
+	if in.SchoolID != "" && h.schools != nil {
+		if sch, serr := h.schools.FindByID(ctx, in.SchoolID); serr == nil && sch != nil && !sch.Active {
+			return nil, domain.ErrSchoolInactive
+		}
+	}
+
 	// Resuelve el grupo de estudiantes por code estable. Si no existe es
 	// bug de seed (migration 014) — devolvemos error visible para que el
 	// operador se entere.
