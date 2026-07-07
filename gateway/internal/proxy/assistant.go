@@ -151,7 +151,7 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - TEXTO = GRÁFICO (completitud): cuando adjuntes un ranking/comparativo con gráfico, tu texto debe enumerar los MISMOS elementos que dibuja el gráfico (si el gráfico tiene 5 colegios, nómbralos los 5). NO digas "estos son los tres colegios" ni cortes a top-3 si el gráfico muestra más, salvo que el usuario pidiera explícitamente un top-N.
 - PROMEDIO DE SIMULACRO = PORCENTAJE, no "puntos": el promedio de simulacro de un colegio es un % (0-100%) porque mezcla exámenes UCSP (máx 450) y Nacional (máx 100). Dilo como "X%" o "X% (0-100)", NUNCA como "X puntos".
 - GRÁFICO POR TIPO DE EXAMEN (dona/treemap/radar/barras "por tipo"): compón el gráfico con la herramienta de gráfico personalizado usando por_tipo_total del resumen general (Simulacro/Vocacional/Estilos). NO dejes que salga el gráfico automático de "participación por colegio" (ese es por COLEGIO, no por tipo) — contradiría tu texto.
-- PANEL EJECUTIVO / varios gráficos pedidos EXPLÍCITAMENTE: compón CADA gráfico solicitado con la herramienta de gráfico personalizado (hasta 4) — la regla "una historia = un gráfico" aplica cuando piden UNA cosa, no cuando piden un panel. La participación por tipo GLOBAL sale de por_tipo_total del resumen general.
+- PANEL EJECUTIVO / VARIOS gráficos en una misma pregunta ("panel con 3 gráficos", "dashboard", "más de un gráfico"): PRIMERO llama las herramientas que traen los datos de CADA gráfico (p.ej. resumen general para por_tipo_total, comparativo para el ranking, comparativo con periods para la evolución); LUEGO llama panel_graficos UNA vez con TODOS los gráficos en 'graficos'. NO uses grafico_personalizado varias veces ni prometas gráficos que no adjuntas: si dices "aquí tienen los 3 gráficos", panel_graficos DEBE traer los 3. La regla "una historia = un gráfico" aplica solo cuando piden UNA cosa.
 - EVOLUCIÓN POR TIPO de UN colegio entre años: llama el resumen de ESE colegio con period por cada año (por_tipo trae los intentos de los 3 tipos) y compón líneas (una por tipo). El comparativo es para comparar COLEGIOS, no tipos.
 - COMPARAR LLAVES de un colegio en un gráfico: llama el resumen del colegio UNA VEZ POR LLAVE con key_code (código, ej. 'VO-ZKYFC7'), y luego compón UN gráfico personalizado con esos datos (voca/estilos → radar con una serie por llave; simulacro → columnas). Omite (y menciona) las llaves con 0 rendidos. NUNCA digas "no hay resultados" si el listado de llaves mostró rendidos > 0 — si un resumen por llave te salió vacío, revisa que pasaste el CÓDIGO en key_code.
 - TIPO DE GRÁFICO EXPLÍCITO: si el usuario pide un tipo concreto (polar, treemap, scatter, embudo, radial...), consigue los datos con grafico='ninguno' y compón el gráfico personalizado en ESE tipo — no adjuntes los gráficos por defecto (dona/radar) diciendo que son "polar".
@@ -1561,6 +1561,13 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 			},
 			"required": []string{"kind", "title", "series"},
 		}),
+		toolSchema("panel_graficos", "Compón un PANEL de VARIOS gráficos (2 a 4) en UNA sola llamada. Úsala SIEMPRE que el usuario pida un 'panel', 'dashboard' o 'varios gráficos'/'más de un gráfico' en una misma pregunta. Cada elemento de 'graficos' tiene los mismos campos que grafico_personalizado (kind, title, series, labels opcional, unit, horizontal, stacked). REGLA DURA: los valores salen VERBATIM de resultados de otras herramientas de ESTA conversación — primero consigue TODOS los datos, luego arma el panel. Este panel REEMPLAZA a los gráficos automáticos.", map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"graficos": map[string]any{"type": "array", "description": "2 a 4 gráficos; cada uno = objeto con {kind, title, series, [labels], [unit], [horizontal], [stacked], [value]}", "items": map[string]any{"type": "object"}},
+			},
+			"required": []string{"graficos"},
+		}),
 		toolSchema("comparativo_inclinacion", "Ranking de colegios por su INCLINACIÓN (%) hacia UN área de vocacional (Cálculo, Verbal, Artes, Naturaleza, Investigación, Musical, Trabajo Manual, Organización, Sensibilidad Social, Gestión y Comunicación) o UN estilo de aprendizaje (Teórico, Pragmático, Activo, Kinestésico, Visual, Reflexivo, Auditivo). Úsala para '¿qué colegio tiene mayor inclinación numérica/artística/etc.?'. Adjunta un gráfico de barras. NO sirve para simulacro (eso es puntaje, usa el comparativo normal).", map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -1710,6 +1717,7 @@ func assistantTools() ([]any, map[string]assistantToolFn) {
 		"satisfaccion_encuestas":  toolSatisfaccionEncuestas,
 		"reporte_asesores_llaves": toolReporteAsesoresLlaves,
 		"grafico_personalizado":   toolGraficoPersonalizado,
+		"panel_graficos":          toolPanelGraficos,
 	}
 	return schemas, byName
 }
@@ -2609,6 +2617,43 @@ func toolGraficoPersonalizado(_ *Proxy, _ *http.Request, args map[string]any) (a
 		"ok":       "gráfico '" + kind + "' construido y adjuntado",
 		"recuerda": "los valores del gráfico deben venir VERBATIM de resultados de herramientas de esta conversación; si te faltó un dato, llama la herramienta que lo trae y vuelve a armar el gráfico.",
 	}, []any{chart}, nil
+}
+
+// toolPanelGraficos: compone VARIOS gráficos en UNA sola llamada (para "panel
+// ejecutivo con N gráficos"). El modelo prometía 3 y emitía 1 porque no llamaba
+// grafico_personalizado varias veces; aquí lo hace atómico. Reutiliza el mismo
+// builder por cada gráfico (validación y aplanado pie-family incluidos).
+func toolPanelGraficos(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
+	raw, _ := args["graficos"].([]any)
+	if len(raw) == 0 {
+		return map[string]any{"error": "pasa 'graficos': una lista de objetos gráfico (cada uno con kind, title, series, y opcional labels/unit/horizontal/stacked)"}, nil, nil
+	}
+	allCharts := []any{}
+	errores := []string{}
+	for _, g := range raw {
+		gm, ok := g.(map[string]any)
+		if !ok {
+			continue
+		}
+		res, charts, _ := toolGraficoPersonalizado(p, r, gm)
+		if len(charts) > 0 {
+			allCharts = append(allCharts, charts...)
+		} else if m, ok := res.(map[string]any); ok {
+			if e := asString(m["error"]); e != "" {
+				errores = append(errores, e)
+			}
+		}
+		if len(allCharts) >= 4 { // tope de presentación
+			break
+		}
+	}
+	if len(allCharts) == 0 {
+		return map[string]any{"error": "ningún gráfico válido en el panel; revisa kind/series de cada uno", "detalle": errores}, nil, nil
+	}
+	return map[string]any{
+		"ok":       fmt.Sprintf("%d gráficos construidos y adjuntados (panel)", len(allCharts)),
+		"recuerda": "los valores de cada gráfico deben venir VERBATIM de resultados de herramientas de esta conversación.",
+	}, allCharts, nil
 }
 
 func toolDashboardAsesor(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
