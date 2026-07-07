@@ -580,6 +580,13 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 			}
 		}
 	}
+	// Excluir cuentas de PRUEBA/QA del ranking visible (e2e/hunt/qa/@bluenose.test)
+	// — sus nombres las delatan. La data queda viva, solo no se muestra.
+	for uid := range best {
+		if isQAAlumno("", p.userName(r, uid)) {
+			delete(best, uid)
+		}
+	}
 	if len(best) == 0 {
 		// Recuperación: dile al modelo QUÉ llaves hermanas del mismo tipo SÍ
 		// tienen resultados, para que reintente con la correcta en vez de
@@ -1097,6 +1104,19 @@ func assistantExamTypeName(id int32) string {
 }
 
 // assistantTools devuelve (schemas para el LLM, mapa nombre→ejecutor).
+// isQASurveyName: encuestas de PRUEBA (HUNT/E2E/throwaway/pruebaaaa) que no deben
+// salir en el Reporte de Satisfacción del panel ni del bot. Las de ejemplo
+// legítimas ("Encuesta de satisfacción (ejemplo) — X") no llevan estos tokens.
+func isQASurveyName(code, title string) bool {
+	s := strings.ToLower(code + " " + title)
+	for _, tok := range []string{"hunt", "e2e", "throwaway", "prueba", "verifynps", "editjump", "reorder"} {
+		if strings.Contains(s, tok) {
+			return true
+		}
+	}
+	return false
+}
+
 // isQAExamName: exámenes de PRUEBA en el catálogo (mismo espíritu que isQAColegio).
 // OJO: el "Test de Intereses Vocacionales (TIV)" es un examen REAL — el token
 // 'test' no debe matarlo (bug del re-estrés: el bot decía que el TIV no existe).

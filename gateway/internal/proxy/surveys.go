@@ -648,6 +648,12 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 		trigger := strings.ToLower(asString(props["trigger_kind"]))
 		code := asString(props["code"])
 		title := asString(props["title"])
+		// Esconder encuestas de PRUEBA (HUNT/E2E/pruebaaaa/throwaway) del reporte
+		// —panel y bot— para no exponerlas en la demo. La data queda viva; solo
+		// no se lista. Las de ejemplo legítimas no llevan estos tokens.
+		if isQASurveyName(code, title) {
+			continue
+		}
 		// Llave REAL atada (survey_key vía attached_key_id); fallback a la
 		// columna legacy por si acaso. Antes se leía solo el legacy (NULL) →
 		// toda encuesta-por-llave salía como "general" con el denominador equivocado.
