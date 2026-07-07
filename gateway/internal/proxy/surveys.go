@@ -743,8 +743,14 @@ func (p *Proxy) collectSatisfaccionReporte(ctx context.Context, tipoFiltro, code
 			if d := q.GetDistribution(); len(d) > 0 {
 				if q.GetKind() == "open" {
 					// En open, los "buckets" de la distribución SON los comentarios.
+					// Excluir comentarios de PRUEBA (texto E2E/hunt/prueba/post-fix)
+					// que quedan dentro de encuestas de ejemplo legítimas —
+					// saldrían tal cual en la demo.
 					comentarios := make([]string, 0, len(d))
 					for text := range d {
+						if isQACommentText(text) {
+							continue
+						}
 						comentarios = append(comentarios, text)
 					}
 					pq["comentarios"] = comentarios

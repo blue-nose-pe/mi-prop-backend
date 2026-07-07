@@ -1117,6 +1117,18 @@ func isQASurveyName(code, title string) bool {
 	return false
 }
 
+// isQACommentText: comentario de texto libre que es de PRUEBA (queda dentro de
+// encuestas de ejemplo legítimas y no debe mostrarse en la demo).
+func isQACommentText(text string) bool {
+	s := strings.ToLower(text)
+	for _, tok := range []string{"e2e", "post-fix", "postfix", "navegador", "hunt", "prueba", "throwaway", "qa "} {
+		if strings.Contains(s, tok) {
+			return true
+		}
+	}
+	return false
+}
+
 // isQAExamName: exámenes de PRUEBA en el catálogo (mismo espíritu que isQAColegio).
 // OJO: el "Test de Intereses Vocacionales (TIV)" es un examen REAL — el token
 // 'test' no debe matarlo (bug del re-estrés: el bot decía que el TIV no existe).
