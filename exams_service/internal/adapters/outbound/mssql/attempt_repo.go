@@ -88,12 +88,18 @@ func (r *AttemptRepo) ListByExam(ctx context.Context, examID domain.ExamID) ([]d
 // instancia (mssql-server) y db_users esta accesible con permisos del
 // mismo user SQL.
 func (r *AttemptRepo) ListByColegio(ctx context.Context, schoolID domain.SchoolID) ([]domain.ExamAttempt, error) {
+	// active = 1: los intentos de alumnos DESACTIVADOS (cuentas QA de prueba o
+	// alumnos dados de baja) NO deben contar en ninguna agregación por colegio
+	// (promedios, rankings, totales, impactados). Antes el conteo de alumnos sí
+	// filtraba pero los intentos no, inflando el promedio del colegio e
+	// invirtiendo el ranking. Punto ÚNICO del que cuelgan bot, analytics y panel.
 	return r.list(ctx,
 		`SELECT `+attemptCols+`
 		   FROM exam_attempt a
 		  WHERE a.user_id IN (
 		      SELECT id FROM db_users.dbo.users
 		       WHERE school_id = CONVERT(UNIQUEIDENTIFIER, @p1)
+		         AND active = 1
 		  )
 		  ORDER BY a.started_at DESC`,
 		string(schoolID))

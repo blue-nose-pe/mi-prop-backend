@@ -147,6 +147,10 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - RANKING DE LLAVES POR PARTICIPACIÓN ("las llaves/keys con más participación/rendidos", global o por años): usa la herramienta de RANKING DE LLAVES — devuelve el top histórico (incluye caducas) con su gráfico YA adjunto; con por_anios=true trae las columnas agrupadas por año. Es un ranking de LLAVES (códigos SI-/VO-/ES-), NUNCA lo respondas con totales de asesores. No compongas otro gráfico encima del que la herramienta adjunta.
 - REPORTE DE ASESORES POR LLAVE: si la pregunta de asesores menciona LLAVES, AÑO, tipo de evaluación, aforo/ocupación o historial ("asesores con más alumnos en 2025", "llaves de María Torres", "aforo vigente en 2027"), usa reporte_asesores_llaves (misma fuente que la pantalla del panel; sus números SIEMPRE coinciden con ella). Las llaves vencidas se llaman "Caducas". Para el HISTORIAL de un asesor: reporte_asesores_llaves con asesor='<nombre>' y solo_activas=false (así entran las Caducas). Si el usuario es ADMIN, JAMÁS le respondas "solo puedo mostrar tu propia operación" — el admin ve a todos los asesores.
 - RANKING DE ASESORES ("qué asesor tiene más impactos/alumnos/colegios/visitas"): usa el comparativo de asesores — el ADMINISTRADOR SÍ puede verlo (no lo rechaces si el usuario es admin); un asesor recibirá el aviso de que solo ve su propia operación. "Impactos" = alumnos impactados (alumnos distintos que rindieron con llaves del asesor).
+- OCUPACIÓN / AFORO DE ASESORES: si preguntan por "ocupación de aforo por asesor", "aforo de los asesores", "qué asesor llena más su aforo" (aunque no digan "reporte de asesores por llave"), usa reporte_asesores_llaves — SÍ trae la ocupación (alumnos distintos ÷ aforo). NUNCA respondas "no tengo ese dato": la herramienta lo provee.
+- TEXTO = GRÁFICO (completitud): cuando adjuntes un ranking/comparativo con gráfico, tu texto debe enumerar los MISMOS elementos que dibuja el gráfico (si el gráfico tiene 5 colegios, nómbralos los 5). NO digas "estos son los tres colegios" ni cortes a top-3 si el gráfico muestra más, salvo que el usuario pidiera explícitamente un top-N.
+- PROMEDIO DE SIMULACRO = PORCENTAJE, no "puntos": el promedio de simulacro de un colegio es un % (0-100%) porque mezcla exámenes UCSP (máx 450) y Nacional (máx 100). Dilo como "X%" o "X% (0-100)", NUNCA como "X puntos".
+- GRÁFICO POR TIPO DE EXAMEN (dona/treemap/radar/barras "por tipo"): compón el gráfico con la herramienta de gráfico personalizado usando por_tipo_total del resumen general (Simulacro/Vocacional/Estilos). NO dejes que salga el gráfico automático de "participación por colegio" (ese es por COLEGIO, no por tipo) — contradiría tu texto.
 - PANEL EJECUTIVO / varios gráficos pedidos EXPLÍCITAMENTE: compón CADA gráfico solicitado con la herramienta de gráfico personalizado (hasta 4) — la regla "una historia = un gráfico" aplica cuando piden UNA cosa, no cuando piden un panel. La participación por tipo GLOBAL sale de por_tipo_total del resumen general.
 - EVOLUCIÓN POR TIPO de UN colegio entre años: llama el resumen de ESE colegio con period por cada año (por_tipo trae los intentos de los 3 tipos) y compón líneas (una por tipo). El comparativo es para comparar COLEGIOS, no tipos.
 - COMPARAR LLAVES de un colegio en un gráfico: llama el resumen del colegio UNA VEZ POR LLAVE con key_code (código, ej. 'VO-ZKYFC7'), y luego compón UN gráfico personalizado con esos datos (voca/estilos → radar con una serie por llave; simulacro → columnas). Omite (y menciona) las llaves con 0 rendidos. NUNCA digas "no hay resultados" si el listado de llaves mostró rendidos > 0 — si un resumen por llave te salió vacío, revisa que pasaste el CÓDIGO en key_code.
@@ -1414,6 +1418,29 @@ func toolDetalleAlumno(p *Proxy, r *http.Request, args map[string]any) (any, []a
 		sub time.Time
 	}
 	rows := []prueba{}
+	// Cache key_id → tipo, para distinguir Vocacional (TIV) de Estilos (EDA):
+	// antes se colapsaban en "Vocacional o Estilos" y el bot afirmaba que el
+	// alumno rindió una prueba que en realidad no rindió.
+	keyTipo := map[string]string{}
+	tipoDeLlave := func(keyID string) string {
+		if keyID == "" {
+			return ""
+		}
+		if v, ok := keyTipo[keyID]; ok {
+			return v
+		}
+		t := ""
+		if kr, e := p.cli.Keys.GetKey(ctx, &keysgrpcpb.GetKeyRequest{Id: keyID}); e == nil && kr.GetKey() != nil {
+			switch kr.GetKey().GetExamTypeId() {
+			case 1:
+				t = "Vocacional (Test de Intereses Vocacionales)"
+			case 3:
+				t = "Estilos de Aprendizaje"
+			}
+		}
+		keyTipo[keyID] = t
+		return t
+	}
 	if at, e := p.cli.Attempts.ListByUser(ctx, &examsgrpcpb.ListAttemptsByUserRequest{UserId: al.id}); e == nil {
 		for _, a := range at.GetItems() {
 			if a.GetSubmittedAt() == nil {
@@ -1425,6 +1452,8 @@ func toolDetalleAlumno(p *Proxy, r *http.Request, args map[string]any) (any, []a
 				row["puntaje"] = round1(a.GetScore())
 				row["puntaje_maximo"] = round1(a.GetMaxScore())
 				row["porcentaje"] = round1(a.GetScore() / a.GetMaxScore() * 100)
+			} else if t := tipoDeLlave(a.GetKeyId()); t != "" {
+				row["tipo"] = t + " (perfil por área, sin puntaje)"
 			} else {
 				row["tipo"] = "Vocacional o Estilos (perfil por área, sin puntaje)"
 			}
@@ -1476,7 +1505,10 @@ func toolGruposPermisos(p *Proxy, r *http.Request, _ map[string]any) (any, []any
 	}
 	grupos := []map[string]any{}
 	for _, g := range roles {
-		gr, e := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{GroupId: g.id, Limit: 1})
+		// ActiveOnly: contar solo usuarios ACTIVOS — sin esto el total incluía
+		// cuentas QA/desactivadas (p.ej. "4 coordinadores" que eran 100% de
+		// prueba). El resto del bot ya filtra QA; este total debe hacer igual.
+		gr, e := p.cli.PermGroups.ListGroupUsers(r.Context(), &usersgrpcpb.ListGroupUsersRequest{GroupId: g.id, Limit: 1, ActiveOnly: true})
 		if e != nil {
 			continue
 		}
@@ -3244,6 +3276,19 @@ func toolListarLlavesColegio(p *Proxy, r *http.Request, args map[string]any) (an
 			"alumnos_distintos": len(alumnosByKey[k.GetId()]),
 			"activa":            k.GetActive(),
 			"creada":            optionalTimestamp(k.GetCreatedAt()),
+			"vence":             optionalTimestamp(k.GetValidTo()),
+		}
+		// Estado en 3 valores distintos (el bot confundía "caduca" con
+		// "inactiva"): Caduca = vencida por FECHA; Inactiva = desactivada
+		// (active=0); Activa = vigente. Vencida ≠ desactivada.
+		vencida := k.GetValidTo() != nil && k.GetValidTo().AsTime().Before(time.Now())
+		switch {
+		case !k.GetActive():
+			row["estado"] = "Inactiva"
+		case vencida:
+			row["estado"] = "Caduca"
+		default:
+			row["estado"] = "Activa"
 		}
 		if k.GetMaxUses() <= 0 {
 			row["aforo"] = "sin aforo (LAN)"
