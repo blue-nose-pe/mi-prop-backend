@@ -397,7 +397,10 @@ func (p *Proxy) callerColegioScope(r *http.Request) (unrestricted bool, allowed 
 // colegios del caller: conserva su propio registro (id==caller) y los que
 // pertenezcan a un colegio permitido (property "school_id"). Se usa para
 // cerrar la fuga de PII cross-colegio en /api/users/search y /api/keys/search.
-func scopeSearchResults[R searchResultLike](results []R, allowed map[string]bool, caller string) []R {
+// includeLAN: si true, los resultados SIN colegio (school_id vacío = llaves LAN
+// masivas) también se incluyen — para que un caller con db_keys.lan.read vea las
+// LAN, que de otro modo el scope-por-colegio descartaría.
+func scopeSearchResults[R searchResultLike](results []R, allowed map[string]bool, caller string, includeLAN bool) []R {
 	out := make([]R, 0, len(results))
 	for _, rr := range results {
 		if caller != "" && rr.GetId() == caller {
@@ -414,6 +417,8 @@ func scopeSearchResults[R searchResultLike](results []R, allowed map[string]bool
 		}
 		if sid != "" && allowed[sid] {
 			out = append(out, rr)
+		} else if sid == "" && includeLAN {
+			out = append(out, rr) // LAN (sin colegio): visible con db_keys.lan.read
 		}
 	}
 	return out

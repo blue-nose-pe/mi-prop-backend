@@ -668,7 +668,7 @@ func (p *Proxy) searchUsers(w http.ResponseWriter, r *http.Request) {
 	results := resp.GetResults()
 	total := resp.GetTotal()
 	if !unrestricted {
-		results = scopeSearchResults(results, allowed, caller)
+		results = scopeSearchResults(results, allowed, caller, false) // usuarios: sin LAN
 		total = uint32(len(results))
 	}
 	writeJSON(w, http.StatusOK, searchResponseToJSON[*userscommonpb.SearchResult, *userscommonpb.Paging](

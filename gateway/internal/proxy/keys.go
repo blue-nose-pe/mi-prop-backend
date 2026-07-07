@@ -151,16 +151,22 @@ type generateKeyRequest struct {
 }
 
 func (p *Proxy) generateKey(w http.ResponseWriter, r *http.Request) {
-	// Crear key (colegio o LAN masiva) exige db_keys.key.write. Antes solo lo
-	// gateaba el front (item "Crear" + route guard); el endpoint quedaba
-	// abierto a cualquier JWT. Ahora el servidor también lo bloquea.
-	if !hasPermission(r, "db_keys.key.write") {
-		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write"})
-		return
-	}
 	var in generateKeyRequest
 	if err := readJSON(r, &in); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorBody{Status: "error", Code: "BAD_BODY", Message: err.Error()})
+		return
+	}
+	// Permiso por MODO: una LAN masiva (sin colegio) exige db_keys.lan.write; una
+	// llave de colegio exige db_keys.key.write. Antes ambas montaban sobre
+	// key.write, así que no se podía dar "crear llaves de colegio" sin dar también
+	// "crear LAN" (y un asesor podía crear LANs sin querer).
+	if in.Mode == "lan" {
+		if !hasPermission(r, "db_keys.lan.write") {
+			writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.lan.write (crear LAN masivas)"})
+			return
+		}
+	} else if !hasPermission(r, "db_keys.key.write") {
+		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write"})
 		return
 	}
 	from, err := parseRFC3339(in.ValidFrom)
@@ -337,8 +343,10 @@ func (p *Proxy) getKey(w http.ResponseWriter, r *http.Request) {
 	// SEGURIDAD (audit 2026-06-18, IDOR): antes GET /api/keys/{id} exponía cualquier
 	// key (código + asesor/colegio) a cualquier caller. Limitamos a: el asesor dueño,
 	// un caller con el colegio de la key asignado, o admin/superadmin (bypass dentro
-	// de enforceColegioScope). Las LAN (school_id vacío) solo las ve admin.
-	if k.GetAsesorUserId() != userIDFromContext(r) && !p.enforceColegioScope(r, k.GetSchoolId()) {
+	// de enforceColegioScope). Las LAN (mode='lan', sin colegio) las ve quien tenga
+	// db_keys.lan.read (además del dueño/admin).
+	lanVisible := k.GetMode() == "lan" && hasPermission(r, "db_keys.lan.read")
+	if k.GetAsesorUserId() != userIDFromContext(r) && !p.enforceColegioScope(r, k.GetSchoolId()) && !lanVisible {
 		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes acceso a esta llave"})
 		return
 	}
@@ -364,9 +372,31 @@ type updateKeyRequest struct {
 	LandingConfig *string `json:"landing_config"`
 }
 
-func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
+// gateKeyWriteByMode gatea editar/desactivar una llave EXISTENTE según su modo:
+// una LAN masiva exige db_keys.lan.write; una de colegio, db_keys.key.write.
+// Escribe el 403 y devuelve false si no está permitido. Si no se puede leer la
+// llave (no existe), deja pasar y el RPC de abajo devolverá el error real.
+func (p *Proxy) gateKeyWriteByMode(w http.ResponseWriter, r *http.Request, keyID string) bool {
+	esLAN := false
+	if kr, err := p.cli.Keys.GetKey(r.Context(), &keysgrpcpb.GetKeyRequest{Id: keyID}); err == nil && kr.GetKey() != nil {
+		esLAN = kr.GetKey().GetMode() == "lan"
+	}
+	if esLAN {
+		if !hasPermission(r, "db_keys.lan.write") {
+			writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.lan.write (gestionar LAN masivas)"})
+			return false
+		}
+		return true
+	}
 	if !hasPermission(r, "db_keys.key.write") {
 		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write"})
+		return false
+	}
+	return true
+}
+
+func (p *Proxy) updateKey(w http.ResponseWriter, r *http.Request) {
+	if !p.gateKeyWriteByMode(w, r, r.PathValue("id")) {
 		return
 	}
 	var in updateKeyRequest
@@ -417,8 +447,7 @@ func (p *Proxy) getKeyByCode(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *Proxy) deactivateKey(w http.ResponseWriter, r *http.Request) {
-	if !hasPermission(r, "db_keys.key.write") {
-		writeJSON(w, http.StatusForbidden, errorBody{Status: "error", Code: "PERMISSION_DENIED", Message: "no tienes permiso db_keys.key.write"})
+	if !p.gateKeyWriteByMode(w, r, r.PathValue("id")) {
 		return
 	}
 	if _, err := p.cli.Keys.DeactivateKey(r.Context(), &keysgrpcpb.DeactivateKeyRequest{Id: r.PathValue("id")}); err != nil {
@@ -514,7 +543,8 @@ func (p *Proxy) searchKeys(w http.ResponseWriter, r *http.Request) {
 	results := resp.GetResults()
 	total := resp.GetTotal()
 	if !unrestricted {
-		results = scopeSearchResults(results, allowed, caller)
+		// LAN masivas (sin colegio) se incluyen si el caller tiene db_keys.lan.read.
+		results = scopeSearchResults(results, allowed, caller, hasPermission(r, "db_keys.lan.read"))
 		total = uint32(len(results))
 	}
 	writeJSON(w, http.StatusOK, searchResponseToJSON[*keyscommonpb.SearchResult, *keyscommonpb.Paging](
