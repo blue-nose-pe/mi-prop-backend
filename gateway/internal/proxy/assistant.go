@@ -140,6 +140,8 @@ const assistantSystemPrompt = `Eres el asistente de análisis de "Mi Propósito"
 - TABLAS: NO escribas tablas ASCII con guiones (|----|). Si necesitas tabla, usa markdown limpio (| A | B | en cada fila, sin línea separadora); para ≤3 filas prefiere viñetas.
 - ENLACES: NUNCA escribas enlaces markdown [texto](url) ni "(#)". Los botones de "ver resultado / PDF" se adjuntan AUTOMÁTICAMENTE a tu respuesta; solo di "usa el botón de abajo".
 - MEJOR ALUMNO: "el mejor alumno del COLEGIO X" (sin llave concreta) → herramienta de mejor alumno general con colegio_nombre. La de top por llave es SOLO cuando el usuario nombra una llave; si esa llave no tiene rendidos, su respuesta te dirá qué llaves del mismo tipo SÍ tienen — reintenta con esa en vez de rendirte.
+- AMBIGÜEDAD (sé inteligente, no adivines): si la pregunta NO deja claro algo que cambiaría la respuesta —el TIPO de evaluación (simulacro/vocacional/estilos) o el ALCANCE (un colegio concreto vs TODA la plataforma)— PREGUNTA en una línea antes de responder, en vez de asumir. Ej: usuario dice "quién es el mejor alumno" → responde "¿El mejor en qué evaluación —simulacro, vocacional o estilos— y de un colegio en particular o de toda la plataforma?". Solo el simulacro tiene puntaje; vocacional/estilos son perfiles por área. Si la pregunta YA es específica ("el mejor alumno de simulacro de toda la plataforma", "el mejor de simulacro del Colegio X"), NO preguntes: respóndela directo.
+- NO HEREDES CONTEXTO DE FILTRO: cada pregunta se interpreta POR SÍ SOLA. Si en un turno hablaste de un colegio o tipo y el usuario luego pregunta algo GENERAL ("y el mejor alumno", "cuál es el NPS"), NO arrastres el colegio/tipo anterior salvo que el usuario lo diga explícitamente ("y de ESE colegio", "de los mismos"). Ante la duda, aplica la regla de AMBIGÜEDAD y pregunta.
 - INCLINACIÓN POR ÁREA: para "¿qué colegio tiene mayor inclinación {numérica/artística/verbal/social/...}?" usa la herramienta de inclinación por área (compara colegios por el % de esa área en vocacional o estilos). La inclinación es afinidad (%), NO un promedio de nota.
 - SATISFACCIÓN: para "¿qué tan satisfechos están los alumnos?" usa la herramienta de satisfacción de encuestas (CSAT 1-5 y %, NPS, tasa de respuesta real y desglose por pregunta; filtros por tipo de examen, por código/nombre de encuesta y por código de llave). Sus cifras son las MISMAS del panel Reportería → Reporte de satisfacción. Las métricas son por ENCUESTA, NO por colegio: si preguntan por un colegio concreto, dalo y aclara que no se desglosa por colegio. El reporte es GLOBAL y el ADMIN SÍ puede verlo completo: si el usuario es admin, LLAMA la herramienta y responde — JAMÁS le digas que "está restringido a administradores" (la propia herramienta ya niega a asesores/coordinadores; tú no decides el permiso). Si preguntan por el NPS/CSAT/satisfacción GENERAL sin nombrar un tipo de examen, NO arrastres el tipo de una pregunta anterior: llama la herramienta SIN filtro de tipo.
 - RANKING DE LLAVES POR PARTICIPACIÓN ("las llaves/keys con más participación/rendidos", global o por años): usa la herramienta de RANKING DE LLAVES — devuelve el top histórico (incluye caducas) con su gráfico YA adjunto; con por_anios=true trae las columnas agrupadas por año. Es un ranking de LLAVES (códigos SI-/VO-/ES-), NUNCA lo respondas con totales de asesores. No compongas otro gráfico encima del que la herramienta adjunta.
@@ -513,16 +515,25 @@ func (p *Proxy) userName(r *http.Request, userID string) string {
 // (voca/estilos no tienen puntaje). Devuelve nombres + puntaje + gráfico + un botón
 // para ver sus resultados (con PDF). Combina keys + attempts + users.
 func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, []any, error) {
-	sid := p.resolveColegioID(r, args)
-	if sid == "" {
-		return map[string]any{"error": "no encontré ese colegio entre los que puedes ver; revisa el nombre"}, nil, nil
-	}
-	if !p.enforceColegioScope(r, sid) {
-		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
-	}
 	keyCode := strings.ToUpper(strings.TrimSpace(argStr(args, "key_code")))
 	if keyCode == "" {
 		return map[string]any{"error": "indica el código de la llave (ej. SI-000012)"}, nil, nil
+	}
+	// El colegio se resuelve DESDE la llave: el usuario suele dar solo el código
+	// ("ranking de la llave SI-OYF5WG") sin nombrar el colegio. Antes esto
+	// devolvía "no encontré el colegio" — ahora resolvemos por la llave y solo
+	// caemos a resolveColegioID si además nombró un colegio.
+	sid := p.resolveColegioID(r, args)
+	if sid == "" {
+		if kr, err := p.cli.Keys.GetByCode(r.Context(), &keysgrpcpb.GetByCodeRequest{Code: keyCode}); err == nil && kr.GetKey() != nil {
+			sid = kr.GetKey().GetSchoolId()
+		}
+	}
+	if sid == "" {
+		return map[string]any{"error": "no encontré la llave " + keyCode + " (revisa el código) ni el colegio indicado"}, nil, nil
+	}
+	if !p.enforceColegioScope(r, sid) {
+		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
 	}
 	mayor := strings.ToLower(strings.TrimSpace(argStr(args, "orden"))) != "menor"
 	cuantos := argInt(args, "cuantos", 3)
