@@ -523,21 +523,33 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 	if keyCode == "" {
 		return map[string]any{"error": "indica el código de la llave (ej. SI-000012)"}, nil, nil
 	}
-	// El colegio se resuelve DESDE la llave: el usuario suele dar solo el código
-	// ("ranking de la llave SI-OYF5WG") sin nombrar el colegio. Antes esto
-	// devolvía "no encontré el colegio" — ahora resolvemos por la llave y solo
-	// caemos a resolveColegioID si además nombró un colegio.
-	sid := p.resolveColegioID(r, args)
-	if sid == "" {
-		if kr, err := p.cli.Keys.GetByCode(r.Context(), &keysgrpcpb.GetByCodeRequest{Code: keyCode}); err == nil && kr.GetKey() != nil {
-			sid = kr.GetKey().GetSchoolId()
-		}
+	// El colegio se resuelve DESDE la llave (autoritativo): para "ranking de la
+	// llave X", la LLAVE manda — su colegio real, sin importar qué colegio traiga
+	// el modelo por contexto de un turno anterior. Antes se usaba el colegio de
+	// args primero y, si el modelo arrastraba uno equivocado (p.ej. "San Pablo"
+	// para una llave de Sagrado), respondía "no encontré la llave en ese colegio".
+	// Solo caemos a resolveColegioID si la llave no se puede resolver.
+	sid := ""
+	if kr, err := p.cli.Keys.GetByCode(r.Context(), &keysgrpcpb.GetByCodeRequest{Code: keyCode}); err == nil && kr.GetKey() != nil {
+		sid = kr.GetKey().GetSchoolId()
 	}
 	if sid == "" {
-		return map[string]any{"error": "no encontré la llave " + keyCode + " (revisa el código) ni el colegio indicado"}, nil, nil
+		sid = p.resolveColegioID(r, args)
+	}
+	if sid == "" {
+		return map[string]any{"error": "no encontré la llave " + keyCode + " (revisa el código)"}, nil, nil
 	}
 	if !p.enforceColegioScope(r, sid) {
 		return map[string]any{"error": "no tienes acceso a este colegio"}, nil, nil
+	}
+	// Nombre REAL del colegio de la llave, para que el bot no arrastre un colegio
+	// equivocado del contexto en su texto (la llave manda).
+	colegioNombre := ""
+	for _, c := range p.scopedColegios(r) {
+		if strings.EqualFold(c.ID, sid) {
+			colegioNombre = c.Nombre
+			break
+		}
 	}
 	mayor := strings.ToLower(strings.TrimSpace(argStr(args, "orden"))) != "menor"
 	cuantos := argInt(args, "cuantos", 3)
@@ -659,7 +671,9 @@ func toolTopAlumnosLlave(p *Proxy, r *http.Request, args map[string]any) (any, [
 	if !mayor {
 		ordenTxt = "más bajo"
 	}
-	return map[string]any{"llave": codeReal, "orden": ordenTxt, "alumnos": alumnos, "_links": links}, charts, nil
+	res := map[string]any{"llave": codeReal, "colegio": colegioNombre, "orden": ordenTxt, "alumnos": alumnos, "_links": links,
+		"nota": "la llave " + codeReal + " pertenece al colegio indicado en 'colegio'; nómbralo así (no arrastres otro colegio del contexto)."}
+	return res, charts, nil
 }
 
 // toolMejorAlumnoGeneral: el/los alumno(s) con mejor/peor promedio de SIMULACRO
