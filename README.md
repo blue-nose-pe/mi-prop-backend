@@ -15,6 +15,9 @@ de datos por servicio) y **Azure Cache for Redis** para cola y caché.
 | [`GUIA_INSTALACION_CLIENTE.md`](GUIA_INSTALACION_CLIENTE.md) | **DevOps UCSP — cómo deployar** desde cero: Azure, Bicep, DevOps, DNS, TLS, troubleshooting. |
 | [`deploy/helm/miproposito/ARCHITECTURE.md`](deploy/helm/miproposito/ARCHITECTURE.md) | **Diseño del umbrella chart**: por qué cada decisión, gotchas, decisiones abiertas. Ideal para reuniones de revisión técnica. |
 | [`docs/SERVICES.md`](docs/SERVICES.md) | **Referencia por microservicio**: env vars, secrets, dependencias gRPC, hooks Helm. Lo que mira el operador cuando algo no levanta. |
+| [`docs/PERMISOS.md`](docs/PERMISOS.md) | **Modelo de permisos por grupos**: catálogo atómico read-only, grupos (roles), scoping por colegio, gates del gateway y el permiso LAN (`db_keys.lan.read/write`). |
+| [`docs/ASISTENTE.md`](docs/ASISTENTE.md) | **Asistente IA del panel** (`/api/assistant/chat`): tool-calling scopeado por rol, catálogo de tools y de gráficos, contrato de respuesta. |
+| [`deploy/asistente/CONTRATO.md`](deploy/asistente/CONTRATO.md) | Contrato técnico del endpoint del asistente + scripts de reconciliación de datos que usa (`reconcile_usos.sql`, `relink_attempts_keys.sql`). |
 | [`deploy/api-docs/openapi.yaml`](deploy/api-docs/openapi.yaml) | Especificación OpenAPI 3.1 del API REST público (gateway). |
 | [`CLAUDE_CONTEXT.md`](CLAUDE_CONTEXT.md) | Contexto operativo para sesiones de desarrollo asistido. |
 
@@ -29,16 +32,20 @@ cuenta y un mismo conjunto de datos:
   agrupadas en seis dimensiones (Realista, Investigador, Artístico, Social,
   Emprendedor, Convencional).
 - **Simulacro de admisión UCSP**: preguntas con opción correcta única,
-  scoring por puntos.
+  scoring por puntos (soporta puntajes decimales y reglas por prueba).
 - **Hábitos / estilos de aprendizaje** (VARK): visual, auditivo,
   lecto-escritor, kinestésico.
 
-Sobre eso se montan tres capacidades transversales:
+Sobre eso se montan cuatro capacidades transversales:
 
 - **Encuestas de satisfacción** (NPS, escalas, opciones, abiertas), con
-  métricas calculadas en tiempo real.
+  métricas calculadas en tiempo real. Una encuesta puede atarse a varias
+  llaves de acceso (encuesta-por-key).
 - **Dashboards y exports** para el equipo UCSP (asesor, colegio,
   comparativos, histórico de un estudiante; exports XLSX).
+- **Asistente IA** (chatbot solo-lectura del panel): responde preguntas en
+  lenguaje natural sobre los datos, **heredando el scope del rol** del
+  usuario que pregunta. Ver [§7](#7-asistente-ia-del-panel).
 - **Sincronización con HubSpot**: cada estudiante / asesor / colegio se
   refleja como contacto o custom object; los resultados de cada test se
   envían como propiedades del contacto.
@@ -46,6 +53,9 @@ Sobre eso se montan tres capacidades transversales:
 ---
 
 ## 2. Identidad y autorización
+
+> Referencia completa y ejemplos en [`docs/PERMISOS.md`](docs/PERMISOS.md).
+> Esta sección resume el modelo.
 
 ### El modelo en tres niveles
 
@@ -82,14 +92,22 @@ que se le asigna el grupo `admin_permissions`.
 | Parte | Ejemplos | Qué representa |
 |---|---|---|
 | `<base_de_datos>` | `db_users`, `db_exams`, `db_keys`, `db_satisfaction`, `analytics`, `hubspot` | El microservicio / dominio de datos. |
-| `<tabla>` | `users`, `school`, `exam`, `question`, `key`, `survey`, `dashboard`, `permission_group` | La entidad concreta sobre la que se actúa. |
+| `<tabla>` | `users`, `school`, `exam`, `question`, `key`, `lan`, `survey`, `dashboard`, `permission_group`, `coordinador` | La entidad concreta sobre la que se actúa. |
 | `<acción>` | `read`, `write` | Lectura (GET / List / Search) o escritura (POST / PATCH / DELETE). |
 
 Algunos ejemplos del catálogo seedeado:
 
 - `db_exams.question.write` — crear, editar y borrar preguntas del banco.
 - `db_users.users.read` — listar y consultar usuarios.
-- `db_keys.key.write` — generar y desactivar códigos de acceso.
+- `db_keys.key.write` — generar y desactivar códigos de acceso **de colegio**.
+- `db_keys.lan.read` / `db_keys.lan.write` — **ver / gestionar llaves LAN
+  masivas** (Simulacro Masivo, sin colegio asociado). Un caller con
+  `db_keys.lan.read` ve esas llaves en los listados aunque no sea el dueño;
+  crear/editar una LAN masiva exige `db_keys.lan.write` (una llave de
+  colegio sigue rigiéndose por `db_keys.key.write`).
+- `db_users.coordinador.write` — permite a un **asesor** gestionar los
+  coordinadores de sus colegios (permiso asignable por el superadmin;
+  antes esto era solo-superadmin).
 - `analytics.dashboard.read` — consultar los dashboards agregados.
 - `db_users.permission_group.write` — administrar roles (crear grupos, agregar/quitar permisos).
 
@@ -136,7 +154,7 @@ cliente puede modificarlos, eliminarlos o ignorarlos y armar los suyos.
 | Grupo | Permisos típicos |
 |---|---|
 | `admin_permissions` | CRUD completo sobre tablas operacionales + administración de roles (incluye `db_users.permission_group.write`). Pensado para el operador de UCSP que reemplaza al superadmin en el día a día. |
-| `asesor_permissions` | Lectura amplia + escritura sobre sus colegios y keys + ver dashboards de sus asignaciones. |
+| `asesor_permissions` | Lectura amplia + escritura sobre sus colegios y keys + ver dashboards de sus asignaciones. Puede sumar `db_users.coordinador.write` para gestionar coordinadores. |
 | `coordinador_permissions` | Lectura del colegio asignado, sus estudiantes y sus resultados. |
 | `student_permissions` | Leer su propio progreso, resolver tests. |
 
@@ -187,6 +205,8 @@ sino reglas de negocio.
   - `/api/exams/{id}/attempts` (list all attempts of an exam) →
     `db_exams.exam_attempt.read`
   - `/api/keys/resync-all` → `db_keys.key.write`
+  - crear/gestionar una LAN masiva → `db_keys.lan.write`; verla en
+    listados sin ser dueño → `db_keys.lan.read`
 - **Self-scope + permission fallback**: endpoints como
   `/api/analytics/asesor/{id}/dashboard` aceptan al asesor dueño SIN
   permiso extra (self-service); para ver el dashboard de OTRO asesor
@@ -240,7 +260,7 @@ acciones existen sobre qué tablas; UCSP decide quién puede hacer qué.
 |---|---|
 | Superadmin (un único usuario inicial) | email + password (bcrypt). |
 | Cualquier otro usuario administrativo (admin / asesor / coordinador) | email + password (bcrypt). Lo crea un superadmin vía `POST /api/users` y le asigna el grupo correspondiente. |
-| Estudiante (asignado al grupo `student_permissions`) | OTP de 6 dígitos enviado por email vía un Workflow de HubSpot. |
+| Estudiante (asignado al grupo `student_permissions`) | OTP de 6 dígitos enviado por email (HubSpot Workflow o Resend, ver §6). |
 
 ### Bootstrap del primer superadmin
 
@@ -297,22 +317,10 @@ POST /api/auth/student/request-otp  { email }            →  200 (silencioso an
 POST /api/auth/student/verify-otp   { email, otp }       →  { user, permissions, tokens }
 ```
 
-El OTP se envía por email a través de un Workflow de HubSpot (webhook
-trigger). El backend NO envía emails directamente. El OTP vive 10 minutos,
-permite 3 intentos incorrectos antes de invalidarse, y solo hay un OTP
-activo por usuario simultáneamente.
-
-### Códigos de permiso
-
-Cada grupo tiene asignado un conjunto de permisos individuales. Los
-permisos siguen el formato `<scope>.<entidad>.<acción>` — por ejemplo
-`db_users.users.read`, `db_exams.exam.write`, `analytics.dashboard.read`.
-El catálogo completo se puede consultar con
-`GET /api/users/{id}/permissions`.
-
-El flag `is_superadmin` bypasa todos los checks: un superadmin tiene
-acceso a cualquier endpoint sin necesidad de estar asignado a ningún
-grupo.
+El OTP se entrega por email (HubSpot Workflow o Resend, ver §6). El backend
+NO envía emails con SMTP propio. El OTP vive 10 minutos, permite 3 intentos
+incorrectos antes de invalidarse, y solo hay un OTP activo por usuario
+simultáneamente.
 
 ---
 
@@ -320,19 +328,51 @@ grupo.
 
 | Servicio | Puerto | DB | Responsabilidad |
 |---|---|---|---|
-| `gateway` | HTTP 8080 | — | Único endpoint público. Traduce REST→gRPC. JWT, CORS, rate-limit (Redis sliding window). |
-| `users-service` | 50051 | `db_users` | Identidad, password (bcrypt), JWT, refresh tokens, permisos, OTP, schools, asignaciones (histórico SCD-2), audit log. |
-| `exams-service` | 50052 | `db_exams` | Tipos de examen (`vocacional`, `simulacro`, `habitos`), versiones por linaje (`parent_exam_id`), preguntas, opciones, attempts, scoring. |
-| `keys-service` | 50053 | `db_keys` | Códigos de acceso a tests, modos `school` / `lan`, ventanas temporales, contador atómico de usos. |
-| `hubspot-service` | 50054 + HTTP webhook 8080 | Redis (asynq) | Sync con HubSpot. Server (sync) + worker (async con backoff exponencial 1-2-4-8-16s). Rate limiter coordinado vía Redis. |
-| `satisfaction-service` | 50055 | `db_satisfaction` | Encuestas, 5 tipos de pregunta (`scale`, `nps`, `single`, `multi`, `open`), métricas en runtime (NPS, average, distribución). |
-| `analytics-service` | 50056 | — (Redis para caché) | Dashboards agregados (asesor / colegio / estudiante / comparativo / histórico), exports XLSX. Lee de los demás servicios por gRPC. |
+| `gateway` | HTTP 8080 | — | Único endpoint público. Traduce REST→gRPC. JWT, CORS, rate-limit (Redis sliding window). Hospeda el proxy del **asistente IA** (`/api/assistant/chat`). |
+| `users_service` | 50051 | `db_users` | Identidad, password (bcrypt), JWT, refresh tokens, permisos, OTP, schools, asignaciones (histórico SCD-2), **coordinadores muchos-a-muchos** (assignment `coordinador_de_colegio`), audit log. |
+| `exams_service` | 50052 | `db_exams` | Tipos de examen (`vocacional`, `simulacro`, `habitos`), versiones por linaje (`parent_exam_id`), preguntas, opciones, attempts, scoring (decimal). Aplica el límite de **intentos por estudiante** de la llave. |
+| `keys_service` | 50053 | `db_keys` | Códigos de acceso a tests, modos `school` / `lan`, ventanas temporales, **aforo por alumnos distintos** (contador atómico), `max_attempts_per_user`. |
+| `hubspot_service` | 50054 + HTTP webhook 8080 | Redis (asynq) | Sync con HubSpot. Server (sync) + worker (async con backoff exponencial 1-2-4-8-16s). Rate limiter coordinado vía Redis. |
+| `satisfaction_service` | 50055 | `db_satisfaction` | Encuestas, 5 tipos de pregunta (`scale`, `nps`, `single`, `multi`, `open`), métricas en runtime (NPS, average, distribución). Encuesta-por-key (`survey_key`). |
+| `analytics_service` | 50056 | — (Redis para caché) | Dashboards agregados (asesor / colegio / estudiante / comparativo / histórico), exports XLSX. Lee de los demás servicios por gRPC. Es la fuente de datos del asistente IA. |
 
 Todos siguen arquitectura **hexagonal + CQRS**: `internal/core/{domain, ports, command, query}` puro; `internal/adapters/{inbound, outbound}` con la I/O. El stack es Go 1.24, gRPC + protobuf (regenerado con `buf`), driver oficial de Microsoft para SQL Server, `golang-jwt/jwt/v5`, `redis/go-redis/v9`, `hibiken/asynq`.
 
+> El **front Angular** (`ucsp-front/`) vive en el mismo repo pero se
+> despliega aparte (ver notas de deploy del front); no es un microservicio
+> backend.
+
 ---
 
-## 4. Variables de entorno y secrets
+## 4. Semánticas de negocio vigentes
+
+Estas reglas están implementadas HOY y conviene tenerlas presentes al
+leer dashboards, reportes o el asistente:
+
+- **Aforo por alumnos distintos.** El `max_uses` de una llave se consume
+  por **alumnos únicos**, no por intentos. El gate es atómico en
+  `keys_service` (`UPDATE ... SET current_uses = current_uses + 1 WHERE
+  ... AND (max_uses = 0 OR current_uses < max_uses)`), y un mismo alumno
+  que reintenta NO vuelve a restar aforo (se cuenta `DISTINCT user_id`
+  sobre `key_usage`). `max_uses = 0` significa **sin aforo** (ilimitado).
+- **Intentos por estudiante configurables en la llave** (`max_attempts_per_user`).
+  Los reintentos de un mismo alumno están gobernados por este campo a
+  nivel `exams_service`; no consumen aforo. `0` = sin tope explícito.
+- **Intento PRINCIPAL = el ÚLTIMO presentado.** Cuando un alumno rinde
+  varias veces, el bot, el panel y los reportes toman como resultado
+  "oficial" el más reciente, no el primero ni el mejor.
+- **Colegio inactivo se resta de TODO.** `school.active = 0` saca al
+  colegio (y sus llaves/alumnos/resultados) del scope del asistente, del
+  reporte de asesores y de los dashboards/pendientes de analytics; además
+  bloquea el registro de nuevos alumnos y el acceso al portal.
+- **Coordinadores muchos-a-muchos.** Un coordinador puede estar asignado a
+  varios colegios y un colegio puede tener varios coordinadores (assignment
+  `kind=coordinador_de_colegio`, con `AddSource` / `RevokeSource` por par,
+  reutilizables). Ya no rige la restricción única antigua `uk_school_user`.
+
+---
+
+## 5. Variables de entorno y secrets
 
 ### Comunes a todos los servicios
 
@@ -365,18 +405,20 @@ Todos siguen arquitectura **hexagonal + CQRS**: `internal/core/{domain, ports, c
 - `CORS_ALLOWED_ORIGINS` — CSV con dominios permitidos.
 - `RATELIMIT_ENABLED=true`, `RATELIMIT_PER_IP_PER_MIN=600`.
 - `USERS_SERVICE_ADDR`, `EXAMS_SERVICE_ADDR`, `KEYS_SERVICE_ADDR`, `HUBSPOT_SERVICE_ADDR`, `SATISFACTION_SERVICE_ADDR`, `ANALYTICS_SERVICE_ADDR` — direcciones gRPC de los upstreams (`<release>-<svc>-service:<puerto>`).
+- `OPENAI_API_KEY` (Secret `assistant-openai`) — usada por el proxy del asistente IA para el tool-calling. Ver [§7](#7-asistente-ia-del-panel).
 - `GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn` — necesario porque el gateway importa protos de los seis servicios y todos registran `common/error.proto`.
 
-**users-service**
+**users_service**
 - `BCRYPT_COST=10`.
 - `JWT_ACCESS_TTL=15m`, `JWT_REFRESH_TTL=168h`.
 - `HUBSPOT_SERVICE_ADDR` — para enviar OTP por email.
+- `OTP_SENDER` — `hubspot` (default) o `resend` (ver §6).
 
-**exams-service**
+**exams_service**
 - `KEYS_SERVICE_ADDR` — cliente gRPC a keys-service para validar/incrementar uso de keys.
 - `GOLANG_PROTOBUF_REGISTRATION_CONFLICT=warn`.
 
-**hubspot-service**
+**hubspot_service**
 - `HUBSPOT_API_TOKENS` — Key Vault, CSV de Private App Tokens. Más tokens = más rate-limit total (cada uno 10 rps).
 - `HUBSPOT_OTP_WEBHOOK_TOKEN` — Key Vault, token del Workflow trigger.
 - `HUBSPOT_OTP_WEBHOOK_TRIGGER_ID` — id numérico del trigger.
@@ -385,11 +427,11 @@ Todos siguen arquitectura **hexagonal + CQRS**: `internal/core/{domain, ports, c
 - `HUBSPOT_ASESOR_TEAM_ID`, `HUBSPOT_ASESOR_ROLE_ID` — para invitar asesores como usuarios HubSpot.
 - `WEBHOOK_HTTP_PORT=:8080` — puerto del HTTP server que recibe webhooks de HubSpot.
 
-**analytics-service**
+**analytics_service**
 - `USERS_SERVICE_ADDR`, `EXAMS_SERVICE_ADDR`, `KEYS_SERVICE_ADDR`, `SATISFACTION_SERVICE_ADDR`.
 - `CACHE_ENABLED=true`.
 
-### Resumen de secrets que el Key Vault debe tener
+### Resumen de secrets que el Key Vault / cluster debe tener
 
 ```
 users-service-sql-password
@@ -406,19 +448,69 @@ users-service-jwt-secret           # único, compartido por todos los servicios
 
 hubspot-service-api-tokens          # CSV de PATs
 hubspot-service-otp-webhook-token   # token del Workflow trigger
+
+assistant-openai                    # API key OpenAI del asistente IA (gateway)
+miproposito-resend-credentials      # API key Resend (si OTP_SENDER=resend)
 ```
 
 Las dependencias entre servicios son las siguientes (todas por gRPC):
 
-- `gateway` → todos los demás.
-- `exams-service` → `keys-service` (validar / incrementar key).
-- `users-service` → `hubspot-service` (enviar OTP).
-- `analytics-service` → `users-service`, `exams-service`, `keys-service`, `satisfaction-service` (consultas para dashboards).
-- `hubspot-service` → externo (api.hubapi.com).
+- `gateway` → todos los demás (+ salida HTTPS a OpenAI para el asistente).
+- `exams_service` → `keys_service` (validar / incrementar key).
+- `users_service` → `hubspot_service` (enviar OTP).
+- `analytics_service` → `users_service`, `exams_service`, `keys_service`, `satisfaction_service` (consultas para dashboards).
+- `hubspot_service` → externo (api.hubapi.com).
 
 ---
 
-## 5. Documentación de la API REST
+## 6. Envío del OTP del estudiante: HubSpot vs Resend
+
+El sistema soporta dos backends de delivery del OTP, intercambiables vía
+env var `OTP_SENDER` en `users_service`:
+
+| Valor | Cómo manda el correo | Cuándo usar |
+|---|---|---|
+| `hubspot` (default) | Llama `hubspot_service.SendOTP` que upsertea el contacto en HubSpot y dispara el Automation Workflow. Depende de que el portal tenga "auto-set new contacts as marketing" activo o tokens con scope `marketing-contacts` / `transactional-email`. | Si el cliente prefiere mantener todo el routing dentro de su CRM HubSpot. |
+| `resend` | Llama directo a `api.resend.com/emails` con la API key del secret `miproposito-resend-credentials`. Independiente de la config de HubSpot. El sync de contacto al CRM se hace best-effort en goroutine (`hubspot_service.SyncStudentContact`) sin bloquear el login. | Si el portal HubSpot no entrega correos confiablemente (caso UCSP 2026-05). |
+
+En prod actualmente `OTP_SENDER=resend`. La cuenta Resend es de **Blue Nose**
+(transición pendiente: UCSP debe crear su propia cuenta y darnos la key
+para el handover final). El From sandbox es `onboarding@resend.dev`; para
+prod requiere verificar `ucsp.edu.pe` en Resend (SPF TXT + DKIM CNAME) y
+cambiar `RESEND_FROM` en el chart.
+
+---
+
+## 7. Asistente IA del panel
+
+> Detalle completo, catálogo de tools y contrato de respuesta en
+> [`docs/ASISTENTE.md`](docs/ASISTENTE.md) y
+> [`deploy/asistente/CONTRATO.md`](deploy/asistente/CONTRATO.md).
+
+El panel incluye un **chatbot solo-lectura** que responde preguntas en
+lenguaje natural sobre los datos de la plataforma (rendidos, rankings,
+comparativos entre llaves, satisfacción, coordinadores, campañas masivas,
+etc.), devolviendo texto y **gráficos embebidos** (ApexCharts).
+
+- **Endpoint**: `POST /api/assistant/chat`, servido por el gateway
+  (`gateway/internal/proxy/assistant.go`). Se consume desde
+  `/app/asistente` en el front.
+- **Modelo**: tool-calling de OpenAI (API key en el Secret
+  `assistant-openai`). El modelo **nunca ejecuta SQL crudo**: solo puede
+  invocar un conjunto de *tools* acotadas.
+- **Scope heredado por rol** — clave de seguridad: cada tool corre con el
+  mismo scoping que el usuario que pregunta. Un asesor solo obtiene datos
+  de sus colegios; pedir "toda la plataforma" o un colegio ajeno se
+  responde con lo permitido, no con una fuga. El asistente no puede ver ni
+  más ni menos que lo que el rol vería en el panel.
+- **Determinismo en preguntas compuestas**: las tools que combinan varias
+  fuentes (comparativos multi-año, rankings por tipo, gráficos
+  personalizados con whitelist de tipos/límites) devuelven el resultado ya
+  compuesto, para que el modelo no tenga que "inventar" la agregación.
+
+---
+
+## 8. Documentación de la API REST
 
 La especificación OpenAPI 3.1 vive en
 [`deploy/api-docs/openapi.yaml`](deploy/api-docs/openapi.yaml). El render
@@ -450,7 +542,7 @@ automático vía cert-manager (apunta el DNS a la IP del Ingress).
 
 ---
 
-## 6. Instalación del backend en Azure (resumen para DevOps)
+## 9. Instalación del backend en Azure (resumen para DevOps)
 
 > Esta sección es una referencia para que un equipo DevOps con experiencia
 > en Azure pueda armar el entorno completo desde el código entregado. **No
@@ -476,6 +568,8 @@ automático vía cert-manager (apunta el DNS a la IP del Ingress).
    Let's Encrypt** si querés TLS automático.
 8. (Opcional pero recomendado) Cuenta **HubSpot** con un Private App Token
    y los tres Custom Objects creados (Keys, Colegios, Asesores).
+9. **API key de OpenAI** en el Secret `assistant-openai` si se quiere el
+   asistente IA operativo.
 
 ### Pasos
 
@@ -509,7 +603,7 @@ docker build --target server -t $ACR/hubspot-service:$TAG hubspot_service
 docker build --target worker -t $ACR/hubspot-service-worker:$TAG hubspot_service
 ```
 
-**2. Cargar secrets en Key Vault** (lista en sección 4).
+**2. Cargar secrets en Key Vault** (lista en sección 5).
 
 **3. Configurar Workload Identity Federation** entre el ServiceAccount del
 namespace de la app y la Managed Identity del Key Vault Secrets Provider
@@ -545,7 +639,7 @@ curl -X POST https://api.miproposito.ucsp.edu.pe/api/auth/login \
   -d '{"email":"admin@ucsp.edu.pe","password":"<la-password-del-secret>"}'
 ```
 
-**8. (Opcional) Deploy del api-docs** — sección 5.
+**8. (Opcional) Deploy del api-docs** — sección 8.
 
 ### Operación
 
@@ -597,22 +691,9 @@ curl -X POST https://api.miproposito.ucsp.edu.pe/api/auth/login \
   Always`: tras `az acr build` hay que hacer `kubectl rollout restart`
   para que K8s detecte el cambio (sino el pod sigue corriendo el
   ImageID del último pull).
-
-### Envío del OTP del estudiante: HubSpot vs Resend
-
-El sistema soporta dos backends de delivery del OTP, intercambiables vía
-env var `OTP_SENDER` en `users_service`:
-
-| Valor | Cómo manda el correo | Cuándo usar |
-|---|---|---|
-| `hubspot` (default) | Llama `hubspot_service.SendOTP` que upsertea el contacto en HubSpot y dispara el Automation Workflow id `9013951`. Depende de que el portal tenga "auto-set new contacts as marketing" activo o tokens con scope `marketing-contacts` / `transactional-email`. | Si el cliente prefiere mantener todo el routing dentro de su CRM HubSpot. |
-| `resend` | Llama directo a `api.resend.com/emails` con la API key del secret `miproposito-resend-credentials`. Independiente de la config de HubSpot. El sync de contacto al CRM se hace best-effort en goroutine (`hubspot_service.SyncStudentContact`) sin bloquear el login. | Si el portal HubSpot no entrega correos confiablemente (caso UCSP 2026-05). |
-
-En prod actualmente `OTP_SENDER=resend`. La cuenta Resend es de **Blue Nose**
-(transición pendiente: UCSP debe crear su propia cuenta y darnos la key
-para el handover final). El From sandbox es `onboarding@resend.dev`; para
-prod requiere verificar `ucsp.edu.pe` en Resend (SPF TXT + DKIM CNAME) y
-cambiar `RESEND_FROM` en el chart.
+- **Deploy de scoring/simulacro EN SYNC**: un cambio de wire en el proto
+  de scoring exige redeployar los tres servicios afectados juntos
+  (gateway + exams + keys) para no romper la compatibilidad binaria.
 
 ---
 
